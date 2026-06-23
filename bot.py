@@ -13,6 +13,12 @@ from data import DataFetcher
 from indicators import IndicatorSet
 from strategy import AdvRSICombinedStrategy, ComboStrategy, ClaudeSuggestedStrategy, SRSIStrategy
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 RESOLUTION_SECONDS: dict[str, int] = {
     "1": 60, "5": 300, "15": 900, "30": 1800,
     "60": 3600, "180": 10800, "240": 14400,
@@ -65,9 +71,125 @@ class Bot:
         self._stop_event: asyncio.Event = asyncio.Event()
         self._live_from_ts: Optional[pd.Timestamp] = None
 
+        # Real-trading state (unused in simulation mode)
+        self._exchange_client = None          # NobitexClient, created lazily
+        self._real_state: str = "none"        # "none" | "long" | "short"
+        self._exchange_position_id: Optional[int] = None
+
     @property
     def id(self) -> str:
         return self.cfg.id
+
+    # ── Real-trading helpers ───────────────────────────────────────────────────
+
+    def _parse_symbol(self) -> tuple[str, str]:
+        """Split symbol into (srcCurrency, dstCurrency) for the Nobitex API."""
+        sym = self.cfg.symbol.lower()
+        if sym.endswith("usdt"):
+            return sym[:-4], "usdt"
+        if sym.endswith("irt"):
+            # Nobitex uses 'rls' internally for the Iranian rial markets
+            return sym[:-3], "rls"
+        raise ValueError(f"Cannot infer currency pair from symbol {sym!r}")
+
+    def _strategy_signal(self) -> str:
+        """
+        Return the strategy's current intent for LIVE candles only.
+
+        Returns 'long', 'short', or 'none'. Positions whose entry_time predates
+        _live_from_ts are warmup artifacts and are ignored.
+        """
+        if self._live_from_ts is None:
+            return "none"
+        for pos in self.open_positions:
+            entry = pd.Timestamp(pos["entry_time"])
+            # df.index is tz-naive UTC; _live_from_ts is also tz-naive UTC
+            if entry >= self._live_from_ts:
+                return "long" if pos["direction"] == "Long" else "short"
+        return "none"
+
+    async def _sync_exchange(self) -> None:
+        """
+        Execute real margin orders when the strategy signal changes.
+
+        Called once per live candle, after _run_strategy(). No-ops in simulation mode.
+        On any API error the bot sets self.error and continues — it does NOT crash.
+        """
+        if self.cfg.mode != "real" or self.current_price is None:
+            return
+
+        # Lazy init of the exchange client
+        if self._exchange_client is None:
+            try:
+                import os
+                from nobitex_client import NobitexClient
+                testnet = os.getenv("NOBITEX_TESTNET", "false").lower() == "true"
+                self._exchange_client = NobitexClient(testnet=testnet)
+            except Exception as exc:
+                self.error = f"Exchange client init failed: {exc}"
+                return
+
+        signal = self._strategy_signal()
+        if signal == self._real_state:
+            return  # No change — nothing to do
+
+        src, dst = self._parse_symbol()
+        price = self.current_price
+        price_str = f"{price:.2f}"
+        # Position size: total notional = credit × leverage, converted to src units
+        amount = round(self.cfg.credit * self.cfg.leverage / price, 6)
+        amount_str = f"{amount:.6f}"
+        client = self._exchange_client
+
+        try:
+            # ── Close existing exchange position ───────────────────────────
+            if self._real_state != "none" and self._exchange_position_id is not None:
+                try:
+                    pos = client.position(self._exchange_position_id)
+                    # Use delegatedAmount (long) or liability (short) for the exact close size
+                    close_amt = (
+                        pos.get("delegatedAmount")
+                        or pos.get("liability")
+                        or amount_str
+                    )
+                    client.close_position(
+                        self._exchange_position_id,
+                        amount=str(close_amt),
+                        price=price_str,
+                        execution="market",
+                    )
+                except Exception as exc:
+                    self.error = f"Close position {self._exchange_position_id} failed: {exc}"
+                    return
+                self._exchange_position_id = None
+
+            # ── Open new exchange position ─────────────────────────────────
+            if signal != "none":
+                # Snapshot active position IDs so we can find the new one after the order fills
+                existing_ids: set[int] = {p["id"] for p in client.positions("active")}
+                side = "buy" if signal == "long" else "sell"
+                client.open_margin_order(
+                    src_currency=src,
+                    dst_currency=dst,
+                    side=side,
+                    amount=amount_str,
+                    price=price_str,
+                    leverage=self.cfg.leverage,
+                    execution="market",
+                )
+                # Market orders fill within seconds; give the exchange a moment
+                await asyncio.sleep(2)
+                new_positions = client.positions("active")
+                new_ids = {p["id"] for p in new_positions} - existing_ids
+                self._exchange_position_id = new_ids.pop() if new_ids else None
+
+            self._real_state = signal
+            self.error = None  # clear any previous exchange error on success
+
+        except Exception as exc:
+            self.error = f"Exchange sync error: {exc}"
+
+    # ── Config / strategy helpers ──────────────────────────────────────────────
 
     def _make_config(self) -> Config:
         c = Config()
@@ -224,6 +346,8 @@ class Bot:
                 except Exception as exc:
                     self.error = f"Strategy error: {exc}"
 
+                await self._sync_exchange()
+
                 self.last_updated = datetime.now(timezone.utc)
 
         except asyncio.CancelledError:
@@ -236,7 +360,7 @@ class Bot:
                 self.status = BotStatus.STOPPED
 
     def to_state_dict(self) -> dict:
-        return {
+        d = {
             "id": self.id,
             "name": self.cfg.name or self.id,
             "mode": self.cfg.mode,
@@ -256,6 +380,10 @@ class Bot:
             "created_at": self.created_at.isoformat(),
             "error": self.error,
         }
+        if self.cfg.mode == "real":
+            d["exchange_state"] = self._real_state
+            d["exchange_position_id"] = self._exchange_position_id
+        return d
 
     def to_detail_dict(self) -> dict:
         d = self.to_state_dict()

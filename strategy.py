@@ -1,16 +1,27 @@
 from abc import ABC, abstractmethod
+from zoneinfo import ZoneInfo
+
 import pandas as pd
 
 from config import Config
 from indicators import IndicatorSet
 
+_TEHRAN = ZoneInfo("Asia/Tehran")
+
+
+def _fmt_time(ts: pd.Timestamp) -> str:
+    if ts.tzinfo is None:
+        ts = ts.tz_localize("UTC")
+    return ts.tz_convert(_TEHRAN).strftime("%Y-%m-%d %H:%M:%S")
+
 
 class Strategy(ABC):
     def __init__(self, config: Config):
         self.config = config
+        self.open_positions: list[dict] = []
 
     @abstractmethod
-    def run(self, df: pd.DataFrame, indicators: IndicatorSet) -> pd.DataFrame:
+    def run(self, df: pd.DataFrame, indicators: IndicatorSet, live_start_idx: int = 0) -> pd.DataFrame:
         ...
 
     def liquidation_price(self, direction: str, entry_price: float) -> float:
@@ -52,8 +63,9 @@ class Strategy(ABC):
         start_price = df["Close"].iloc[entry_idx]
         end_price = exit_price if exit_price is not None else df["Close"].iloc[exit_idx]
         pct = (end_price - start_price) / start_price
-        pnl = self.config.leverage * self.config.trade_size * (pct if direction == "Long" else -pct)
-        L, C = self.config.leverage, self.config.trade_size
+        effective_size = max(0.0, min(self.config.trade_size + balance, self.config.trade_size))
+        pnl = self.config.leverage * effective_size * (pct if direction == "Long" else -pct)
+        L, C = self.config.leverage, effective_size
         if direction == "Long":
             cr = end_price / start_price + 1.0 / L
         else:
@@ -61,8 +73,8 @@ class Strategy(ABC):
         record = {
             "Trade #": trade_idx,
             "Position": direction,
-            "Start Time": str(df.index[entry_idx]),
-            "End Time": str(df.index[exit_idx]),
+            "Start Time": _fmt_time(df.index[entry_idx]),
+            "End Time": _fmt_time(df.index[exit_idx]),
             "Candle Count": exit_idx - entry_idx + 1,
             "Start Price": f"{start_price:.2f}",
             "End Price": f"{end_price:.2f}",
@@ -78,7 +90,7 @@ class Strategy(ABC):
 class SRSIStrategy(Strategy):
     """Simple Stochastic RSI: enter on K/D zone breakout, exit on K/D crossover."""
 
-    def run(self, df: pd.DataFrame, indicators: IndicatorSet) -> pd.DataFrame:
+    def run(self, df: pd.DataFrame, indicators: IndicatorSet, live_start_idx: int = 0) -> pd.DataFrame:
         k, d = indicators.stoch_k, indicators.stoch_d
         oversold, overbought = self.config.stoch_oversold, self.config.stoch_overbought
 
@@ -90,7 +102,7 @@ class SRSIStrategy(Strategy):
         waiting_long = False
         waiting_short = False
 
-        for i in range(len(df)):
+        for i in range(live_start_idx, len(df)):
             ki, di = k.iloc[i], d.iloc[i]
 
             if position == 0:
@@ -136,8 +148,14 @@ class SRSIStrategy(Strategy):
                     position, entry_idx = 0, None
                     waiting_short = False
 
+        self.open_positions = []
         if position != 0 and entry_idx is not None:
             direction = "Long" if position == 1 else "Short"
+            self.open_positions = [{
+                "direction": direction,
+                "entry_price": float(df["Close"].iloc[entry_idx]),
+                "entry_time": str(df.index[entry_idx]),
+            }]
             record, pnl = self._make_trade_record(trade_idx, direction, df, entry_idx, len(df) - 1, balance)
             balance += pnl
             log.append(record)
@@ -148,7 +166,7 @@ class SRSIStrategy(Strategy):
 class ComboStrategy(Strategy):
     """Combined RSI + Stochastic RSI with improved exit conditions."""
 
-    def run(self, df: pd.DataFrame, indicators: IndicatorSet) -> pd.DataFrame:
+    def run(self, df: pd.DataFrame, indicators: IndicatorSet, live_start_idx: int = 0) -> pd.DataFrame:
         k, d = indicators.stoch_k, indicators.stoch_d
         rsi, rsi_ma = indicators.rsi, indicators.rsi_ma
         oversold, overbought = self.config.stoch_oversold, self.config.stoch_overbought
@@ -163,7 +181,7 @@ class ComboStrategy(Strategy):
         was_overbought = False
         was_oversold = False
 
-        for i in range(len(df)):
+        for i in range(live_start_idx, len(df)):
             ki, di = k.iloc[i], d.iloc[i]
             ri, ri_ma = rsi.iloc[i], rsi_ma.iloc[i]
 
@@ -218,8 +236,14 @@ class ComboStrategy(Strategy):
                         trade_idx += 1
                         position, entry_idx, was_oversold = 0, None, False
 
+        self.open_positions = []
         if position != 0 and entry_idx is not None:
             direction = "Long" if position == 1 else "Short"
+            self.open_positions = [{
+                "direction": direction,
+                "entry_price": float(df["Close"].iloc[entry_idx]),
+                "entry_time": str(df.index[entry_idx]),
+            }]
             record, pnl = self._make_trade_record(trade_idx, direction, df, entry_idx, len(df) - 1, balance)
             balance += pnl
             log.append(record)
@@ -236,7 +260,7 @@ class AdvRSICombinedStrategy(Strategy):
 
     KD_EXIT_THRESHOLD = 10
 
-    def run(self, df: pd.DataFrame, indicators: IndicatorSet) -> pd.DataFrame:
+    def run(self, df: pd.DataFrame, indicators: IndicatorSet, live_start_idx: int = 0) -> pd.DataFrame:
         k, d = indicators.stoch_k, indicators.stoch_d
         rsi, rsi_ma = indicators.rsi, indicators.rsi_ma
         kd_diff = indicators.kd_diff
@@ -251,7 +275,7 @@ class AdvRSICombinedStrategy(Strategy):
         waiting_long = False
         waiting_short = False
 
-        for i in range(len(df)):
+        for i in range(live_start_idx, len(df)):
             ki, di = k.iloc[i], d.iloc[i]
             ri, ri_ma = rsi.iloc[i], rsi_ma.iloc[i]
             diff = kd_diff.iloc[i]
@@ -322,6 +346,14 @@ class AdvRSICombinedStrategy(Strategy):
                     open_shorts.append(i)
                 waiting_short = False
 
+        self.open_positions = [
+            {"direction": "Long", "entry_price": float(df["Close"].iloc[idx]), "entry_time": str(df.index[idx])}
+            for idx in open_longs
+        ] + [
+            {"direction": "Short", "entry_price": float(df["Close"].iloc[idx]), "entry_time": str(df.index[idx])}
+            for idx in open_shorts
+        ]
+
         last_i = len(df) - 1
         for entry_idx in open_longs:
             record, pnl = self._make_trade_record(trade_idx, "Long", df, entry_idx, last_i, balance)
@@ -347,7 +379,7 @@ class ClaudeSuggestedStrategy(Strategy):
     agrees before entry and signals the exit when that momentum exhausts.
     """
 
-    def run(self, df: pd.DataFrame, indicators: IndicatorSet) -> pd.DataFrame:
+    def run(self, df: pd.DataFrame, indicators: IndicatorSet, live_start_idx: int = 0) -> pd.DataFrame:
         k, d = indicators.stoch_k, indicators.stoch_d
         ema = indicators.ema_trend
         macd_hist = indicators.macd_hist
@@ -365,7 +397,7 @@ class ClaudeSuggestedStrategy(Strategy):
         waiting_short = False
         touched_extreme = False  # whether the open position has reached its target zone
 
-        for i in range(len(df)):
+        for i in range(live_start_idx, len(df)):
             ki, di = k.iloc[i], d.iloc[i]
             close_i = close.iloc[i]
             ema_i = ema.iloc[i]
@@ -433,8 +465,14 @@ class ClaudeSuggestedStrategy(Strategy):
                         position, entry_idx, touched_extreme = -1, i, False
                     waiting_short = False
 
+        self.open_positions = []
         if position != 0 and entry_idx is not None:
             direction = "Long" if position == 1 else "Short"
+            self.open_positions = [{
+                "direction": direction,
+                "entry_price": float(df["Close"].iloc[entry_idx]),
+                "entry_time": str(df.index[entry_idx]),
+            }]
             record, pnl = self._make_trade_record(trade_idx, direction, df, entry_idx, len(df) - 1, balance)
             balance += pnl
             log.append(record)

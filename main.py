@@ -20,26 +20,27 @@ def main():
     # combo_trades = ComboStrategy(config).run(df, indicators)
     # print(combo_trades.to_string(index=False))
 
-    print("\n--- Advanced RSI Combined strategy ---")
-    adv_trades = AdvRSICombinedStrategy(config).run(df, indicators)
-    print(adv_trades.to_string(index=False))
+    # print("\n--- Advanced RSI Combined strategy ---")
+    # adv_trades = AdvRSICombinedStrategy(config).run(df, indicators)
+    # print(adv_trades.to_string(index=False))
 
-    print("\n--- Claude Suggested strategy ---")
-    claude_trades = ClaudeSuggestedStrategy(config).run(df, indicators)
-    print(claude_trades.to_string(index=False))
+    # print("\n--- Claude Suggested strategy ---")
+    # claude_trades = ClaudeSuggestedStrategy(config).run(df, indicators)
+    # print(claude_trades.to_string(index=False))
 
-    chart = Chart(df, config)
-    chart.plot(
-        symbol="ZEC/USDT",
-        title="Indicators",
-        subplots=[
-            chart.srsi_subplot(indicators.stoch_k, indicators.stoch_d),
-            chart.rsi_subplot(indicators.rsi, indicators.rsi_ma),
-            chart.kd_diff_subplot(indicators.kd_diff),
-        ],
-    )
-    plt.show()
+    # chart = Chart(df, config)
+    # chart.plot(
+    #     symbol="ZEC/USDT",
+    #     title="Indicators",
+    #     subplots=[
+    #         chart.srsi_subplot(indicators.stoch_k, indicators.stoch_d),
+    #         chart.rsi_subplot(indicators.rsi, indicators.rsi_ma),
+    #         chart.kd_diff_subplot(indicators.kd_diff),
+    #     ],
+    # )
+    # plt.show()
 
 
 if __name__ == "__main__":
-    main()
+    import uvicorn
+    uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True)

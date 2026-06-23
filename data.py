@@ -25,6 +25,9 @@ class DataFetcher:
 
     def __init__(self, config: Config):
         self.config = config
+        self._session = requests.Session()
+        # trust_env=False ignores ALL system/env/registry proxy settings on Windows
+        self._session.trust_env = False
 
     def fetch(self) -> pd.DataFrame:
         resolution = self.config.interval
@@ -40,7 +43,7 @@ class DataFetcher:
                 "countback": self._PAGE,
                 "to": to_time,
             }
-            response = requests.get(self._URL, params=params)
+            response = self._session.get(self._URL, params=params, timeout=15)
             response.raise_for_status()
             data = response.json()
 
@@ -62,6 +65,39 @@ class DataFetcher:
         now = int(time.time())
         raw = raw[raw["open_time"] + candle_secs <= now].tail(total).reset_index(drop=True)
 
+        df = raw[["Open", "High", "Low", "Close", "Volume"]].astype(float)
+        df.index = pd.to_datetime(raw["open_time"], unit="s")
+        df.index.name = "Date"
+        return df
+
+    def fetch_latest(self) -> pd.DataFrame:
+        """Fetch the single most recently closed candle (efficient: countback=10)."""
+        resolution = self.config.interval
+        candle_secs = self._RESOLUTION_SECONDS[resolution]
+        params = {
+            "symbol": self.config.symbol.lower(),
+            "resolution": resolution,
+            "countback": 10,
+            "to": int(time.time()),
+        }
+        response = self._session.get(self._URL, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        if data.get("s") != "ok" or not data.get("t"):
+            return pd.DataFrame()
+
+        timestamps = data["t"]
+        rows = list(zip(timestamps, data["o"], data["h"], data["l"], data["c"], data["v"]))
+        raw = pd.DataFrame(rows, columns=["open_time", "Open", "High", "Low", "Close", "Volume"])
+        raw = raw.drop_duplicates(subset="open_time").sort_values("open_time")
+
+        now = int(time.time())
+        raw = raw[raw["open_time"] + candle_secs <= now]
+        if raw.empty:
+            return pd.DataFrame()
+
+        raw = raw.iloc[[-1]]
         df = raw[["Open", "High", "Low", "Close", "Volume"]].astype(float)
         df.index = pd.to_datetime(raw["open_time"], unit="s")
         df.index.name = "Date"

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 class Config:
     symbol: str = "zecusdt"
     interval: str = "240"  # Nobitex resolution: minutes as string, or "D"/"W"/"M"
-    limit: int = 600
+    limit: int = 400
 
     rsi_length: int = 40
     stoch_length: int = 36

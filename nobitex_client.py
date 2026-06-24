@@ -166,6 +166,22 @@ class NobitexClient:
             payload["clientOrderId"] = client_order_id
         return self._call("POST", "/margin/orders/add", json=payload)["order"]
 
+    def live_price(self, symbol: str) -> float:
+        """Last-traded price for a symbol from the public orderbook endpoint."""
+        data = self._call("GET", f"/v3/orderbook/{symbol.upper()}")
+        return float(data["lastTradePrice"])
+
+    def order_status(self, order_id: int) -> dict:
+        """Fetch current status and fill info for an order."""
+        return self._call("POST", "/market/orders/status", json={"id": order_id})["order"]
+
+    def cancel_order(self, order_id: int) -> None:
+        """Cancel an active order."""
+        self._call("POST", "/market/orders/update-status", json={
+            "order": order_id,
+            "status": "canceled",
+        })
+
     # ── Positions ──────────────────────────────────────────────────────────────
 
     def positions(self, status: Literal["active", "past"] = "active") -> list[dict]:

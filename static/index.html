@@ -246,6 +246,9 @@
   .ev-bot_stopped     { color: var(--muted); }
   .ev-error           { color: var(--red); }
   .ev-warning         { color: var(--yellow); }
+  .ev-order_placed    { color: var(--yellow); }
+  .ev-order_filled    { color: var(--green); }
+  .ev-info            { color: var(--muted); }
   .ev-reconfigured    { color: var(--purple); }
   .ev-data_loaded     { color: var(--muted); }
   .ev-initialized     { color: var(--muted); }
@@ -754,12 +757,19 @@ function renderPositionCell(b) {
     const unrealStr = unreal != null
       ? `<span style="color:${unrealColor};font-size:10px"> · ${unreal >= 0 ? '+' : ''}$${Math.abs(unreal).toFixed(2)}</span>`
       : '';
+    const liqStr = p.liquidation_price
+      ? `<div style="font-size:10px;color:var(--yellow)">Liq: $${fmtNum(p.liquidation_price)}</div>`
+      : '';
+    const markStr = p.mark_price
+      ? `<div style="font-size:10px;color:var(--muted)">Mark: $${fmtNum(p.mark_price)}</div>`
+      : '';
     return `<div style="color:${color};font-size:11px;font-weight:700">${arrow} ${p.direction.toUpperCase()}</div>
-<div style="font-size:10px;color:var(--muted)">@ $${fmtNum(p.entry_price)}${unrealStr}</div>`;
+<div style="font-size:10px;color:var(--muted)">@ $${fmtNum(p.entry_price)}${unrealStr}</div>${liqStr}${markStr}`;
   }).join('<div style="height:4px"></div>');
 }
 
 function calcUnrealized(b, pos) {
+  if (pos.unrealized_pnl != null) return pos.unrealized_pnl;
   if (b.current_price == null) return null;
   const pct = (b.current_price - pos.entry_price) / pos.entry_price;
   return b.leverage * b.credit * (pos.direction === 'Long' ? 1 : -1) * pct;

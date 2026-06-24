@@ -16,147 +16,153 @@
     --green:    #4ade80;
     --red:      #f87171;
     --yellow:   #fbbf24;
+    --purple:   #a78bfa;
     --text:     #e2e8f0;
     --muted:    #64748b;
     --radius:   10px;
   }
 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Consolas', 'Menlo', monospace;
-    font-size: 13px;
-    min-height: 100vh;
-  }
+  body { background: var(--bg); color: var(--text); font-family: 'Consolas','Menlo',monospace; font-size: 13px; min-height: 100vh; }
 
   /* ── Top bar ── */
   .topbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 24px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    position: sticky;
-    top: 0;
-    z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 24px; background: var(--surface);
+    border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100;
   }
-  .topbar-left { display: flex; align-items: center; gap: 18px; }
-  .topbar h1 { font-size: 16px; letter-spacing: 1px; color: var(--accent); font-weight: 700; }
+  .topbar-left  { display: flex; align-items: center; gap: 14px; }
+  .topbar-right { display: flex; align-items: center; gap: 8px; }
+  .topbar h1 { font-size: 15px; letter-spacing: 1px; color: var(--accent); font-weight: 700; }
   .ws-indicator { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
   .ws-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); transition: background .3s; }
   .ws-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
   .ws-dot.error     { background: var(--red); }
 
-  .btn {
-    border: none; cursor: pointer; border-radius: 6px;
-    font-family: inherit; font-size: 12px; font-weight: 600;
-    padding: 7px 14px; transition: opacity .15s, transform .1s;
-  }
+  .btn { border: none; cursor: pointer; border-radius: 6px; font-family: inherit; font-size: 12px; font-weight: 600; padding: 7px 14px; transition: opacity .15s, transform .1s; }
   .btn:hover  { opacity: .85; }
   .btn:active { transform: scale(.97); }
-  .btn-primary   { background: var(--accent); color: #0b0f1a; }
-  .btn-success   { background: var(--green);  color: #0b0f1a; }
-  .btn-danger    { background: var(--red);    color: #0b0f1a; }
-  .btn-neutral   { background: var(--border); color: var(--text); }
+  .btn-primary { background: var(--accent);  color: #0b0f1a; }
+  .btn-success { background: var(--green);   color: #0b0f1a; }
+  .btn-danger  { background: var(--red);     color: #0b0f1a; }
+  .btn-neutral { background: var(--border);  color: var(--text); }
+  .btn-purple  { background: #4c3a8a;        color: var(--purple); border: 1px solid #6d52cc; }
   .btn-sm { padding: 4px 10px; font-size: 11px; }
+  .btn-icon { padding: 6px 9px; font-size: 14px; }
 
-  /* ── Grid ── */
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
-    gap: 16px;
-    padding: 24px;
+  /* ── Summary bar ── */
+  .summary-bar {
+    display: flex; align-items: center; gap: 0;
+    background: var(--surface2); border-bottom: 1px solid var(--border);
+    padding: 0 24px; overflow-x: auto;
   }
+  .summary-item {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 8px 20px; border-right: 1px solid var(--border); min-width: 120px;
+  }
+  .summary-item:last-child { border-right: none; }
+  .summary-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .summary-value { font-size: 14px; font-weight: 700; margin-top: 2px; }
 
-  /* ── Mode toggle (form) ── */
+  /* ── Wallet bar ── */
+  .wallet-bar {
+    display: flex; align-items: center; gap: 0;
+    background: #0e1520; border-bottom: 1px solid var(--border);
+    padding: 0 24px; overflow-x: auto; min-height: 42px;
+  }
+  .wallet-bar.hidden { display: none; }
+  .wallet-section {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 20px; border-right: 1px solid var(--border);
+  }
+  .wallet-section:last-child { border-right: none; }
+  .wallet-tag {
+    font-size: 10px; font-weight: 700; letter-spacing: .5px;
+    padding: 2px 7px; border-radius: 4px;
+  }
+  .wallet-tag.margin { background: #1a0d3a; color: var(--purple); border: 1px solid #4c3a8a; }
+  .wallet-tag.spot   { background: #0d2030; color: var(--accent);  border: 1px solid #1a4060; }
+  .wallet-currency { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+  .wallet-amount  { font-size: 13px; font-weight: 700; }
+  .wallet-frozen  { font-size: 11px; color: var(--yellow); }
+  .wallet-avail   { font-size: 11px; color: var(--green); }
+  .wallet-meta    { display: flex; align-items: center; gap: 10px; padding: 8px 20px; margin-left: auto; }
+  .wallet-updated { font-size: 10px; color: var(--muted); }
+  .wallet-error   { font-size: 11px; color: var(--red); padding: 8px 20px; }
+  .wallet-loading { font-size: 11px; color: var(--muted); padding: 8px 20px; }
+
+  /* ── Bot Table ── */
+  .table-wrap { padding: 16px 24px; overflow-x: auto; }
+  .bots-table { width: 100%; border-collapse: collapse; }
+  .bots-table th {
+    text-align: left; padding: 8px 12px; background: var(--surface2);
+    color: var(--muted); border-bottom: 2px solid var(--border);
+    text-transform: uppercase; font-size: 10px; letter-spacing: .5px;
+    white-space: nowrap; position: sticky; top: 0; z-index: 10;
+  }
+  .bots-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .bots-table tr:last-child td { border-bottom: none; }
+  .bots-table tr.row-sim > td:first-child { border-left: 3px dashed #4a3800; }
+  .bots-table tr:hover td { background: rgba(255,255,255,.025); }
+  .col-bot     { min-width: 160px; }
+  .col-config  { min-width: 170px; }
+  .col-pos     { min-width: 150px; }
+  .col-price   { min-width: 90px;  white-space: nowrap; }
+  .col-pnl     { min-width: 90px;  white-space: nowrap; }
+  .col-balance { min-width: 90px;  white-space: nowrap; }
+  .col-trades  { min-width: 80px;  white-space: nowrap; }
+  .col-metrics { min-width: 90px; }
+  .col-equity  { min-width: 130px; }
+  .col-updated { min-width: 70px;  white-space: nowrap; }
+  .col-actions { min-width: 180px; }
+  .bot-name    { font-size: 13px; font-weight: 700; }
+  .bot-id      { font-size: 10px; color: var(--muted); }
+  .row-actions { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+
+  /* ── Mode toggle ── */
   .mode-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .mode-option { position: relative; }
   .mode-option input[type="radio"] { position: absolute; opacity: 0; width: 0; }
-  .mode-option label {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 4px; padding: 12px 8px; border-radius: 8px; cursor: pointer;
-    border: 2px solid var(--border); background: var(--surface2);
-    transition: border-color .15s, background .15s; text-align: center;
-  }
+  .mode-option label { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 12px 8px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--surface2); transition: border-color .15s, background .15s; text-align: center; }
   .mode-option label .mode-title { font-size: 13px; font-weight: 700; color: var(--text); }
   .mode-option label .mode-sub   { font-size: 10px; color: var(--muted); }
   .mode-option input:checked + label { border-color: var(--accent); background: #0e1e30; }
   .mode-option.disabled label { cursor: not-allowed; opacity: .45; }
   .mode-option.disabled label .mode-sub { color: var(--yellow); }
 
-  /* ── Mode badge on card ── */
   .badge-sim  { background: #1a1400; color: var(--yellow); border: 1px solid #4a3800; }
   .badge-real { background: #0d3320; color: var(--green);  border: 1px solid #1a5c35; }
 
-  /* Sim card: subtle dashed left accent */
+  /* ── Bot card ── */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; transition: border-color .2s; }
+  .card:hover { border-color: #3a4a60; }
   .card.sim-mode { border-left: 3px dashed #4a3800; }
 
-  /* ── Bot card ── */
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    transition: border-color .2s;
-  }
-  .card:hover { border-color: #3a4a60; }
-
-  .card-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 14px 10px;
-    border-bottom: 1px solid var(--border);
-  }
+  .card-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px 10px; border-bottom: 1px solid var(--border); }
   .card-header-left { display: flex; align-items: center; gap: 8px; }
 
-  .status-dot {
-    width: 9px; height: 9px; border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .status-dot.running  { background: var(--green);  box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
-  .status-dot.idle     { background: var(--muted); }
-  .status-dot.stopped  { background: #3a4a60; }
-  .status-dot.error    { background: var(--red); box-shadow: 0 0 8px var(--red); }
-
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: .5; }
-  }
+  .status-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .status-dot.running { background: var(--green);  box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
+  .status-dot.idle    { background: var(--muted); }
+  .status-dot.stopped { background: #3a4a60; }
+  .status-dot.error   { background: var(--red); box-shadow: 0 0 8px var(--red); }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
 
   .card-name { font-size: 14px; font-weight: 700; color: var(--text); }
   .card-id   { font-size: 10px; color: var(--muted); }
 
-  .badge {
-    display: inline-block; border-radius: 4px;
-    padding: 2px 7px; font-size: 10px; font-weight: 700; letter-spacing: .5px;
-  }
-  .badge-status-running  { background: #0d3320; color: var(--green); }
-  .badge-status-idle     { background: #1c2333; color: var(--muted); }
-  .badge-status-stopped  { background: #1c2333; color: #3a4a60; }
-  .badge-status-error    { background: #3a1010; color: var(--red); }
+  .badge { display: inline-block; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; letter-spacing: .5px; }
+  .badge-status-running { background: #0d3320; color: var(--green); }
+  .badge-status-idle    { background: #1c2333; color: var(--muted); }
+  .badge-status-stopped { background: #1c2333; color: #3a4a60; }
+  .badge-status-error   { background: #3a1010; color: var(--red); }
 
-  .card-meta {
-    display: flex; gap: 6px; flex-wrap: wrap;
-    padding: 8px 14px;
-    border-bottom: 1px solid var(--border);
-  }
-  .tag {
-    background: var(--surface2); border: 1px solid var(--border);
-    border-radius: 4px; padding: 2px 8px; font-size: 11px; color: var(--muted);
-  }
+  .card-meta { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 14px; border-bottom: 1px solid var(--border); }
+  .tag { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; font-size: 11px; color: var(--muted); }
   .tag strong { color: var(--text); }
 
   .card-body { padding: 12px 14px; flex: 1; }
 
-  .pos-banner {
-    display: flex; align-items: center; justify-content: space-between;
-    border-radius: 6px; padding: 8px 12px; margin-bottom: 10px;
-    font-weight: 700;
-  }
+  .pos-banner { display: flex; align-items: center; justify-content: space-between; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-weight: 700; }
   .pos-banner.long  { background: #0d3320; color: var(--green); border: 1px solid #1a5c35; }
   .pos-banner.short { background: #3a1010; color: var(--red);   border: 1px solid #6b1c1c; }
   .pos-banner.none  { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
@@ -170,81 +176,109 @@
   .stat-value.pos { color: var(--green); }
   .stat-value.neg { color: var(--red); }
   .stat-value.neu { color: var(--text); }
+  .stat-value.warn { color: var(--yellow); }
 
-  .error-box {
-    background: #3a1010; border: 1px solid #6b1c1c; border-radius: 6px;
-    padding: 6px 10px; font-size: 11px; color: var(--red);
-    margin-bottom: 8px; word-break: break-word;
-  }
+  /* ── Sparkline row ── */
+  .sparkline-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+  .sparkline-label { font-size: 10px; color: var(--muted); white-space: nowrap; }
+  .sparkline-svg { flex: 1; overflow: hidden; }
 
-  .card-footer {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 14px;
-    border-top: 1px solid var(--border);
-    background: var(--surface2);
-  }
+  .error-box { background: #3a1010; border: 1px solid #6b1c1c; border-radius: 6px; padding: 6px 10px; font-size: 11px; color: var(--red); margin-bottom: 8px; word-break: break-word; }
+
+  .card-footer { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-top: 1px solid var(--border); background: var(--surface2); }
   .footer-meta { font-size: 10px; color: var(--muted); }
-  .footer-actions { display: flex; gap: 6px; }
+  .footer-actions { display: flex; gap: 5px; flex-wrap: wrap; }
 
   /* ── Modal ── */
-  .modal-overlay {
-    display: none; position: fixed; inset: 0;
-    background: rgba(0,0,0,.7); z-index: 200;
-    align-items: center; justify-content: center;
-  }
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 200; align-items: center; justify-content: center; }
   .modal-overlay.open { display: flex; }
 
-  .modal {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius); width: 420px; max-width: 95vw;
-    max-height: 90vh; overflow-y: auto;
-  }
-  .modal-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 20px; border-bottom: 1px solid var(--border);
-  }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); width: 480px; max-width: 95vw; max-height: 90vh; overflow-y: auto; }
+  .modal-wide { width: 820px; }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
   .modal-header h2 { font-size: 15px; color: var(--text); }
-  .modal-close {
-    background: none; border: none; cursor: pointer;
-    color: var(--muted); font-size: 20px; line-height: 1;
-    transition: color .15s;
-  }
+  .modal-close { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 20px; line-height: 1; transition: color .15s; }
   .modal-close:hover { color: var(--text); }
   .modal-body { padding: 20px; }
   .modal-footer { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; }
 
   .form-group { margin-bottom: 14px; }
   .form-group label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .5px; }
-  .form-group input,
-  .form-group select {
+  .form-group input, .form-group select, .form-group textarea {
     width: 100%; background: var(--surface2); border: 1px solid var(--border);
     border-radius: 6px; padding: 8px 10px; color: var(--text);
     font-family: inherit; font-size: 13px; outline: none; transition: border-color .15s;
   }
-  .form-group input:focus,
-  .form-group select:focus { border-color: var(--accent); }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--accent); }
   .form-group select option { background: var(--surface2); }
   .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 
-  /* ── Trade history modal ── */
+  /* ── Tab system ── */
+  .tabs { display: flex; border-bottom: 1px solid var(--border); }
+  .tab-btn { background: none; border: none; cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--muted); padding: 10px 18px; border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-btn:hover:not(.active) { color: var(--text); }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; }
+
+  /* ── Trade history table ── */
   .trades-table { width: 100%; border-collapse: collapse; font-size: 11px; }
-  .trades-table th {
-    text-align: left; padding: 6px 8px;
-    background: var(--surface2); color: var(--muted);
-    border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: .5px;
-  }
+  .trades-table th { text-align: left; padding: 6px 8px; background: var(--surface2); color: var(--muted); border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: .5px; }
   .trades-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
   .trades-table tr:last-child td { border-bottom: none; }
-  .trades-table .long  { color: var(--green); }
-  .trades-table .short { color: var(--red); }
+  .trades-table .long    { color: var(--green); }
+  .trades-table .short   { color: var(--red); }
   .trades-table .pnl-pos { color: var(--green); font-weight: 700; }
   .trades-table .pnl-neg { color: var(--red);   font-weight: 700; }
-  .trades-table .liq { color: var(--yellow); }
+  .trades-table .liq     { color: var(--yellow); }
 
-  .empty-state {
-    text-align: center; padding: 40px; color: var(--muted); font-size: 13px;
-  }
+  /* ── Activity log ── */
+  .activity-list { list-style: none; }
+  .activity-item { display: flex; gap: 10px; padding: 8px 16px; border-bottom: 1px solid var(--border); font-size: 11px; }
+  .activity-item:last-child { border-bottom: none; }
+  .activity-time   { color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+  .activity-event  { font-weight: 700; white-space: nowrap; flex-shrink: 0; }
+  .activity-detail { color: var(--muted); word-break: break-word; }
+  .ev-trade_closed    { color: var(--accent); }
+  .ev-position_opened { color: var(--green); }
+  .ev-position_closed { color: var(--muted); }
+  .ev-bot_started     { color: var(--green); }
+  .ev-bot_stopped     { color: var(--muted); }
+  .ev-error           { color: var(--red); }
+  .ev-warning         { color: var(--yellow); }
+  .ev-reconfigured    { color: var(--purple); }
+  .ev-data_loaded     { color: var(--muted); }
+  .ev-initialized     { color: var(--muted); }
+
+  /* ── Empty state ── */
+  .empty-state { text-align: center; padding: 40px; color: var(--muted); font-size: 13px; }
   .empty-state .icon { font-size: 36px; display: block; margin-bottom: 10px; }
+
+  /* ── Toast notifications ── */
+  #toastContainer { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+  .toast { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; font-size: 12px; max-width: 320px; opacity: 0; transform: translateY(10px); transition: opacity .2s, transform .2s; pointer-events: auto; }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.success { border-color: var(--green); color: var(--green); }
+  .toast.error   { border-color: var(--red);   color: var(--red); }
+  .toast.info    { border-color: var(--accent); color: var(--accent); }
+  .toast.trade   { border-color: var(--purple); color: var(--purple); }
+
+  /* ── Credential status ── */
+  .cred-status { padding: 10px 12px; border-radius: 6px; font-size: 12px; margin-bottom: 14px; }
+  .cred-status.connected { background: #0d3320; border: 1px solid #1a5c35; color: var(--green); }
+  .cred-status.disconnected { background: #1a1400; border: 1px solid #4a3800; color: var(--yellow); }
+
+  /* ── Market hint ── */
+  .market-hint { font-size: 10px; color: var(--muted); margin-top: 5px; min-height: 14px; }
+  .market-hint .dir-long  { color: var(--green); font-weight: 700; }
+  .market-hint .dir-short { color: var(--red);   font-weight: 700; }
+  .market-hint .dir-both  { color: var(--accent); font-weight: 700; }
+  .market-hint .fee       { color: var(--yellow); }
+
+  /* ── Checkbox ── */
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .checkbox-row input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+  .checkbox-row label { font-size: 12px; color: var(--text); cursor: pointer; }
 
   /* scrollbar */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -264,23 +298,60 @@
       <span id="wsLabel">Connecting…</span>
     </div>
   </div>
-  <button class="btn btn-primary" onclick="openCreateModal()">+ New Bot</button>
+  <div class="topbar-right">
+    <button class="btn btn-neutral btn-sm" onclick="startAll()" title="Start All Bots">▶ All</button>
+    <button class="btn btn-neutral btn-sm" onclick="stopAll()" title="Stop All Bots">■ All</button>
+    <button class="btn btn-neutral btn-sm btn-icon" onclick="openSettingsModal()" title="Exchange Settings">⚙</button>
+    <button class="btn btn-primary" onclick="openCreateModal()">+ New Bot</button>
+  </div>
 </div>
 
-<!-- Bot Grid -->
-<div class="grid" id="botGrid">
-  <div class="empty-state" style="grid-column:1/-1">
+<!-- Summary Bar -->
+<div class="summary-bar">
+  <div class="summary-item">
+    <span class="summary-label">Running</span>
+    <span class="summary-value" id="sumRunning" style="color:var(--green)">0 / 0</span>
+  </div>
+  <div class="summary-item">
+    <span class="summary-label">Combined P&amp;L</span>
+    <span class="summary-value" id="sumPnl">$0.00</span>
+  </div>
+  <div class="summary-item">
+    <span class="summary-label">Total Balance</span>
+    <span class="summary-value neu" id="sumBalance">$0.00</span>
+  </div>
+  <div class="summary-item">
+    <span class="summary-label">Avg Win Rate</span>
+    <span class="summary-value" id="sumWinRate">—</span>
+  </div>
+  <div class="summary-item">
+    <span class="summary-label">Open Positions</span>
+    <span class="summary-value neu" id="sumPositions">0</span>
+  </div>
+</div>
+
+<!-- Wallet Bar -->
+<div class="wallet-bar hidden" id="walletBar"></div>
+
+<!-- Bot Table -->
+<div class="table-wrap" id="botGrid">
+  <div class="empty-state">
     <span class="icon">🤖</span>
     Create your first bot to get started.
   </div>
 </div>
 
-<!-- ── Create Bot Modal ── -->
+<!-- Toast container -->
+<div id="toastContainer"></div>
+
+<!-- ─────────────────────── MODALS ─────────────────────── -->
+
+<!-- Create Bot Modal -->
 <div class="modal-overlay" id="createModal">
   <div class="modal">
     <div class="modal-header">
       <h2>Create New Bot</h2>
-      <button class="modal-close" onclick="closeCreateModal()">×</button>
+      <button class="modal-close" onclick="closeModal('createModal')">×</button>
     </div>
     <div class="modal-body">
       <div class="form-group">
@@ -288,60 +359,33 @@
         <div class="mode-toggle">
           <div class="mode-option">
             <input type="radio" name="fMode" id="fModeSim" value="simulation" checked>
-            <label for="fModeSim">
-              <span class="mode-title">Simulation</span>
-              <span class="mode-sub">Paper trading — no real orders</span>
-            </label>
+            <label for="fModeSim"><span class="mode-title">Simulation</span><span class="mode-sub">Paper trading — no real orders</span></label>
           </div>
-          <div class="mode-option disabled">
-            <input type="radio" name="fMode" id="fModeReal" value="real" disabled>
-            <label for="fModeReal">
-              <span class="mode-title">Real Trade</span>
-              <span class="mode-sub">Coming soon — API key required</span>
-            </label>
+          <div class="mode-option">
+            <input type="radio" name="fMode" id="fModeReal" value="real">
+            <label for="fModeReal"><span class="mode-title">Real Trade</span><span class="mode-sub">API key required</span></label>
           </div>
         </div>
       </div>
       <div class="form-group">
         <label>Bot Name (optional)</label>
-        <input type="text" id="fName" placeholder="My ZEC Bot">
+        <input type="text" id="fName" placeholder="My BTC Bot">
       </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Symbol</label>
-          <input type="text" id="fSymbol" list="symbolList" placeholder="btcusdt" value="zecusdt">
-          <datalist id="symbolList">
-            <option value="btcusdt">
-            <option value="ethusdt">
-            <option value="ltcusdt">
-            <option value="xrpusdt">
-            <option value="bchusdt">
-            <option value="zecusdt">
-            <option value="dogeusdt">
-            <option value="linkusdt">
-            <option value="uniusdt">
-            <option value="solusdt">
-            <option value="bnbusdt">
-            <option value="maticusdt">
-            <option value="avaxusdt">
-            <option value="adausdt">
-            <option value="trxusdt">
-            <option value="shibusdt">
-          </datalist>
-        </div>
-        <div class="form-group">
-          <label>Timeframe</label>
-          <select id="fTimeframe">
-            <option value="1">1 minute</option>
-            <option value="5">5 minutes</option>
-            <option value="15">15 minutes</option>
-            <option value="30">30 minutes</option>
-            <option value="60">1 hour</option>
-            <option value="180">3 hours</option>
-            <option value="240" selected>4 hours</option>
-            <option value="D">1 day</option>
-          </select>
-        </div>
+      <div class="form-group">
+        <label>Symbol — Margin Market</label>
+        <select id="fSymbol" onchange="onMarketChange('f')">
+          <option value="">Loading available markets…</option>
+        </select>
+        <div class="market-hint" id="fSymbolHint"></div>
+      </div>
+      <div class="form-group">
+        <label>Timeframe</label>
+        <select id="fTimeframe">
+          <option value="1">1 minute</option><option value="5">5 minutes</option>
+          <option value="15">15 minutes</option><option value="30">30 minutes</option>
+          <option value="60">1 hour</option><option value="180">3 hours</option>
+          <option value="240" selected>4 hours</option><option value="D">1 day</option>
+        </select>
       </div>
       <div class="form-group">
         <label>Strategy</label>
@@ -364,24 +408,161 @@
       </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-neutral" onclick="closeCreateModal()">Cancel</button>
+      <button class="btn btn-neutral" onclick="closeModal('createModal')">Cancel</button>
       <button class="btn btn-primary" onclick="submitCreate()">Create Bot</button>
     </div>
   </div>
 </div>
 
-<!-- ── Trade History Modal ── -->
-<div class="modal-overlay" id="historyModal">
-  <div class="modal" style="width:760px;max-width:96vw">
+<!-- Edit Bot Modal -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
     <div class="modal-header">
-      <h2 id="historyTitle">Trade History</h2>
-      <button class="modal-close" onclick="closeHistoryModal()">×</button>
+      <h2 id="editModalTitle">Edit Bot</h2>
+      <button class="modal-close" onclick="closeModal('editModal')">×</button>
     </div>
-    <div class="modal-body" id="historyBody" style="padding:0;overflow-x:auto">
-      <!-- filled dynamically -->
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Trading Mode</label>
+        <div class="mode-toggle">
+          <div class="mode-option">
+            <input type="radio" name="eMode" id="eModeSim" value="simulation" checked>
+            <label for="eModeSim"><span class="mode-title">Simulation</span><span class="mode-sub">Paper trading</span></label>
+          </div>
+          <div class="mode-option">
+            <input type="radio" name="eMode" id="eModeReal" value="real">
+            <label for="eModeReal"><span class="mode-title">Real Trade</span><span class="mode-sub">API key required</span></label>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Bot Name</label>
+        <input type="text" id="eName" placeholder="Bot name">
+      </div>
+      <div class="form-group">
+        <label>Symbol — Margin Market</label>
+        <select id="eSymbol" onchange="onMarketChange('e')">
+          <option value="">Loading available markets…</option>
+        </select>
+        <div class="market-hint" id="eSymbolHint"></div>
+      </div>
+      <div class="form-group">
+        <label>Timeframe</label>
+        <select id="eTimeframe">
+          <option value="1">1 minute</option><option value="5">5 minutes</option>
+          <option value="15">15 minutes</option><option value="30">30 minutes</option>
+          <option value="60">1 hour</option><option value="180">3 hours</option>
+          <option value="240">4 hours</option><option value="D">1 day</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Strategy</label>
+        <select id="eStrategy">
+          <option value="AdvRSI">Advanced RSI Combined</option>
+          <option value="Combo">RSI + Stoch Combo</option>
+          <option value="ClaudeSuggested">Trend-Filtered Momentum</option>
+          <option value="SRSI">Stochastic RSI</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Credit (USDT)</label>
+          <input type="number" id="eCredit" min="1" step="1">
+        </div>
+        <div class="form-group">
+          <label>Leverage</label>
+          <input type="number" id="eLeverage" min="1" max="100" step="1">
+        </div>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="eRestart">
+        <label for="eRestart">Auto-restart bot after saving</label>
+      </div>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-neutral" onclick="closeHistoryModal()">Close</button>
+      <button class="btn btn-neutral" onclick="closeModal('editModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Trade History Modal -->
+<div class="modal-overlay" id="historyModal">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h2 id="historyTitle">Trade History</h2>
+      <button class="modal-close" onclick="closeModal('historyModal')">×</button>
+    </div>
+    <div class="tabs" id="historyTabs">
+      <button class="tab-btn active" onclick="switchTab('tabTrades')">Trades</button>
+      <button class="tab-btn" onclick="switchTab('tabChart')">P&amp;L Chart</button>
+      <button class="tab-btn" onclick="switchTab('tabActivity')">Activity Log</button>
+    </div>
+    <div id="tabTrades" class="tab-pane active" style="overflow-x:auto; min-height:200px;"></div>
+    <div id="tabChart"  class="tab-pane" style="padding:16px; min-height:200px;"></div>
+    <div id="tabActivity" class="tab-pane" style="min-height:200px;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-neutral" onclick="closeModal('historyModal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Backtest Results Modal -->
+<div class="modal-overlay" id="backtestModal">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h2 id="backtestModalTitle">Backtest Results</h2>
+      <button class="modal-close" onclick="cancelBacktest()">×</button>
+    </div>
+    <div class="modal-body" style="padding:0">
+      <div id="backtestSummary" style="padding:16px 20px;border-bottom:1px solid var(--border)"></div>
+      <div id="backtestTradesWrap" style="max-height:340px;overflow-y:auto;padding:0 20px 16px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-neutral" onclick="cancelBacktest()">Cancel</button>
+      <button class="btn btn-success" id="backtestConfirmBtn" onclick="confirmStartBot()">Start Bot</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Exchange Settings</h2>
+      <button class="modal-close" onclick="closeModal('settingsModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="credStatus" class="cred-status disconnected">Not connected — no credentials set</div>
+      <div class="form-group">
+        <label>Auth Method</label>
+        <select id="sAuthMethod" onchange="toggleAuthFields()">
+          <option value="token">Session Token</option>
+          <option value="api_key">API Key (Ed25519)</option>
+        </select>
+      </div>
+      <div id="sTokenGroup" class="form-group">
+        <label>Nobitex Token</label>
+        <input type="password" id="sToken" placeholder="Paste your session token">
+      </div>
+      <div id="sApiKeyGroup" style="display:none">
+        <div class="form-group">
+          <label>Public Key</label>
+          <input type="text" id="sPublicKey" placeholder="Base64url public key">
+        </div>
+        <div class="form-group">
+          <label>Private Key</label>
+          <input type="password" id="sPrivateKey" placeholder="Base64url private key">
+        </div>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="sTestnet">
+        <label for="sTestnet">Use Testnet (testnetapiv2.nobitex.ir)</label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-neutral" onclick="closeModal('settingsModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCredentials()">Save &amp; Connect</button>
     </div>
   </div>
 </div>
@@ -391,19 +572,22 @@
 let bots = [];
 let ws = null;
 let wsRetryDelay = 1000;
+let editingBotId = null;
+let prevClosedTrades = {};    // bot_id → closed_trade_count
+let prevPositionKeys = {};    // bot_id → Set of entry_time strings for open positions
+let notifPermission = 'default';
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 function connectWS() {
   const url = `ws://${location.host}/ws`;
   ws = new WebSocket(url);
-
-  ws.onopen = () => {
-    wsRetryDelay = 1000;
-    setWsStatus('connected');
-  };
+  ws.onopen  = () => { wsRetryDelay = 1000; setWsStatus('connected'); };
   ws.onmessage = (evt) => {
-    bots = JSON.parse(evt.data);
+    const newBots = JSON.parse(evt.data);
+    detectTradeNotifications(newBots);
+    bots = newBots;
     renderGrid();
+    updateSummary();
   };
   ws.onerror = () => setWsStatus('error');
   ws.onclose = () => {
@@ -414,138 +598,296 @@ function connectWS() {
 }
 
 function setWsStatus(state) {
-  const dot   = document.getElementById('wsDot');
-  const label = document.getElementById('wsLabel');
-  dot.className = 'ws-dot ' + (state === 'connected' ? 'connected' : state === 'error' ? 'error' : '');
-  label.textContent = state === 'connected' ? 'Live' : state === 'error' ? 'Error' : 'Reconnecting…';
+  const dot = document.getElementById('wsDot');
+  const lbl = document.getElementById('wsLabel');
+  dot.className = 'ws-dot' + (state === 'connected' ? ' connected' : state === 'error' ? ' error' : '');
+  lbl.textContent = state === 'connected' ? 'Live' : state === 'error' ? 'Error' : 'Reconnecting…';
+}
+
+// ── Trade notifications ───────────────────────────────────────────────────────
+function detectTradeNotifications(newBots) {
+  newBots.forEach(bot => {
+    const hadPrevData = prevClosedTrades[bot.id] !== undefined;
+
+    // ── Closed trades ─────────────────────────────────────────────────────────
+    // closed_trade_count increases only when a position actually closes.
+    // (trade_count includes pending open-position records and increases on open.)
+    const prevClosed = prevClosedTrades[bot.id] ?? 0;
+    const curClosed  = bot.closed_trade_count ?? 0;
+    if (hadPrevData && curClosed > prevClosed) {
+      const n = curClosed - prevClosed;
+      showToast(`${bot.name}: ${n} trade${n > 1 ? 's' : ''} closed`, 'trade');
+      if (notifPermission === 'granted') {
+        try {
+          new Notification(`${bot.name} — Trade Closed`, {
+            body: `${n} trade${n > 1 ? 's' : ''} completed on ${bot.symbol}`,
+            silent: true,
+          });
+        } catch (_) {}
+      }
+    }
+
+    // ── Newly opened positions ────────────────────────────────────────────────
+    const prevKeys = prevPositionKeys[bot.id] ?? new Set();
+    const curKeys  = new Set((bot.open_positions || []).map(p => p.entry_time));
+    if (hadPrevData) {
+      for (const key of curKeys) {
+        if (!prevKeys.has(key)) {
+          const pos = (bot.open_positions || []).find(p => p.entry_time === key);
+          if (pos) {
+            const dir   = pos.direction;
+            const price = pos.entry_price != null ? `$${fmtNum(pos.entry_price)}` : '';
+            showToast(`${bot.name}: ${dir} position opened${price ? ' @ ' + price : ''}`, 'info');
+            if (notifPermission === 'granted') {
+              try {
+                new Notification(`${bot.name} — Position Opened`, {
+                  body: `${dir} on ${bot.symbol}${price ? ' @ ' + price : ''}`,
+                  silent: true,
+                });
+              } catch (_) {}
+            }
+          }
+        }
+      }
+    }
+
+    prevClosedTrades[bot.id]  = curClosed;
+    prevPositionKeys[bot.id]  = curKeys;
+  });
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
 function renderGrid() {
   const grid = document.getElementById('botGrid');
   if (!bots.length) {
-    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><span class="icon">🤖</span>Create your first bot to get started.</div>`;
+    grid.innerHTML = `<div class="empty-state"><span class="icon">🤖</span>Create your first bot to get started.</div>`;
     return;
   }
-  const cards = bots.map(renderCard).join('');
-  grid.innerHTML = cards;
+  grid.innerHTML = `<table class="bots-table">
+  <thead><tr>
+    <th>Bot</th>
+    <th>Config</th>
+    <th>Position</th>
+    <th>Price</th>
+    <th>P&amp;L</th>
+    <th>Balance</th>
+    <th>Trades / Candles</th>
+    <th>Metrics</th>
+    <th>Equity</th>
+    <th>Updated</th>
+    <th>Actions</th>
+  </tr></thead>
+  <tbody>${bots.map(renderRow).join('')}</tbody>
+</table>`;
 }
 
-function renderCard(b) {
-  const statusClass = b.status;
-  const isSim       = (b.mode !== 'real');
-  const pnlClass    = b.total_pnl > 0 ? 'pos' : b.total_pnl < 0 ? 'neg' : 'neu';
-  const pnlSign     = b.total_pnl > 0 ? '+' : '';
-  const price       = b.current_price != null ? fmtNum(b.current_price) : '—';
-  const ago         = b.last_updated ? timeAgo(b.last_updated) : 'never';
-
+function renderRow(b) {
+  const isSim   = b.mode !== 'real';
+  const pnlCls  = b.total_pnl > 0 ? 'pos' : b.total_pnl < 0 ? 'neg' : 'neu';
+  const pnlSign = b.total_pnl > 0 ? '+' : '';
+  const price   = b.current_price != null ? fmtNum(b.current_price) : '—';
+  const ago     = b.last_updated ? timeAgo(b.last_updated) : 'never';
   const modeBadge = isSim
     ? `<span class="badge badge-sim">SIM</span>`
     : `<span class="badge badge-real">LIVE</span>`;
+  const errorTip = b.error
+    ? ` <span title="${escHtml(b.error)}" style="color:var(--red);cursor:help">⚠</span>` : '';
 
-  const simNotice = isSim
-    ? `<div style="background:#1a1400;border:1px solid #4a3800;border-radius:6px;padding:6px 10px;font-size:11px;color:#fbbf24;margin-bottom:10px;display:flex;align-items:center;gap:6px;">
-         <span>⚡</span><span>Simulation — no real orders are placed</span>
-       </div>`
-    : '';
+  const wrColor = b.win_rate >= 60 ? 'var(--green)' : b.win_rate >= 45 ? 'var(--yellow)' : 'var(--red)';
+  const ddColor = b.max_drawdown < 10 ? 'var(--green)' : b.max_drawdown < 25 ? 'var(--yellow)' : 'var(--red)';
+  const metricsHtml = b.trade_count > 0
+    ? `<div style="font-size:11px"><span style="color:${wrColor};font-weight:700">${b.win_rate.toFixed(1)}%</span> <span style="color:var(--muted)">WR</span></div>
+       <div style="font-size:11px"><span style="color:${ddColor};font-weight:700">${b.max_drawdown.toFixed(1)}%</span> <span style="color:var(--muted)">DD</span></div>`
+    : `<span style="color:var(--muted)">—</span>`;
 
-  const posHtml = renderPositionBanner(b);
+  const startBtn = b.status !== 'running'
+    ? `<button class="btn btn-success btn-sm" onclick="startBot('${b.id}')">▶</button>` : '';
+  const stopBtn = b.status === 'running'
+    ? `<button class="btn btn-danger btn-sm" onclick="stopBot('${b.id}')">■</button>` : '';
 
-  const errorHtml = b.error
-    ? `<div class="error-box">⚠ ${escHtml(b.error)}</div>`
-    : '';
-
-  const startBtn = (b.status !== 'running')
-    ? `<button class="btn btn-success btn-sm" onclick="startBot('${b.id}')">▶ Start</button>`
-    : '';
-  const stopBtn = (b.status === 'running')
-    ? `<button class="btn btn-danger btn-sm" onclick="stopBot('${b.id}')">■ Stop</button>`
-    : '';
-
-  return `
-<div class="card${isSim ? ' sim-mode' : ''}" id="card-${b.id}">
-  <div class="card-header">
-    <div class="card-header-left">
-      <div class="status-dot ${statusClass}"></div>
+  return `<tr id="card-${b.id}"${isSim ? ' class="row-sim"' : ''}>
+  <td class="col-bot">
+    <div style="display:flex;align-items:center;gap:7px">
+      <div class="status-dot ${b.status}"></div>
       <div>
-        <div class="card-name">${escHtml(b.name)}</div>
-        <div class="card-id">ID: ${b.id}</div>
+        <div class="bot-name">${escHtml(b.name)}${errorTip}</div>
+        <div class="bot-id">${b.id}</div>
       </div>
     </div>
-    <div style="display:flex;gap:6px;align-items:center;">
-      ${modeBadge}
-      <span class="badge badge-status-${b.status}">${b.status.toUpperCase()}</span>
+    <div style="margin-top:5px;display:flex;gap:4px;flex-wrap:wrap">
+      ${modeBadge}<span class="badge badge-status-${b.status}">${b.status.toUpperCase()}</span>
     </div>
-  </div>
-
-  <div class="card-meta">
-    <span class="tag"><strong>${escHtml(b.symbol)}</strong></span>
-    <span class="tag">${escHtml(b.strategy)}</span>
-    <span class="tag">TF ${fmtTF(b.timeframe)}</span>
-    <span class="tag">${b.leverage}×</span>
-    <span class="tag">$${b.credit}</span>
-  </div>
-
-  <div class="card-body">
-    ${simNotice}
-    ${errorHtml}
-    ${posHtml}
-    <div class="stats">
-      <div class="stat-row">
-        <span class="stat-label">Last Price</span>
-        <span class="stat-value neu">${price}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Total P&amp;L</span>
-        <span class="stat-value ${pnlClass}">${pnlSign}$${b.total_pnl.toFixed(2)}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Balance</span>
-        <span class="stat-value neu">$${b.balance.toFixed(2)}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Trades / Candles</span>
-        <span class="stat-value neu">${b.trade_count} / ${b.candle_count}</span>
-      </div>
-    </div>
-  </div>
-
-  <div class="card-footer">
-    <span class="footer-meta">Updated ${ago}</span>
-    <div class="footer-actions">
+  </td>
+  <td class="col-config">
+    <div style="font-size:12px;font-weight:700">${escHtml(b.symbol)}</div>
+    <div style="font-size:11px;color:var(--muted)">${escHtml(b.strategy)} · ${fmtTF(b.timeframe)}</div>
+    <div style="font-size:11px;color:var(--muted)">${b.leverage}× · $${b.credit}</div>
+  </td>
+  <td class="col-pos">${renderPositionCell(b)}</td>
+  <td class="col-price" style="font-size:13px;font-weight:600">${price}</td>
+  <td class="col-pnl"><span class="stat-value ${pnlCls}">${pnlSign}$${b.total_pnl.toFixed(2)}</span></td>
+  <td class="col-balance" style="font-size:13px;font-weight:600">$${b.balance.toFixed(2)}</td>
+  <td class="col-trades"><span style="font-weight:600">${b.trade_count}</span><span style="color:var(--muted)"> / ${b.candle_count}</span></td>
+  <td class="col-metrics">${metricsHtml}</td>
+  <td class="col-equity">${renderSparkline(b.balance_history)}</td>
+  <td class="col-updated" style="color:var(--muted);font-size:11px">${ago}</td>
+  <td class="col-actions">
+    <div class="row-actions">
       ${startBtn}${stopBtn}
-      <button class="btn btn-neutral btn-sm" onclick="showHistory('${b.id}')">History</button>
-      <button class="btn btn-danger btn-sm" onclick="deleteBot('${b.id}')">✕</button>
+      <button class="btn btn-neutral btn-sm btn-icon" onclick="openEditModal('${b.id}')" title="Edit">✎</button>
+      <button class="btn btn-neutral btn-sm btn-icon" onclick="duplicateBot('${b.id}')" title="Duplicate">⎘</button>
+      <button class="btn btn-neutral btn-sm" onclick="showHistory('${b.id}')">Hist</button>
+      <button class="btn btn-danger btn-sm btn-icon" onclick="deleteBot('${b.id}')">✕</button>
     </div>
-  </div>
-</div>`;
+  </td>
+</tr>`;
 }
 
-function renderPositionBanner(b) {
-  if (!b.open_positions || !b.open_positions.length) {
-    return `<div class="pos-banner none"><span class="pos-label">NO POSITION</span></div>`;
-  }
+function renderPositionCell(b) {
+  if (!b.open_positions || !b.open_positions.length)
+    return `<span style="color:var(--muted)">—</span>`;
   return b.open_positions.map(p => {
-    const cls   = p.direction === 'Long' ? 'long' : 'short';
+    const color = p.direction === 'Long' ? 'var(--green)' : 'var(--red)';
     const arrow = p.direction === 'Long' ? '↑' : '↓';
     const unreal = calcUnrealized(b, p);
+    const unrealColor = unreal != null && unreal >= 0 ? 'var(--green)' : 'var(--red)';
     const unrealStr = unreal != null
-      ? (unreal >= 0 ? `+$${unreal.toFixed(2)}` : `-$${Math.abs(unreal).toFixed(2)}`)
+      ? `<span style="color:${unrealColor};font-size:10px"> · ${unreal >= 0 ? '+' : ''}$${Math.abs(unreal).toFixed(2)}</span>`
       : '';
-    return `
-<div class="pos-banner ${cls}">
-  <span class="pos-label">${arrow} ${p.direction.toUpperCase()}</span>
-  <span class="pos-price">Entry $${fmtNum(p.entry_price)}${unrealStr ? '  •  Unreal ' + unrealStr : ''}</span>
-</div>`;
-  }).join('');
+    return `<div style="color:${color};font-size:11px;font-weight:700">${arrow} ${p.direction.toUpperCase()}</div>
+<div style="font-size:10px;color:var(--muted)">@ $${fmtNum(p.entry_price)}${unrealStr}</div>`;
+  }).join('<div style="height:4px"></div>');
 }
 
 function calcUnrealized(b, pos) {
   if (b.current_price == null) return null;
-  const leverage = b.leverage || 5;
   const pct = (b.current_price - pos.entry_price) / pos.entry_price;
-  const direction = pos.direction === 'Long' ? 1 : -1;
-  return leverage * b.credit * direction * pct;
+  return b.leverage * b.credit * (pos.direction === 'Long' ? 1 : -1) * pct;
+}
+
+function renderSparkline(history, credit) {
+  if (!history || history.length < 2)
+    return '';
+  const vals = history;
+  const min  = Math.min(...vals);
+  const max  = Math.max(...vals);
+  const range = max - min || 1;
+  const W = 120, H = 34;
+  const pts = vals.map((v, i) => {
+    const x = (i / (vals.length - 1)) * W;
+    const y = H - ((v - min) / range) * H;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const last  = vals[vals.length - 1];
+  const first = vals[0];
+  const color = last > first ? 'var(--green)' : last < first ? 'var(--red)' : 'var(--muted)';
+  const pct   = first > 0 ? ((last - first) / first * 100) : 0;
+  const pctStr = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
+  return `<div class="sparkline-row">
+  <span class="sparkline-label">Equity<br><span style="color:${color};font-weight:700">${pctStr}</span></span>
+  <div class="sparkline-svg">
+    <svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+      <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>
+  </div>
+</div>`;
+}
+
+// ── Summary bar ───────────────────────────────────────────────────────────────
+function updateSummary() {
+  const running = bots.filter(b => b.status === 'running').length;
+  const totalPnl = bots.reduce((s, b) => s + b.total_pnl, 0);
+  const totalBal = bots.reduce((s, b) => s + b.balance, 0);
+  const botsWithTrades = bots.filter(b => b.trade_count > 0);
+  const avgWr = botsWithTrades.length
+    ? botsWithTrades.reduce((s, b) => s + b.win_rate, 0) / botsWithTrades.length
+    : null;
+  const openPos = bots.reduce((s, b) => s + (b.open_positions ? b.open_positions.length : 0), 0);
+
+  const pnlEl = document.getElementById('sumPnl');
+  pnlEl.textContent = (totalPnl >= 0 ? '+$' : '-$') + Math.abs(totalPnl).toFixed(2);
+  pnlEl.style.color = totalPnl > 0 ? 'var(--green)' : totalPnl < 0 ? 'var(--red)' : 'var(--text)';
+
+  document.getElementById('sumRunning').textContent = `${running} / ${bots.length}`;
+  document.getElementById('sumBalance').textContent = '$' + totalBal.toFixed(2);
+  document.getElementById('sumWinRate').textContent = avgWr != null ? avgWr.toFixed(1) + '%' : '—';
+  document.getElementById('sumPositions').textContent = openPos;
+}
+
+// ── Wallet ─────────────────────────────────────────────────────────────────────
+let walletRefreshTimer = null;
+
+async function fetchWallet() {
+  const bar = document.getElementById('walletBar');
+  bar.classList.remove('hidden');
+  bar.innerHTML = `<div class="wallet-loading">Fetching wallet…</div>`;
+
+  try {
+    const res  = await fetch('/api/wallet');
+    const data = await res.json();
+
+    if (!data.ok) {
+      if (data.error === 'no_credentials') {
+        bar.innerHTML = `
+          <div class="wallet-error">No exchange credentials — </div>
+          <button class="btn btn-neutral btn-sm" style="margin:0 12px" onclick="openSettingsModal()">⚙ Connect Exchange</button>`;
+      } else {
+        bar.innerHTML = `<div class="wallet-error">Wallet error: ${escHtml(data.error)}</div>
+          <div class="wallet-meta"><button class="btn btn-neutral btn-sm" onclick="fetchWallet()">Retry</button></div>`;
+      }
+      return;
+    }
+
+    const margin = data.margin || {};
+    const spot   = data.spot   || {};
+    const now    = new Date().toLocaleTimeString();
+
+    // Margin (تعهدی) section — show currencies with non-zero balance
+    const mItems = Object.entries(margin)
+      .filter(([, w]) => parseFloat(w.balance || 0) > 0)
+      .map(([cur, w]) => {
+        const bal    = parseFloat(w.balance || 0);
+        const frozen = parseFloat(w.frozen  || 0);
+        const avail  = bal - frozen;
+        return `
+<div class="wallet-section">
+  <span class="wallet-tag margin">تعهدی</span>
+  <span class="wallet-currency">${cur.toUpperCase()}</span>
+  <span class="wallet-amount">${fmtWallet(bal)}</span>
+  ${frozen > 0 ? `<span class="wallet-frozen">🔒 ${fmtWallet(frozen)}</span><span class="wallet-avail">✓ ${fmtWallet(avail)}</span>` : ''}
+</div>`;
+      }).join('');
+
+    // Spot section
+    const sItems = Object.entries(spot)
+      .filter(([, w]) => parseFloat(w.balance || 0) > 0)
+      .slice(0, 5)
+      .map(([cur, w]) => {
+        const bal = parseFloat(w.balance || 0);
+        return `<span class="wallet-currency">${cur.toUpperCase()}</span><span class="wallet-amount" style="margin-right:10px">${fmtWallet(bal)}</span>`;
+      }).join('');
+
+    bar.innerHTML = `
+      ${mItems || '<div class="wallet-error" style="color:var(--muted)">No margin (تعهدی) balance</div>'}
+      <div class="wallet-section">
+        <span class="wallet-tag spot">Spot</span>
+        ${sItems || '<span class="wallet-currency" style="color:var(--muted)">Empty</span>'}
+      </div>
+      <div class="wallet-meta">
+        <span class="wallet-updated">Updated ${now}</span>
+        <button class="btn btn-neutral btn-sm" onclick="fetchWallet()">⟳</button>
+      </div>`;
+
+  } catch (e) {
+    bar.innerHTML = `<div class="wallet-error">Network error: ${escHtml(String(e))}</div>`;
+  }
+}
+
+function fmtWallet(n) {
+  if (n == null) return '—';
+  return n >= 1000
+    ? n.toLocaleString('en-US', { maximumFractionDigits: 2 })
+    : n.toFixed(n < 0.01 ? 6 : 4);
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -555,31 +897,73 @@ function fmtNum(n) {
     ? n.toLocaleString('en-US', { maximumFractionDigits: 2 })
     : n.toFixed(n < 0.01 ? 6 : 4);
 }
-
 function fmtTF(tf) {
-  const map = { '1':'1m','5':'5m','15':'15m','30':'30m','60':'1h','180':'3h','240':'4h','D':'1D','W':'1W','M':'1M' };
-  return map[tf] || tf;
+  return ({ '1':'1m','5':'5m','15':'15m','30':'30m','60':'1h','180':'3h','240':'4h','D':'1D','W':'1W','M':'1M' })[tf] || tf;
 }
-
 function timeAgo(iso) {
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (diff < 5)   return 'just now';
-  if (diff < 60)  return `${diff}s ago`;
-  if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
-  return `${Math.floor(diff/3600)}h ago`;
+  if (diff < 5)    return 'just now';
+  if (diff < 60)   return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  return `${Math.floor(diff / 3600)}h ago`;
 }
-
 function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+function fmtDuration(start, end) {
+  if (!start || !end) return '—';
+  try {
+    let secs = Math.round((new Date(end.replace(' ','T')+'Z') - new Date(start.replace(' ','T')+'Z')) / 1000);
+    if (secs <= 0) return '—';
+    const d = Math.floor(secs / 86400); secs %= 86400;
+    const h = Math.floor(secs / 3600);  secs %= 3600;
+    const m = Math.floor(secs / 60);
+    if (d > 0) return h > 0 ? `${d}d${h}h` : `${d}d`;
+    if (h > 0) return m > 0 ? `${h}h${m}m` : `${h}h`;
+    return `${m}m`;
+  } catch { return '—'; }
+}
+function fmtDate(s) {
+  if (!s) return '—';
+  try {
+    const d = new Date(s.replace(' ', 'T') + 'Z');
+    return d.toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', timeZone:'UTC' });
+  } catch { return s; }
+}
 
-// Re-render "Updated X ago" every 10s without needing a WS message
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg, type = 'info') {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  c.appendChild(t);
+  requestAnimationFrame(() => { requestAnimationFrame(() => t.classList.add('show')); });
+  setTimeout(() => {
+    t.classList.remove('show');
+    setTimeout(() => t.remove(), 300);
+  }, 3500);
+}
+
+// Re-render timestamps every 10s
 setInterval(() => renderGrid(), 10000);
 
-// ── Create Modal ──────────────────────────────────────────────────────────────
-function openCreateModal()  { document.getElementById('createModal').classList.add('open'); }
-function closeCreateModal() { document.getElementById('createModal').classList.remove('open'); }
+// ── Modals ────────────────────────────────────────────────────────────────────
+function openCreateModal() {
+  populateSymbolSelect('f', 'zecusdt');
+  document.getElementById('createModal').classList.add('open');
+}
+function closeModal(id)     { document.getElementById(id).classList.remove('open'); }
 
+// Close modals on backdrop click
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+});
+
+// ── Create Bot ────────────────────────────────────────────────────────────────
 async function submitCreate() {
   const modeEl = document.querySelector('input[name="fMode"]:checked');
   const payload = {
@@ -592,104 +976,428 @@ async function submitCreate() {
     mode:          modeEl ? modeEl.value : 'simulation',
   };
   try {
-    const res = await fetch('/api/bots', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) { alert('Error: ' + (await res.text())); return; }
-    closeCreateModal();
-    // State update comes via WS
-  } catch (e) {
-    alert('Network error: ' + e);
-  }
+    const res = await fetch('/api/bots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!res.ok) { showToast('Error: ' + (await res.text()), 'error'); return; }
+    closeModal('createModal');
+    showToast('Bot created', 'success');
+  } catch (e) { showToast('Network error: ' + e, 'error'); }
+}
+
+// ── Edit Bot ──────────────────────────────────────────────────────────────────
+function openEditModal(id) {
+  const bot = bots.find(b => b.id === id);
+  if (!bot) return;
+  editingBotId = id;
+  document.getElementById('editModalTitle').textContent = `Edit — ${bot.name}`;
+  document.getElementById('eName').value     = bot.name || '';
+  document.getElementById('eStrategy').value = bot.strategy;
+  document.getElementById('eCredit').value   = bot.credit;
+  document.getElementById('eLeverage').value = bot.leverage;
+  document.getElementById('eRestart').checked = bot.status === 'running';
+  // Symbol — populate first, then set selection
+  populateSymbolSelect('e', bot.symbol.toLowerCase());
+  // Timeframe
+  const tfSel = document.getElementById('eTimeframe');
+  for (let i = 0; i < tfSel.options.length; i++)
+    if (tfSel.options[i].value === String(bot.timeframe)) { tfSel.selectedIndex = i; break; }
+  // Mode
+  const modeVal = bot.mode || 'simulation';
+  const modeRad = document.querySelector(`input[name="eMode"][value="${modeVal}"]`);
+  if (modeRad) modeRad.checked = true;
+  document.getElementById('editModal').classList.add('open');
+}
+
+async function submitEdit() {
+  if (!editingBotId) return;
+  const payload = {
+    name:          document.getElementById('eName').value.trim(),
+    symbol:        document.getElementById('eSymbol').value.trim(),
+    timeframe:     document.getElementById('eTimeframe').value,
+    strategy_name: document.getElementById('eStrategy').value,
+    credit:        parseFloat(document.getElementById('eCredit').value) || 100,
+    leverage:      parseInt(document.getElementById('eLeverage').value) || 5,
+    mode:          document.querySelector('input[name="eMode"]:checked')?.value || 'simulation',
+    restart:       document.getElementById('eRestart').checked,
+  };
+  try {
+    const res = await fetch(`/api/bots/${editingBotId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!res.ok) { showToast('Error: ' + (await res.text()), 'error'); return; }
+    closeModal('editModal');
+    showToast('Bot updated', 'success');
+  } catch (e) { showToast('Network error: ' + e, 'error'); }
 }
 
 // ── Bot Controls ──────────────────────────────────────────────────────────────
+let _pendingStartBotId = null;
+
 async function startBot(id) {
+  showToast('Running 500-candle backtest…', 'info');
+  try {
+    const res  = await fetch(`/api/bots/${id}/backtest`);
+    const data = await res.json();
+
+    if (!res.ok || !data.ok) {
+      await fetch(`/api/bots/${id}/start`, { method: 'POST' });
+      showToast('Backtest unavailable — bot started', 'info');
+      return;
+    }
+
+    if (data.trade_count === 0) {
+      await fetch(`/api/bots/${id}/start`, { method: 'POST' });
+      showToast(`No trades found in ${data.candle_count} candles — bot started`, 'info');
+      return;
+    }
+
+    _pendingStartBotId = id;
+    _showBacktestModal(data);
+
+  } catch (e) {
+    await fetch(`/api/bots/${id}/start`, { method: 'POST' });
+  }
+}
+
+function _showBacktestModal(data) {
+  const profitable = data.profitable !== false;
+  const pnl        = data.total_pnl;
+  const pnlSign    = pnl >= 0 ? '+' : '';
+  const pnlColor   = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+  const pnlStr     = `${pnlSign}$${Math.abs(pnl).toFixed(2)}`;
+
+  // Header title + confirm button colour
+  document.getElementById('backtestModalTitle').textContent = profitable
+    ? 'Backtest Results'
+    : '⚠ Backtest Warning — Unprofitable';
+  const confirmBtn = document.getElementById('backtestConfirmBtn');
+  confirmBtn.className = profitable ? 'btn btn-success' : 'btn btn-danger';
+  confirmBtn.textContent = profitable ? 'Start Bot' : 'Start Anyway';
+
+  // Summary row
+  document.getElementById('backtestSummary').innerHTML = `
+    <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;">
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Net P&amp;L</div>
+        <div style="font-size:20px;font-weight:700;color:${pnlColor}">${pnlSign}$${Math.abs(pnl).toFixed(2)}</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Trades</div>
+        <div style="font-size:20px;font-weight:700">${data.trade_count}</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Win Rate</div>
+        <div style="font-size:20px;font-weight:700;color:${data.win_rate >= 50 ? 'var(--green)' : 'var(--red)'}">${data.win_rate.toFixed(1)}%</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Candles</div>
+        <div style="font-size:20px;font-weight:700">${data.candle_count}</div>
+      </div>
+      ${!profitable ? `<div style="background:#1a1000;border:1px solid #6b3a00;border-radius:6px;padding:8px 14px;font-size:12px;color:var(--yellow);margin-left:auto;">
+        This bot would not have been profitable. Are you sure?
+      </div>` : ''}
+    </div>`;
+
+  // Trades table
+  const trades = data.trades || [];
+  const wrap   = document.getElementById('backtestTradesWrap');
+  if (!trades.length) {
+    wrap.innerHTML = `<div class="empty-state"><span class="icon">📭</span>No closed trades in backtest.</div>`;
+  } else {
+    wrap.innerHTML = `<table class="trades-table" style="margin-top:12px">
+  <thead><tr>
+    <th>#</th><th>Dir</th><th>Start</th><th>End</th><th>Duration</th>
+    <th>Entry $</th><th>Exit $</th><th>Change</th><th>P&amp;L</th><th>Balance</th><th>Liq</th>
+  </tr></thead>
+  <tbody>${trades.map(t => {
+      const pnl    = parseFloat(t['P&L ($)'] || 0);
+      const pnlCls = pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
+      const pnlStr = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
+      return `<tr>
+    <td>${t['Trade #'] ?? ''}</td>
+    <td class="${t['Position'] === 'Long' ? 'long' : 'short'}">${t['Position'] ?? ''}</td>
+    <td>${fmtDate(t['Start Time'])}</td>
+    <td>${fmtDate(t['End Time'])}</td>
+    <td style="color:var(--muted)">${fmtDuration(t['Start Time'], t['End Time'])}</td>
+    <td>$${parseFloat(t['Start Price'] || 0).toFixed(2)}</td>
+    <td>$${parseFloat(t['End Price']  || 0).toFixed(2)}</td>
+    <td>${t['Price Change'] ?? ''}</td>
+    <td class="${pnlCls}">${pnlStr}</td>
+    <td>$${parseFloat(t['Balance ($)'] || 0).toFixed(2)}</td>
+    <td class="${t['Liquidated'] ? 'liq' : ''}">${t['Liquidated'] ? 'LIQ' : ''}</td>
+  </tr>`;
+    }).join('')}</tbody>
+</table>`;
+  }
+
+  document.getElementById('backtestModal').classList.add('open');
+}
+
+async function confirmStartBot() {
+  const id = _pendingStartBotId;
+  _pendingStartBotId = null;
+  document.getElementById('backtestModal').classList.remove('open');
+  if (!id) return;
   await fetch(`/api/bots/${id}/start`, { method: 'POST' });
+  showToast('Bot started', 'success');
 }
-async function stopBot(id) {
-  await fetch(`/api/bots/${id}/stop`, { method: 'POST' });
+
+function cancelBacktest() {
+  _pendingStartBotId = null;
+  document.getElementById('backtestModal').classList.remove('open');
 }
+
+async function stopBot(id)  { await fetch(`/api/bots/${id}/stop`,  { method: 'POST' }); }
+
 async function deleteBot(id) {
-  if (!confirm('Delete this bot?')) return;
+  if (!confirm('Delete this bot and all its data?')) return;
   await fetch(`/api/bots/${id}`, { method: 'DELETE' });
   bots = bots.filter(b => b.id !== id);
   renderGrid();
+  updateSummary();
+  showToast('Bot deleted', 'info');
+}
+
+async function duplicateBot(id) {
+  try {
+    const res = await fetch(`/api/bots/${id}/duplicate`, { method: 'POST' });
+    if (!res.ok) { showToast('Duplicate failed', 'error'); return; }
+    showToast('Bot duplicated', 'success');
+  } catch (e) { showToast('Network error: ' + e, 'error'); }
+}
+
+async function startAll() {
+  await fetch('/api/bots/actions/start-all', { method: 'POST' });
+  showToast('Starting all bots…', 'info');
+}
+async function stopAll() {
+  await fetch('/api/bots/actions/stop-all', { method: 'POST' });
+  showToast('Stopping all bots…', 'info');
 }
 
 // ── History Modal ─────────────────────────────────────────────────────────────
-function closeHistoryModal() { document.getElementById('historyModal').classList.remove('open'); }
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(tabId).classList.add('active');
+  const idx = ['tabTrades','tabChart','tabActivity'].indexOf(tabId);
+  document.querySelectorAll('.tab-btn')[idx].classList.add('active');
+}
 
 async function showHistory(id) {
   const res = await fetch(`/api/bots/${id}`);
-  if (!res.ok) { alert('Could not load bot'); return; }
+  if (!res.ok) { showToast('Could not load bot', 'error'); return; }
   const bot = await res.json();
 
-  document.getElementById('historyTitle').textContent = `Trade History — ${bot.name}`;
+  document.getElementById('historyTitle').textContent = `History — ${bot.name}`;
+  switchTab('tabTrades');
 
+  // Trades tab
   const trades = bot.trades || [];
-  const body   = document.getElementById('historyBody');
-
+  const tradesPane = document.getElementById('tabTrades');
   if (!trades.length) {
-    body.innerHTML = `<div class="empty-state"><span class="icon">📭</span>No completed trades yet.</div>`;
+    tradesPane.innerHTML = `<div class="empty-state"><span class="icon">📭</span>No completed trades yet.</div>`;
   } else {
-    body.innerHTML = `
-<table class="trades-table">
-  <thead>
-    <tr>
-      <th>#</th><th>Dir</th><th>Start</th><th>End</th>
-      <th>Entry $</th><th>Exit $</th><th>Change</th>
-      <th>P&amp;L</th><th>Balance</th><th>Liq</th>
-    </tr>
-  </thead>
-  <tbody>
-    ${trades.map(t => {
+    tradesPane.innerHTML = `<table class="trades-table">
+  <thead><tr><th>#</th><th>Dir</th><th>Start</th><th>End</th><th>Duration</th><th>Entry $</th><th>Exit $</th><th>Change</th><th>P&amp;L</th><th>Balance</th><th>Liq</th></tr></thead>
+  <tbody>${trades.map(t => {
       const pnl = parseFloat(t['P&L ($)'] || 0);
       const pnlCls = pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
       const pnlStr = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
-      const dirCls = t['Position'] === 'Long' ? 'long' : 'short';
-      const liqCls = t['Liquidated'] ? 'liq' : '';
       return `<tr>
-        <td>${t['Trade #'] ?? ''}</td>
-        <td class="${dirCls}">${t['Position'] ?? ''}</td>
-        <td>${fmtDate(t['Start Time'])}</td>
-        <td>${fmtDate(t['End Time'])}</td>
-        <td>$${parseFloat(t['Start Price']||0).toFixed(2)}</td>
-        <td>$${parseFloat(t['End Price']||0).toFixed(2)}</td>
-        <td>${t['Price Change'] ?? ''}</td>
-        <td class="${pnlCls}">${pnlStr}</td>
-        <td>$${parseFloat(t['Balance ($)']||0).toFixed(2)}</td>
-        <td class="${liqCls}">${t['Liquidated'] ? 'LIQ' : ''}</td>
-      </tr>`;
-    }).join('')}
-  </tbody>
-</table>`;
+  <td>${t['Trade #'] ?? ''}</td>
+  <td class="${t['Position'] === 'Long' ? 'long' : 'short'}">${t['Position'] ?? ''}</td>
+  <td>${fmtDate(t['Start Time'])}</td>
+  <td>${fmtDate(t['End Time'])}</td>
+  <td style="color:var(--muted)">${fmtDuration(t['Start Time'], t['End Time'])}</td>
+  <td>$${parseFloat(t['Start Price']||0).toFixed(2)}</td>
+  <td>$${parseFloat(t['End Price']||0).toFixed(2)}</td>
+  <td>${t['Price Change'] ?? ''}</td>
+  <td class="${pnlCls}">${pnlStr}</td>
+  <td>$${parseFloat(t['Balance ($)']||0).toFixed(2)}</td>
+  <td class="${t['Liquidated'] ? 'liq' : ''}">${t['Liquidated'] ? 'LIQ' : ''}</td>
+</tr>`;
+  }).join('')}</tbody></table>`;
+  }
+
+  // P&L chart tab
+  const chartPane = document.getElementById('tabChart');
+  chartPane.innerHTML = trades.length ? renderPnlChart(trades) : `<div class="empty-state"><span class="icon">📊</span>No trades to chart.</div>`;
+
+  // Activity tab
+  const actPane = document.getElementById('tabActivity');
+  const log = bot.activity_log || [];
+  if (!log.length) {
+    actPane.innerHTML = `<div class="empty-state"><span class="icon">📋</span>No activity recorded yet.</div>`;
+  } else {
+    actPane.innerHTML = `<ul class="activity-list">${log.map(item => {
+      const t = new Date(item.time).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+      const evLabel = item.event.replace(/_/g, ' ');
+      return `<li class="activity-item">
+  <span class="activity-time">${t}</span>
+  <span class="activity-event ev-${item.event}">${evLabel}</span>
+  <span class="activity-detail">${escHtml(item.detail)}</span>
+</li>`;
+    }).join('')}</ul>`;
   }
 
   document.getElementById('historyModal').classList.add('open');
 }
 
-function fmtDate(s) {
-  if (!s) return '—';
-  // "2025-01-01 04:00:00" → "01-Jan 04:00"
-  try {
-    const d = new Date(s.replace(' ', 'T') + 'Z');
-    return d.toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'UTC' });
-  } catch { return s; }
+function renderPnlChart(trades) {
+  const pnls = trades.map(t => parseFloat(t['P&L ($)'] || 0));
+  const absMax = Math.max(...pnls.map(Math.abs)) || 1;
+  const barW = Math.max(6, Math.min(24, Math.floor(700 / pnls.length) - 2));
+  const H = 120, MID = 60;
+  const totalW = pnls.length * (barW + 2);
+  const bars = pnls.map((pnl, i) => {
+    const color = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+    const h = Math.max(2, Math.abs(pnl) / absMax * MID);
+    const x = i * (barW + 2);
+    const y = pnl >= 0 ? MID - h : MID;
+    return `<rect x="${x}" y="${y.toFixed(1)}" width="${barW}" height="${h.toFixed(1)}" fill="${color}" opacity="0.85" rx="1"/>`;
+  }).join('');
+  const wins  = pnls.filter(p => p > 0).length;
+  const total = pnls.length;
+  const sumPnl = pnls.reduce((a, b) => a + b, 0);
+  const sumColor = sumPnl >= 0 ? 'var(--green)' : 'var(--red)';
+  return `<div style="padding:16px">
+  <div style="display:flex;gap:24px;margin-bottom:12px;font-size:12px">
+    <span>Trades: <strong>${total}</strong></span>
+    <span>Wins: <strong style="color:var(--green)">${wins}</strong></span>
+    <span>Losses: <strong style="color:var(--red)">${total - wins}</strong></span>
+    <span>Net: <strong style="color:${sumColor}">${sumPnl >= 0 ? '+' : ''}$${sumPnl.toFixed(2)}</strong></span>
+  </div>
+  <div style="overflow-x:auto">
+    <svg width="${totalW}" height="${H}" viewBox="0 0 ${totalW} ${H}">
+      <line x1="0" y1="${MID}" x2="${totalW}" y2="${MID}" stroke="var(--border)" stroke-width="1"/>
+      ${bars}
+    </svg>
+  </div>
+</div>`;
 }
 
-// ── Close modals on backdrop click ───────────────────────────────────────────
-document.getElementById('createModal').addEventListener('click', function(e) {
-  if (e.target === this) closeCreateModal();
-});
-document.getElementById('historyModal').addEventListener('click', function(e) {
-  if (e.target === this) closeHistoryModal();
-});
+// ── Settings Modal ────────────────────────────────────────────────────────────
+async function openSettingsModal() {
+  try {
+    const res  = await fetch('/api/settings/credentials');
+    const data = await res.json();
+    const statusEl = document.getElementById('credStatus');
+    if (data.has_credentials) {
+      statusEl.className = 'cred-status connected';
+      statusEl.textContent = `Connected via ${data.auth_type === 'api_key' ? 'API Key (Ed25519)' : 'Session Token'}${data.testnet ? ' · Testnet' : ''}`;
+    } else {
+      statusEl.className = 'cred-status disconnected';
+      statusEl.textContent = 'Not connected — no credentials set';
+    }
+    document.getElementById('sTestnet').checked = data.testnet || false;
+    if (data.auth_type === 'api_key') {
+      document.getElementById('sAuthMethod').value = 'api_key';
+      toggleAuthFields();
+    }
+  } catch (_) {}
+  document.getElementById('settingsModal').classList.add('open');
+}
+
+function toggleAuthFields() {
+  const method = document.getElementById('sAuthMethod').value;
+  document.getElementById('sTokenGroup').style.display  = method === 'token'   ? '' : 'none';
+  document.getElementById('sApiKeyGroup').style.display = method === 'api_key' ? '' : 'none';
+}
+
+async function saveCredentials() {
+  const method = document.getElementById('sAuthMethod').value;
+  const payload = {
+    testnet: document.getElementById('sTestnet').checked,
+    token:       method === 'token'   ? document.getElementById('sToken').value.trim()      : '',
+    public_key:  method === 'api_key' ? document.getElementById('sPublicKey').value.trim()  : '',
+    private_key: method === 'api_key' ? document.getElementById('sPrivateKey').value.trim() : '',
+  };
+  try {
+    const res = await fetch('/api/settings/credentials', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!res.ok) { showToast('Save failed: ' + (await res.text()), 'error'); return; }
+    closeModal('settingsModal');
+    showToast('Credentials saved', 'success');
+    fetchWallet();
+  } catch (e) { showToast('Network error: ' + e, 'error'); }
+}
+
+// ── Margin Markets ────────────────────────────────────────────────────────────
+let marginMarkets = [];
+
+async function loadMarginMarkets() {
+  try {
+    const res  = await fetch('/api/margin-markets');
+    const data = await res.json();
+    if (data.ok && data.markets.length) {
+      marginMarkets = data.markets;
+      if (data.source === 'fallback')
+        showToast('Using cached symbol list — connect exchange for live data', 'info');
+    }
+  } catch (_) {}
+  // Populate create modal with default selection
+  populateSymbolSelect('f', 'zecusdt');
+}
+
+function populateSymbolSelect(prefix, defaultSymbol) {
+  const sel = document.getElementById(`${prefix}Symbol`);
+  if (!sel) return;
+
+  if (!marginMarkets.length) {
+    sel.innerHTML = '<option value="">No markets available — check connection</option>';
+    return;
+  }
+
+  const defaultLower = (defaultSymbol || '').toLowerCase();
+  sel.innerHTML = marginMarkets.map(m => {
+    const dir = m.buyEnabled && m.sellEnabled ? 'Long & Short'
+              : m.buyEnabled  ? 'Long only'
+              : 'Short only';
+    const dst = m.dstCurrency.toUpperCase();
+    const label = `${m.symbol} (${dst}) · ${dir} · max ${m.maxLeverage}×`;
+    const selected = m.symbol.toLowerCase() === defaultLower ? 'selected' : '';
+    return `<option value="${m.symbol.toLowerCase()}" data-max-lev="${m.maxLeverage}" data-buy="${m.buyEnabled}" data-sell="${m.sellEnabled}" data-fee="${m.feeRate}" ${selected}>${label}</option>`;
+  }).join('');
+
+  // Trigger hint update for the currently selected option
+  onMarketChange(prefix);
+}
+
+function onMarketChange(prefix) {
+  const sel    = document.getElementById(`${prefix}Symbol`);
+  const hint   = document.getElementById(`${prefix}SymbolHint`);
+  const levEl  = document.getElementById(`${prefix}Leverage`);
+  if (!sel || !sel.selectedOptions.length) return;
+
+  const opt    = sel.selectedOptions[0];
+  const maxLev = parseInt(opt.dataset.maxLev || 5);
+  const buy    = opt.dataset.buy === 'true';
+  const sell   = opt.dataset.sell === 'true';
+  const fee    = opt.dataset.fee  || '0.001';
+
+  // Clamp leverage to market max
+  if (levEl) {
+    levEl.max = maxLev;
+    if (parseInt(levEl.value) > maxLev) levEl.value = maxLev;
+  }
+
+  // Direction badge
+  let dirHtml = '';
+  if (buy && sell) dirHtml = `<span class="dir-both">↑↓ Long &amp; Short</span>`;
+  else if (buy)    dirHtml = `<span class="dir-long">↑ Long only</span>`;
+  else             dirHtml = `<span class="dir-short">↓ Short only</span>`;
+
+  const feeStr = (parseFloat(fee) * 100).toFixed(2);
+  if (hint) hint.innerHTML = `${dirHtml} &nbsp;·&nbsp; Max leverage: <strong>${maxLev}×</strong> &nbsp;·&nbsp; <span class="fee">Fee: ${feeStr}%/day</span>`;
+}
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
+// Request notification permission
+if ('Notification' in window) {
+  Notification.requestPermission().then(p => { notifPermission = p; });
+}
+
 connectWS();
+fetchWallet();
+loadMarginMarkets();
+setInterval(fetchWallet, 30000);
 </script>
 </body>
 </html>

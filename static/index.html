@@ -90,8 +90,33 @@
   .wallet-error   { font-size: 11px; color: var(--red); padding: 8px 20px; }
   .wallet-loading { font-size: 11px; color: var(--muted); padding: 8px 20px; }
 
-  /* ── Grid ── */
-  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; padding: 24px; }
+  /* ── Bot Table ── */
+  .table-wrap { padding: 16px 24px; overflow-x: auto; }
+  .bots-table { width: 100%; border-collapse: collapse; }
+  .bots-table th {
+    text-align: left; padding: 8px 12px; background: var(--surface2);
+    color: var(--muted); border-bottom: 2px solid var(--border);
+    text-transform: uppercase; font-size: 10px; letter-spacing: .5px;
+    white-space: nowrap; position: sticky; top: 0; z-index: 10;
+  }
+  .bots-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .bots-table tr:last-child td { border-bottom: none; }
+  .bots-table tr.row-sim > td:first-child { border-left: 3px dashed #4a3800; }
+  .bots-table tr:hover td { background: rgba(255,255,255,.025); }
+  .col-bot     { min-width: 160px; }
+  .col-config  { min-width: 170px; }
+  .col-pos     { min-width: 150px; }
+  .col-price   { min-width: 90px;  white-space: nowrap; }
+  .col-pnl     { min-width: 90px;  white-space: nowrap; }
+  .col-balance { min-width: 90px;  white-space: nowrap; }
+  .col-trades  { min-width: 80px;  white-space: nowrap; }
+  .col-metrics { min-width: 90px; }
+  .col-equity  { min-width: 130px; }
+  .col-updated { min-width: 70px;  white-space: nowrap; }
+  .col-actions { min-width: 180px; }
+  .bot-name    { font-size: 13px; font-weight: 700; }
+  .bot-id      { font-size: 10px; color: var(--muted); }
+  .row-actions { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
 
   /* ── Mode toggle ── */
   .mode-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -308,9 +333,9 @@
 <!-- Wallet Bar -->
 <div class="wallet-bar hidden" id="walletBar"></div>
 
-<!-- Bot Grid -->
-<div class="grid" id="botGrid">
-  <div class="empty-state" style="grid-column:1/-1">
+<!-- Bot Table -->
+<div class="table-wrap" id="botGrid">
+  <div class="empty-state">
     <span class="icon">🤖</span>
     Create your first bot to get started.
   </div>
@@ -635,127 +660,103 @@ function detectTradeNotifications(newBots) {
 function renderGrid() {
   const grid = document.getElementById('botGrid');
   if (!bots.length) {
-    grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><span class="icon">🤖</span>Create your first bot to get started.</div>`;
+    grid.innerHTML = `<div class="empty-state"><span class="icon">🤖</span>Create your first bot to get started.</div>`;
     return;
   }
-  grid.innerHTML = bots.map(renderCard).join('');
+  grid.innerHTML = `<table class="bots-table">
+  <thead><tr>
+    <th>Bot</th>
+    <th>Config</th>
+    <th>Position</th>
+    <th>Price</th>
+    <th>P&amp;L</th>
+    <th>Balance</th>
+    <th>Trades / Candles</th>
+    <th>Metrics</th>
+    <th>Equity</th>
+    <th>Updated</th>
+    <th>Actions</th>
+  </tr></thead>
+  <tbody>${bots.map(renderRow).join('')}</tbody>
+</table>`;
 }
 
-function renderCard(b) {
-  const isSim    = b.mode !== 'real';
-  const pnlCls   = b.total_pnl > 0 ? 'pos' : b.total_pnl < 0 ? 'neg' : 'neu';
-  const pnlSign  = b.total_pnl > 0 ? '+' : '';
-  const price    = b.current_price != null ? fmtNum(b.current_price) : '—';
-  const ago      = b.last_updated ? timeAgo(b.last_updated) : 'never';
+function renderRow(b) {
+  const isSim   = b.mode !== 'real';
+  const pnlCls  = b.total_pnl > 0 ? 'pos' : b.total_pnl < 0 ? 'neg' : 'neu';
+  const pnlSign = b.total_pnl > 0 ? '+' : '';
+  const price   = b.current_price != null ? fmtNum(b.current_price) : '—';
+  const ago     = b.last_updated ? timeAgo(b.last_updated) : 'never';
   const modeBadge = isSim
     ? `<span class="badge badge-sim">SIM</span>`
     : `<span class="badge badge-real">LIVE</span>`;
-  const simNotice = isSim
-    ? `<div style="background:#1a1400;border:1px solid #4a3800;border-radius:6px;padding:5px 10px;font-size:11px;color:#fbbf24;margin-bottom:8px;display:flex;align-items:center;gap:6px;"><span>⚡</span><span>Simulation — no real orders placed</span></div>`
-    : '';
-  const errorHtml = b.error ? `<div class="error-box">⚠ ${escHtml(b.error)}</div>` : '';
+  const errorTip = b.error
+    ? ` <span title="${escHtml(b.error)}" style="color:var(--red);cursor:help">⚠</span>` : '';
 
-  // Win rate & drawdown badges
-  const wrColor  = b.win_rate >= 60 ? 'var(--green)' : b.win_rate >= 45 ? 'var(--yellow)' : 'var(--red)';
-  const ddColor  = b.max_drawdown < 10 ? 'var(--green)' : b.max_drawdown < 25 ? 'var(--yellow)' : 'var(--red)';
-  const metricsHtml = b.trade_count > 0 ? `
-    <div style="display:flex;gap:10px;margin-bottom:8px;">
-      <div class="stat-row" style="flex:1">
-        <span class="stat-label">Win Rate</span>
-        <span class="stat-value" style="color:${wrColor}">${b.win_rate.toFixed(1)}%</span>
-      </div>
-      <div class="stat-row" style="flex:1">
-        <span class="stat-label">Max Drawdown</span>
-        <span class="stat-value" style="color:${ddColor}">${b.max_drawdown.toFixed(1)}%</span>
-      </div>
-    </div>` : '';
+  const wrColor = b.win_rate >= 60 ? 'var(--green)' : b.win_rate >= 45 ? 'var(--yellow)' : 'var(--red)';
+  const ddColor = b.max_drawdown < 10 ? 'var(--green)' : b.max_drawdown < 25 ? 'var(--yellow)' : 'var(--red)';
+  const metricsHtml = b.trade_count > 0
+    ? `<div style="font-size:11px"><span style="color:${wrColor};font-weight:700">${b.win_rate.toFixed(1)}%</span> <span style="color:var(--muted)">WR</span></div>
+       <div style="font-size:11px"><span style="color:${ddColor};font-weight:700">${b.max_drawdown.toFixed(1)}%</span> <span style="color:var(--muted)">DD</span></div>`
+    : `<span style="color:var(--muted)">—</span>`;
 
-  // Sparkline
-  const sparkHtml = renderSparkline(b.balance_history);
-
-  // Buttons
   const startBtn = b.status !== 'running'
-    ? `<button class="btn btn-success btn-sm" onclick="startBot('${b.id}')">▶ Start</button>` : '';
+    ? `<button class="btn btn-success btn-sm" onclick="startBot('${b.id}')">▶</button>` : '';
   const stopBtn = b.status === 'running'
-    ? `<button class="btn btn-danger btn-sm" onclick="stopBot('${b.id}')">■ Stop</button>` : '';
+    ? `<button class="btn btn-danger btn-sm" onclick="stopBot('${b.id}')">■</button>` : '';
 
-  return `
-<div class="card${isSim ? ' sim-mode' : ''}" id="card-${b.id}">
-  <div class="card-header">
-    <div class="card-header-left">
+  return `<tr id="card-${b.id}"${isSim ? ' class="row-sim"' : ''}>
+  <td class="col-bot">
+    <div style="display:flex;align-items:center;gap:7px">
       <div class="status-dot ${b.status}"></div>
       <div>
-        <div class="card-name">${escHtml(b.name)}</div>
-        <div class="card-id">ID: ${b.id}</div>
+        <div class="bot-name">${escHtml(b.name)}${errorTip}</div>
+        <div class="bot-id">${b.id}</div>
       </div>
     </div>
-    <div style="display:flex;gap:6px;align-items:center;">
-      ${modeBadge}
-      <span class="badge badge-status-${b.status}">${b.status.toUpperCase()}</span>
+    <div style="margin-top:5px;display:flex;gap:4px;flex-wrap:wrap">
+      ${modeBadge}<span class="badge badge-status-${b.status}">${b.status.toUpperCase()}</span>
     </div>
-  </div>
-
-  <div class="card-meta">
-    <span class="tag"><strong>${escHtml(b.symbol)}</strong></span>
-    <span class="tag">${escHtml(b.strategy)}</span>
-    <span class="tag">TF ${fmtTF(b.timeframe)}</span>
-    <span class="tag">${b.leverage}×</span>
-    <span class="tag">$${b.credit}</span>
-  </div>
-
-  <div class="card-body">
-    ${simNotice}${errorHtml}
-    ${renderPositionBanner(b)}
-    <div class="stats">
-      <div class="stat-row">
-        <span class="stat-label">Last Price</span>
-        <span class="stat-value neu">${price}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Total P&amp;L</span>
-        <span class="stat-value ${pnlCls}">${pnlSign}$${b.total_pnl.toFixed(2)}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Balance</span>
-        <span class="stat-value neu">$${b.balance.toFixed(2)}</span>
-      </div>
-      <div class="stat-row">
-        <span class="stat-label">Trades / Candles</span>
-        <span class="stat-value neu">${b.trade_count} / ${b.candle_count}</span>
-      </div>
-    </div>
-    ${metricsHtml}
-    ${sparkHtml}
-  </div>
-
-  <div class="card-footer">
-    <span class="footer-meta">Updated ${ago}</span>
-    <div class="footer-actions">
+  </td>
+  <td class="col-config">
+    <div style="font-size:12px;font-weight:700">${escHtml(b.symbol)}</div>
+    <div style="font-size:11px;color:var(--muted)">${escHtml(b.strategy)} · ${fmtTF(b.timeframe)}</div>
+    <div style="font-size:11px;color:var(--muted)">${b.leverage}× · $${b.credit}</div>
+  </td>
+  <td class="col-pos">${renderPositionCell(b)}</td>
+  <td class="col-price" style="font-size:13px;font-weight:600">${price}</td>
+  <td class="col-pnl"><span class="stat-value ${pnlCls}">${pnlSign}$${b.total_pnl.toFixed(2)}</span></td>
+  <td class="col-balance" style="font-size:13px;font-weight:600">$${b.balance.toFixed(2)}</td>
+  <td class="col-trades"><span style="font-weight:600">${b.trade_count}</span><span style="color:var(--muted)"> / ${b.candle_count}</span></td>
+  <td class="col-metrics">${metricsHtml}</td>
+  <td class="col-equity">${renderSparkline(b.balance_history)}</td>
+  <td class="col-updated" style="color:var(--muted);font-size:11px">${ago}</td>
+  <td class="col-actions">
+    <div class="row-actions">
       ${startBtn}${stopBtn}
-      <button class="btn btn-neutral btn-sm" onclick="openEditModal('${b.id}')" title="Edit config">✎</button>
-      <button class="btn btn-neutral btn-sm" onclick="duplicateBot('${b.id}')" title="Duplicate">⎘</button>
-      <button class="btn btn-neutral btn-sm" onclick="showHistory('${b.id}')">History</button>
-      <button class="btn btn-danger  btn-sm" onclick="deleteBot('${b.id}')">✕</button>
+      <button class="btn btn-neutral btn-sm btn-icon" onclick="openEditModal('${b.id}')" title="Edit">✎</button>
+      <button class="btn btn-neutral btn-sm btn-icon" onclick="duplicateBot('${b.id}')" title="Duplicate">⎘</button>
+      <button class="btn btn-neutral btn-sm" onclick="showHistory('${b.id}')">Hist</button>
+      <button class="btn btn-danger btn-sm btn-icon" onclick="deleteBot('${b.id}')">✕</button>
     </div>
-  </div>
-</div>`;
+  </td>
+</tr>`;
 }
 
-function renderPositionBanner(b) {
+function renderPositionCell(b) {
   if (!b.open_positions || !b.open_positions.length)
-    return `<div class="pos-banner none"><span class="pos-label">NO POSITION</span></div>`;
+    return `<span style="color:var(--muted)">—</span>`;
   return b.open_positions.map(p => {
-    const cls   = p.direction === 'Long' ? 'long' : 'short';
+    const color = p.direction === 'Long' ? 'var(--green)' : 'var(--red)';
     const arrow = p.direction === 'Long' ? '↑' : '↓';
     const unreal = calcUnrealized(b, p);
+    const unrealColor = unreal != null && unreal >= 0 ? 'var(--green)' : 'var(--red)';
     const unrealStr = unreal != null
-      ? (unreal >= 0 ? `+$${unreal.toFixed(2)}` : `-$${Math.abs(unreal).toFixed(2)}`)
+      ? `<span style="color:${unrealColor};font-size:10px"> · ${unreal >= 0 ? '+' : ''}$${Math.abs(unreal).toFixed(2)}</span>`
       : '';
-    return `<div class="pos-banner ${cls}">
-  <span class="pos-label">${arrow} ${p.direction.toUpperCase()}</span>
-  <span class="pos-price">Entry $${fmtNum(p.entry_price)}${unrealStr ? '  •  Unreal ' + unrealStr : ''}</span>
-</div>`;
-  }).join('');
+    return `<div style="color:${color};font-size:11px;font-weight:700">${arrow} ${p.direction.toUpperCase()}</div>
+<div style="font-size:10px;color:var(--muted)">@ $${fmtNum(p.entry_price)}${unrealStr}</div>`;
+  }).join('<div style="height:4px"></div>');
 }
 
 function calcUnrealized(b, pos) {

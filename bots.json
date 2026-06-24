@@ -1,60 +1,40 @@
 [
   {
     "id": "28d57ecf",
-    "name": "",
+    "name": "28d57ecf",
     "symbol": "zecusdt",
     "strategy_name": "AdvRSI",
-    "timeframe": "1",
+    "timeframe": "240",
     "credit": 100.0,
     "leverage": 5,
     "mode": "simulation"
   },
   {
     "id": "81aeba31",
-    "name": "",
+    "name": "81aeba31",
     "symbol": "btcusdt",
     "strategy_name": "AdvRSI",
-    "timeframe": "1",
+    "timeframe": "240",
     "credit": 100.0,
     "leverage": 5,
     "mode": "simulation"
   },
   {
     "id": "cece941f",
-    "name": "",
+    "name": "cece941f",
     "symbol": "ethusdt",
-    "strategy_name": "AdvRSI",
-    "timeframe": "1",
-    "credit": 100.0,
-    "leverage": 5,
-    "mode": "simulation"
-  },
-  {
-    "id": "70861688",
-    "name": "",
-    "symbol": "crvusdt",
-    "strategy_name": "AdvRSI",
-    "timeframe": "1",
-    "credit": 100.0,
-    "leverage": 5,
-    "mode": "simulation"
-  },
-  {
-    "id": "9f20e9c4",
-    "name": "",
-    "symbol": "nearusdt",
-    "strategy_name": "AdvRSI",
-    "timeframe": "1",
+    "strategy_name": "ClaudeSuggested",
+    "timeframe": "D",
     "credit": 100.0,
     "leverage": 5,
     "mode": "simulation"
   },
   {
     "id": "800dbae5",
-    "name": "",
-    "symbol": "suiusdt",
+    "name": "800dbae5",
+    "symbol": "xautusdt",
     "strategy_name": "AdvRSI",
-    "timeframe": "1",
+    "timeframe": "5",
     "credit": 100.0,
     "leverage": 5,
     "mode": "simulation"

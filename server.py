@@ -342,6 +342,18 @@ async def duplicate_bot(bot_id: str):
     return bot.to_state_dict()
 
 
+@app.get("/api/bots/{bot_id}/backtest")
+async def backtest_bot(bot_id: str):
+    bot = bot_manager.get_bot(bot_id)
+    if bot is None:
+        return JSONResponse(status_code=404, content={"error": "Bot not found"})
+    try:
+        result = await bot.run_backtest()
+        return {"ok": True, **result}
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(exc)})
+
+
 @app.post("/api/bots/{bot_id}/start")
 async def start_bot(bot_id: str):
     bot = bot_manager.get_bot(bot_id)

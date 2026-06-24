@@ -219,7 +219,7 @@ class Bot:
         c = Config()
         c.symbol = self.cfg.symbol
         c.interval = self.cfg.timeframe
-        c.limit = 400
+        c.limit = 500
         c.leverage = self.cfg.leverage
         c.trade_size = self.cfg.credit
         c.initial_capital = self.cfg.credit
@@ -330,8 +330,46 @@ class Bot:
             return False
 
         self.df = pd.concat([self.df, new_df])
-        self.df = self.df[~self.df.index.duplicated(keep="last")].sort_index().tail(400)
+        self.df = self.df[~self.df.index.duplicated(keep="last")].sort_index().tail(500)
         return True
+
+    async def run_backtest(self) -> dict:
+        """Fetch 500 candles and simulate the strategy over all of them. Returns profitability summary."""
+        config = self._make_config()
+        fetcher = DataFetcher(config)
+        df = await asyncio.to_thread(fetcher.fetch)
+
+        indicators = IndicatorSet(df, config)
+        strategy_cls = STRATEGY_MAP[self.cfg.strategy_name]
+        strategy = strategy_cls(config)
+        trades_df = strategy.run(df, indicators, live_start_idx=0)
+
+        candle_count = len(df)
+        if trades_df.empty:
+            return {"profitable": None, "total_pnl": 0.0, "trade_count": 0, "win_rate": 0.0, "candle_count": candle_count}
+
+        open_count = len(strategy.open_positions)
+        closed_count = max(0, len(trades_df) - open_count)
+        records = trades_df.to_dict("records")
+
+        # Skip the first closed trade — indicators lack warmup data at the very start
+        valid_records = records[1:closed_count]
+        if not valid_records:
+            return {"profitable": None, "total_pnl": 0.0, "trade_count": 0, "win_rate": 0.0, "candle_count": candle_count, "trades": []}
+
+        closed_pnls = [float(str(r.get("P&L ($)", 0))) for r in valid_records]
+        total_pnl = sum(closed_pnls)
+        wins = sum(1 for p in closed_pnls if p > 0)
+        win_rate = round(wins / len(closed_pnls) * 100, 1) if closed_pnls else 0.0
+
+        return {
+            "profitable": total_pnl > 0,
+            "total_pnl": round(total_pnl, 2),
+            "trade_count": len(valid_records),
+            "win_rate": win_rate,
+            "candle_count": candle_count,
+            "trades": valid_records,
+        }
 
     async def start(self) -> None:
         if self.status == BotStatus.RUNNING:

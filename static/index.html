@@ -482,6 +482,24 @@
   </div>
 </div>
 
+<!-- Backtest Results Modal -->
+<div class="modal-overlay" id="backtestModal">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h2 id="backtestModalTitle">Backtest Results</h2>
+      <button class="modal-close" onclick="cancelBacktest()">×</button>
+    </div>
+    <div class="modal-body" style="padding:0">
+      <div id="backtestSummary" style="padding:16px 20px;border-bottom:1px solid var(--border)"></div>
+      <div id="backtestTradesWrap" style="max-height:340px;overflow-y:auto;padding:0 20px 16px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-neutral" onclick="cancelBacktest()">Cancel</button>
+      <button class="btn btn-success" id="backtestConfirmBtn" onclick="confirmStartBot()">Start Bot</button>
+    </div>
+  </div>
+</div>
+
 <!-- Settings Modal -->
 <div class="modal-overlay" id="settingsModal">
   <div class="modal">
@@ -891,11 +909,24 @@ function timeAgo(iso) {
 function escHtml(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+function fmtDuration(start, end) {
+  if (!start || !end) return '—';
+  try {
+    let secs = Math.round((new Date(end.replace(' ','T')+'Z') - new Date(start.replace(' ','T')+'Z')) / 1000);
+    if (secs <= 0) return '—';
+    const d = Math.floor(secs / 86400); secs %= 86400;
+    const h = Math.floor(secs / 3600);  secs %= 3600;
+    const m = Math.floor(secs / 60);
+    if (d > 0) return h > 0 ? `${d}d${h}h` : `${d}d`;
+    if (h > 0) return m > 0 ? `${h}h${m}m` : `${h}h`;
+    return `${m}m`;
+  } catch { return '—'; }
+}
 function fmtDate(s) {
   if (!s) return '—';
   try {
     const d = new Date(s.replace(' ', 'T') + 'Z');
-    return d.toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'UTC' });
+    return d.toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', timeZone:'UTC' });
   } catch { return s; }
 }
 
@@ -996,7 +1027,122 @@ async function submitEdit() {
 }
 
 // ── Bot Controls ──────────────────────────────────────────────────────────────
-async function startBot(id) { await fetch(`/api/bots/${id}/start`, { method: 'POST' }); }
+let _pendingStartBotId = null;
+
+async function startBot(id) {
+  showToast('Running 500-candle backtest…', 'info');
+  try {
+    const res  = await fetch(`/api/bots/${id}/backtest`);
+    const data = await res.json();
+
+    if (!res.ok || !data.ok) {
+      await fetch(`/api/bots/${id}/start`, { method: 'POST' });
+      showToast('Backtest unavailable — bot started', 'info');
+      return;
+    }
+
+    if (data.trade_count === 0) {
+      await fetch(`/api/bots/${id}/start`, { method: 'POST' });
+      showToast(`No trades found in ${data.candle_count} candles — bot started`, 'info');
+      return;
+    }
+
+    _pendingStartBotId = id;
+    _showBacktestModal(data);
+
+  } catch (e) {
+    await fetch(`/api/bots/${id}/start`, { method: 'POST' });
+  }
+}
+
+function _showBacktestModal(data) {
+  const profitable = data.profitable !== false;
+  const pnl        = data.total_pnl;
+  const pnlSign    = pnl >= 0 ? '+' : '';
+  const pnlColor   = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+  const pnlStr     = `${pnlSign}$${Math.abs(pnl).toFixed(2)}`;
+
+  // Header title + confirm button colour
+  document.getElementById('backtestModalTitle').textContent = profitable
+    ? 'Backtest Results'
+    : '⚠ Backtest Warning — Unprofitable';
+  const confirmBtn = document.getElementById('backtestConfirmBtn');
+  confirmBtn.className = profitable ? 'btn btn-success' : 'btn btn-danger';
+  confirmBtn.textContent = profitable ? 'Start Bot' : 'Start Anyway';
+
+  // Summary row
+  document.getElementById('backtestSummary').innerHTML = `
+    <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;">
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Net P&amp;L</div>
+        <div style="font-size:20px;font-weight:700;color:${pnlColor}">${pnlSign}$${Math.abs(pnl).toFixed(2)}</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Trades</div>
+        <div style="font-size:20px;font-weight:700">${data.trade_count}</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Win Rate</div>
+        <div style="font-size:20px;font-weight:700;color:${data.win_rate >= 50 ? 'var(--green)' : 'var(--red)'}">${data.win_rate.toFixed(1)}%</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Candles</div>
+        <div style="font-size:20px;font-weight:700">${data.candle_count}</div>
+      </div>
+      ${!profitable ? `<div style="background:#1a1000;border:1px solid #6b3a00;border-radius:6px;padding:8px 14px;font-size:12px;color:var(--yellow);margin-left:auto;">
+        This bot would not have been profitable. Are you sure?
+      </div>` : ''}
+    </div>`;
+
+  // Trades table
+  const trades = data.trades || [];
+  const wrap   = document.getElementById('backtestTradesWrap');
+  if (!trades.length) {
+    wrap.innerHTML = `<div class="empty-state"><span class="icon">📭</span>No closed trades in backtest.</div>`;
+  } else {
+    wrap.innerHTML = `<table class="trades-table" style="margin-top:12px">
+  <thead><tr>
+    <th>#</th><th>Dir</th><th>Start</th><th>End</th><th>Duration</th>
+    <th>Entry $</th><th>Exit $</th><th>Change</th><th>P&amp;L</th><th>Balance</th><th>Liq</th>
+  </tr></thead>
+  <tbody>${trades.map(t => {
+      const pnl    = parseFloat(t['P&L ($)'] || 0);
+      const pnlCls = pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
+      const pnlStr = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
+      return `<tr>
+    <td>${t['Trade #'] ?? ''}</td>
+    <td class="${t['Position'] === 'Long' ? 'long' : 'short'}">${t['Position'] ?? ''}</td>
+    <td>${fmtDate(t['Start Time'])}</td>
+    <td>${fmtDate(t['End Time'])}</td>
+    <td style="color:var(--muted)">${fmtDuration(t['Start Time'], t['End Time'])}</td>
+    <td>$${parseFloat(t['Start Price'] || 0).toFixed(2)}</td>
+    <td>$${parseFloat(t['End Price']  || 0).toFixed(2)}</td>
+    <td>${t['Price Change'] ?? ''}</td>
+    <td class="${pnlCls}">${pnlStr}</td>
+    <td>$${parseFloat(t['Balance ($)'] || 0).toFixed(2)}</td>
+    <td class="${t['Liquidated'] ? 'liq' : ''}">${t['Liquidated'] ? 'LIQ' : ''}</td>
+  </tr>`;
+    }).join('')}</tbody>
+</table>`;
+  }
+
+  document.getElementById('backtestModal').classList.add('open');
+}
+
+async function confirmStartBot() {
+  const id = _pendingStartBotId;
+  _pendingStartBotId = null;
+  document.getElementById('backtestModal').classList.remove('open');
+  if (!id) return;
+  await fetch(`/api/bots/${id}/start`, { method: 'POST' });
+  showToast('Bot started', 'success');
+}
+
+function cancelBacktest() {
+  _pendingStartBotId = null;
+  document.getElementById('backtestModal').classList.remove('open');
+}
+
 async function stopBot(id)  { await fetch(`/api/bots/${id}/stop`,  { method: 'POST' }); }
 
 async function deleteBot(id) {
@@ -1049,7 +1195,7 @@ async function showHistory(id) {
     tradesPane.innerHTML = `<div class="empty-state"><span class="icon">📭</span>No completed trades yet.</div>`;
   } else {
     tradesPane.innerHTML = `<table class="trades-table">
-  <thead><tr><th>#</th><th>Dir</th><th>Start</th><th>End</th><th>Entry $</th><th>Exit $</th><th>Change</th><th>P&amp;L</th><th>Balance</th><th>Liq</th></tr></thead>
+  <thead><tr><th>#</th><th>Dir</th><th>Start</th><th>End</th><th>Duration</th><th>Entry $</th><th>Exit $</th><th>Change</th><th>P&amp;L</th><th>Balance</th><th>Liq</th></tr></thead>
   <tbody>${trades.map(t => {
       const pnl = parseFloat(t['P&L ($)'] || 0);
       const pnlCls = pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
@@ -1059,6 +1205,7 @@ async function showHistory(id) {
   <td class="${t['Position'] === 'Long' ? 'long' : 'short'}">${t['Position'] ?? ''}</td>
   <td>${fmtDate(t['Start Time'])}</td>
   <td>${fmtDate(t['End Time'])}</td>
+  <td style="color:var(--muted)">${fmtDuration(t['Start Time'], t['End Time'])}</td>
   <td>$${parseFloat(t['Start Price']||0).toFixed(2)}</td>
   <td>$${parseFloat(t['End Price']||0).toFixed(2)}</td>
   <td>${t['Price Change'] ?? ''}</td>

@@ -5,18 +5,8 @@
     "symbol": "zecusdt",
     "strategy_name": "AdvRSI",
     "timeframe": "240",
-    "credit": 100.0,
-    "leverage": 5,
-    "mode": "simulation"
-  },
-  {
-    "id": "bdeb7a06",
-    "name": "bd8d4549 (copy)",
-    "symbol": "zecusdt",
-    "strategy_name": "ExtremeReversal",
-    "timeframe": "240",
-    "credit": 100.0,
-    "leverage": 5,
-    "mode": "simulation"
+    "credit": 10.5,
+    "leverage": 2,
+    "mode": "real"
   }
 ]

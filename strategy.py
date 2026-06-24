@@ -265,8 +265,6 @@ class AdvRSICombinedStrategy(Strategy):
         rsi, rsi_ma = indicators.rsi, indicators.rsi_ma
         kd_diff = indicators.kd_diff
         oversold, overbought = self.config.stoch_oversold, self.config.stoch_overbought
-        threshold = self.KD_EXIT_THRESHOLD
-
         open_longs: list[int] = []
         open_shorts: list[int] = []
         trade_idx = 0
@@ -274,6 +272,8 @@ class AdvRSICombinedStrategy(Strategy):
         log = []
         waiting_long = False
         waiting_short = False
+        oversold_since: int | None = None
+        overbought_since: int | None = None
 
         for i in range(live_start_idx, len(df)):
             ki, di = k.iloc[i], d.iloc[i]
@@ -297,9 +297,9 @@ class AdvRSICombinedStrategy(Strategy):
 
                 if open_longs:
                     d_dropped = prev_d >= overbought and di < overbought
-                    mid_long = ki < overbought and diff < 0 and pd.notna(ri) and 47 < ri < 53
+                    mid_long = ki < overbought and diff < -0.08 * ki and pd.notna(ri) and 45 < ri < 55
                     k_crossed_below_oversold = prev_k >= oversold and ki < oversold
-                    if diff < -threshold or d_dropped or mid_long or k_crossed_below_oversold:
+                    if d_dropped or mid_long or k_crossed_below_oversold:
                         for entry_idx in open_longs:
                             record, pnl = self._make_trade_record(trade_idx, "Long", df, entry_idx, i, balance)
                             balance += pnl
@@ -322,9 +322,9 @@ class AdvRSICombinedStrategy(Strategy):
 
                 if open_shorts:
                     d_rose = prev_d <= oversold and di > oversold
-                    mid_short = ki > oversold and diff > 0 and pd.notna(ri) and 47 < ri < 53
+                    mid_short = ki > oversold and diff > 0.08 * ki and pd.notna(ri) and 45 < ri < 55
                     k_crossed_above_overbought = prev_k <= overbought and ki > overbought
-                    if diff > threshold or d_rose or mid_short or k_crossed_above_overbought:
+                    if d_rose or mid_short or k_crossed_above_overbought:
                         for entry_idx in open_shorts:
                             record, pnl = self._make_trade_record(trade_idx, "Short", df, entry_idx, i, balance)
                             balance += pnl
@@ -333,9 +333,22 @@ class AdvRSICombinedStrategy(Strategy):
                         open_shorts = []
 
             if ki < oversold:
-                waiting_long, waiting_short = True, False
+                if oversold_since is None:
+                    oversold_since = i
+                overbought_since = None
+                waiting_short = False
+                if i - oversold_since >= 5:
+                    waiting_long = True
             elif ki > overbought:
-                waiting_short, waiting_long = True, False
+                if overbought_since is None:
+                    overbought_since = i
+                oversold_since = None
+                waiting_long = False
+                if i - overbought_since >= 5:
+                    waiting_short = True
+            else:
+                oversold_since = None
+                overbought_since = None
 
             if waiting_long and ki >= oversold:
                 if pd.notna(ri) and pd.notna(ri_ma) and ri > ri_ma and ri_ma < 50:

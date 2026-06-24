@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 
 from config import Config
-from indicators import IndicatorSet
+from indicators import Indicators
 
 _TEHRAN = ZoneInfo("Asia/Tehran")
 
@@ -15,13 +16,64 @@ def _fmt_time(ts: pd.Timestamp) -> str:
     return ts.tz_convert(_TEHRAN).strftime("%Y-%m-%d %H:%M:%S")
 
 
+# ── Per-strategy indicator parameters ───────────────────────────────────────────
+# Each strategy owns its indicator inputs, so two strategies can use the same
+# indicator (RSI, Stoch-RSI, EMA, MACD) with different parameters. The shared
+# Indicators provider caches each (indicator, params) combination independently.
+
+
+@dataclass
+class AdvRsiParams:
+    rsi_length: int = 40
+    stoch_length: int = 36
+    k_smooth: int = 7
+    d_smooth: int = 5
+    rsi_fast_length: int = 14
+    rsi_ma_length: int = 7
+    oversold: int = 22
+    overbought: int = 78
+
+
+@dataclass
+class StochRsiExtremeParams(AdvRsiParams):
+    """AdvRSI indicator inputs plus the extreme-zone entry thresholds.
+
+    Inherits the exact indicator inputs of AdvRsiParams (so the same StochRSI and
+    RSI series are reused), and adds the deep-extreme entry gates.
+    """
+    long_kd_max: float = 8     # StochRSI K and D must both be below this for a long
+    long_rsi_max: float = 25   # fast RSI must be below this for a long
+    short_kd_min: float = 92   # StochRSI K and D must both be above this for a short
+    short_rsi_min: float = 75  # fast RSI must be above this for a short
+
+
+@dataclass
+class TrendMomentumParams:
+    rsi_length: int = 40
+    stoch_length: int = 36
+    k_smooth: int = 7
+    d_smooth: int = 5
+    ema_trend_length: int = 50
+    macd_fast: int = 12
+    macd_slow: int = 26
+    macd_signal: int = 9
+    oversold: int = 22
+    overbought: int = 78
+
+
 class Strategy(ABC):
-    def __init__(self, config: Config):
+    #: Default parameter dataclass for this strategy; overridden per subclass.
+    params_class: type | None = None
+
+    def __init__(self, config: Config, params=None):
         self.config = config
         self.open_positions: list[dict] = []
+        if params is None and self.params_class is not None:
+            params = self.params_class()
+        self.params = params
 
     @abstractmethod
-    def run(self, df: pd.DataFrame, indicators: IndicatorSet, live_start_idx: int = 0) -> pd.DataFrame:
+    def run(self, df: pd.DataFrame, indicators: Indicators, live_start_idx: int = 0) -> pd.DataFrame:
         ...
 
     def liquidation_price(self, direction: str, entry_price: float) -> float:
@@ -87,197 +139,41 @@ class Strategy(ABC):
         return record, pnl
 
 
-class SRSIStrategy(Strategy):
-    """Simple Stochastic RSI: enter on K/D zone breakout, exit on K/D crossover."""
+class _StochRsiSwingStrategy(Strategy):
+    """Shared engine for Stoch-RSI swing strategies.
 
-    def run(self, df: pd.DataFrame, indicators: IndicatorSet, live_start_idx: int = 0) -> pd.DataFrame:
-        k, d = indicators.stoch_k, indicators.stoch_d
-        oversold, overbought = self.config.stoch_oversold, self.config.stoch_overbought
+    Allows multiple concurrent positions and applies a common exit policy:
+    liquidation, StochRSI-D leaving the extreme band, a mid-zone RSI stall, or
+    StochRSI-K crossing back through the opposite band. Subclasses define entry
+    only, via `_entry_signal`; stateful entry logic resets in `_init_entry_state`.
+    """
 
-        position = 0
-        entry_idx = None
-        trade_idx = 0
-        balance = 0.0
-        log = []
-        waiting_long = False
-        waiting_short = False
+    params_class = AdvRsiParams
 
-        for i in range(live_start_idx, len(df)):
-            ki, di = k.iloc[i], d.iloc[i]
+    def _init_entry_state(self) -> None:
+        """Reset per-run entry state. Override if entry detection is stateful."""
 
-            if position == 0:
-                if ki < oversold and di < oversold and ki > di:
-                    waiting_long, waiting_short = True, False
-                elif ki > overbought and di > overbought and ki < di:
-                    waiting_short, waiting_long = True, False
+    def _entry_signal(self, i, k, d, rsi, rsi_ma, kd_diff) -> str | None:
+        """Return 'long', 'short', or None for candle i. Implemented by subclasses."""
+        raise NotImplementedError
 
-                if waiting_long and ki > oversold:
-                    position, entry_idx, waiting_long = 1, i, False
-                elif waiting_short and ki < overbought:
-                    position, entry_idx, waiting_short = -1, i, False
-
-            elif position == 1:
-                liq_p = self._check_liquidation("Long", entry_idx, i, df)
-                if liq_p is not None:
-                    record, pnl = self._make_trade_record(trade_idx, "Long", df, entry_idx, i, balance, liquidated=True, exit_price=liq_p)
-                    balance += pnl
-                    log.append(record)
-                    trade_idx += 1
-                    position, entry_idx = 0, None
-                elif ki < di:
-                    record, pnl = self._make_trade_record(trade_idx, "Long", df, entry_idx, i, balance)
-                    balance += pnl
-                    log.append(record)
-                    trade_idx += 1
-                    position, entry_idx = 0, None
-
-            elif position == -1:
-                liq_p = self._check_liquidation("Short", entry_idx, i, df)
-                if liq_p is not None:
-                    record, pnl = self._make_trade_record(trade_idx, "Short", df, entry_idx, i, balance, liquidated=True, exit_price=liq_p)
-                    balance += pnl
-                    log.append(record)
-                    trade_idx += 1
-                    position, entry_idx = 0, None
-                    waiting_short = False
-                elif ki > di:
-                    record, pnl = self._make_trade_record(trade_idx, "Short", df, entry_idx, i, balance)
-                    balance += pnl
-                    log.append(record)
-                    trade_idx += 1
-                    position, entry_idx = 0, None
-                    waiting_short = False
-
-        self.open_positions = []
-        if position != 0 and entry_idx is not None:
-            direction = "Long" if position == 1 else "Short"
-            self.open_positions = [{
-                "direction": direction,
-                "entry_price": float(df["Close"].iloc[entry_idx]),
-                "entry_time": str(df.index[entry_idx]),
-            }]
-            record, pnl = self._make_trade_record(trade_idx, direction, df, entry_idx, len(df) - 1, balance)
-            balance += pnl
-            log.append(record)
-
-        return pd.DataFrame(log)
-
-
-class ComboStrategy(Strategy):
-    """Combined RSI + Stochastic RSI with improved exit conditions."""
-
-    def run(self, df: pd.DataFrame, indicators: IndicatorSet, live_start_idx: int = 0) -> pd.DataFrame:
-        k, d = indicators.stoch_k, indicators.stoch_d
-        rsi, rsi_ma = indicators.rsi, indicators.rsi_ma
-        oversold, overbought = self.config.stoch_oversold, self.config.stoch_overbought
-
-        position = 0
-        entry_idx = None
-        trade_idx = 0
-        balance = 0.0
-        log = []
-        waiting_long = False
-        waiting_short = False
-        was_overbought = False
-        was_oversold = False
-
-        for i in range(live_start_idx, len(df)):
-            ki, di = k.iloc[i], d.iloc[i]
-            ri, ri_ma = rsi.iloc[i], rsi_ma.iloc[i]
-
-            if position == 0:
-                if ki < oversold and di < oversold:
-                    waiting_long, waiting_short = True, False
-                elif ki > overbought and di > overbought:
-                    waiting_short, waiting_long = True, False
-
-                if waiting_long and ki > oversold:
-                    if pd.notna(ri) and pd.notna(ri_ma) and ri > ri_ma:
-                        position, entry_idx, was_overbought = 1, i, False
-                    waiting_long = False
-                elif waiting_short and ki < overbought:
-                    if pd.notna(ri) and pd.notna(ri_ma) and ri < ri_ma:
-                        position, entry_idx, was_oversold = -1, i, False
-                    waiting_short = False
-
-            elif position == 1:
-                liq_p = self._check_liquidation("Long", entry_idx, i, df)
-                if liq_p is not None:
-                    record, pnl = self._make_trade_record(trade_idx, "Long", df, entry_idx, i, balance, liquidated=True, exit_price=liq_p)
-                    balance += pnl
-                    log.append(record)
-                    trade_idx += 1
-                    position, entry_idx, was_overbought = 0, None, False
-                else:
-                    if ki >= overbought:
-                        was_overbought = True
-                    if (ki < overbought and di > ki) or (was_overbought and ki < overbought):
-                        record, pnl = self._make_trade_record(trade_idx, "Long", df, entry_idx, i, balance)
-                        balance += pnl
-                        log.append(record)
-                        trade_idx += 1
-                        position, entry_idx, was_overbought = 0, None, False
-
-            elif position == -1:
-                liq_p = self._check_liquidation("Short", entry_idx, i, df)
-                if liq_p is not None:
-                    record, pnl = self._make_trade_record(trade_idx, "Short", df, entry_idx, i, balance, liquidated=True, exit_price=liq_p)
-                    balance += pnl
-                    log.append(record)
-                    trade_idx += 1
-                    position, entry_idx, was_oversold = 0, None, False
-                else:
-                    if ki <= oversold:
-                        was_oversold = True
-                    if (ki > oversold and ki > di) or (was_oversold and ki > oversold):
-                        record, pnl = self._make_trade_record(trade_idx, "Short", df, entry_idx, i, balance)
-                        balance += pnl
-                        log.append(record)
-                        trade_idx += 1
-                        position, entry_idx, was_oversold = 0, None, False
-
-        self.open_positions = []
-        if position != 0 and entry_idx is not None:
-            direction = "Long" if position == 1 else "Short"
-            self.open_positions = [{
-                "direction": direction,
-                "entry_price": float(df["Close"].iloc[entry_idx]),
-                "entry_time": str(df.index[entry_idx]),
-            }]
-            record, pnl = self._make_trade_record(trade_idx, direction, df, entry_idx, len(df) - 1, balance)
-            balance += pnl
-            log.append(record)
-
-        return pd.DataFrame(log)
-
-
-class AdvRSICombinedStrategy(Strategy):
-    """Long: sRSI-K crosses above oversold with RSI > MA and MA < 50.
-    Short: sRSI-K crosses below overbought with RSI < MA and MA > 50.
-    Long exit: KD diff < -10, sRSI-D drops below overbought, RSI near 50 with sRSI-K < overbought and KD diff < 0, or sRSI-K crosses below oversold from within the band.
-    Short exit: KD diff > 10, sRSI-D rises above oversold, RSI near 50 with sRSI-K > oversold and KD diff > 0, or sRSI-K crosses above overbought from within the band.
-    Multiple concurrent positions are allowed."""
-
-    KD_EXIT_THRESHOLD = 10
-
-    def run(self, df: pd.DataFrame, indicators: IndicatorSet, live_start_idx: int = 0) -> pd.DataFrame:
-        k, d = indicators.stoch_k, indicators.stoch_d
-        rsi, rsi_ma = indicators.rsi, indicators.rsi_ma
-        kd_diff = indicators.kd_diff
-        oversold, overbought = self.config.stoch_oversold, self.config.stoch_overbought
+    def run(self, df: pd.DataFrame, indicators: Indicators, live_start_idx: int = 0) -> pd.DataFrame:
+        p = self.params
+        srsi = indicators.stoch_rsi(p.rsi_length, p.stoch_length, p.k_smooth, p.d_smooth)
+        k, d = srsi.k, srsi.d
+        rsi, rsi_ma = indicators.rsi_with_ma(p.rsi_fast_length, p.rsi_ma_length)
+        kd_diff = (k - d).fillna(0)
+        oversold, overbought = p.oversold, p.overbought
         open_longs: list[int] = []
         open_shorts: list[int] = []
         trade_idx = 0
         balance = 0.0
         log = []
-        waiting_long = False
-        waiting_short = False
-        oversold_since: int | None = None
-        overbought_since: int | None = None
+        self._init_entry_state()
 
         for i in range(live_start_idx, len(df)):
             ki, di = k.iloc[i], d.iloc[i]
-            ri, ri_ma = rsi.iloc[i], rsi_ma.iloc[i]
+            ri = rsi.iloc[i]
             diff = kd_diff.iloc[i]
             prev_d = d.iloc[i - 1] if i > 0 else di
             prev_k = k.iloc[i - 1] if i > 0 else ki
@@ -332,32 +228,11 @@ class AdvRSICombinedStrategy(Strategy):
                             trade_idx += 1
                         open_shorts = []
 
-            if ki < oversold:
-                if oversold_since is None:
-                    oversold_since = i
-                overbought_since = None
-                waiting_short = False
-                if i - oversold_since >= 5:
-                    waiting_long = True
-            elif ki > overbought:
-                if overbought_since is None:
-                    overbought_since = i
-                oversold_since = None
-                waiting_long = False
-                if i - overbought_since >= 5:
-                    waiting_short = True
-            else:
-                oversold_since = None
-                overbought_since = None
-
-            if waiting_long and ki >= oversold:
-                if pd.notna(ri) and pd.notna(ri_ma) and ri > ri_ma and ri_ma < 50:
-                    open_longs.append(i)
-                waiting_long = False
-            elif waiting_short and ki <= overbought:
-                if pd.notna(ri) and pd.notna(ri_ma) and ri < ri_ma and ri_ma > 50:
-                    open_shorts.append(i)
-                waiting_short = False
+            signal = self._entry_signal(i, k, d, rsi, rsi_ma, kd_diff)
+            if signal == "long":
+                open_longs.append(i)
+            elif signal == "short":
+                open_shorts.append(i)
 
         self.open_positions = [
             {"direction": "Long", "entry_price": float(df["Close"].iloc[idx]), "entry_time": str(df.index[idx])}
@@ -382,7 +257,104 @@ class AdvRSICombinedStrategy(Strategy):
         return pd.DataFrame(log)
 
 
-class ClaudeSuggestedStrategy(Strategy):
+class AdvRSICombinedStrategy(_StochRsiSwingStrategy):
+    """Long: sRSI-K crosses above oversold with RSI > MA and MA < 50.
+    Short: sRSI-K crosses below overbought with RSI < MA and MA > 50.
+    Long exit: KD diff < -10, sRSI-D drops below overbought, RSI near 50 with sRSI-K < overbought and KD diff < 0, or sRSI-K crosses below oversold from within the band.
+    Short exit: KD diff > 10, sRSI-D rises above oversold, RSI near 50 with sRSI-K > oversold and KD diff > 0, or sRSI-K crosses above overbought from within the band.
+    Entry requires the band to be held for 5 candles before the crossing back.
+    Multiple concurrent positions are allowed."""
+
+    KD_EXIT_THRESHOLD = 10
+    params_class = AdvRsiParams
+
+    def _init_entry_state(self) -> None:
+        self._waiting_long = False
+        self._waiting_short = False
+        self._oversold_since: int | None = None
+        self._overbought_since: int | None = None
+
+    def _entry_signal(self, i, k, d, rsi, rsi_ma, kd_diff) -> str | None:
+        p = self.params
+        oversold, overbought = p.oversold, p.overbought
+        ki = k.iloc[i]
+        ri, ri_ma = rsi.iloc[i], rsi_ma.iloc[i]
+
+        if ki < oversold:
+            if self._oversold_since is None:
+                self._oversold_since = i
+            self._overbought_since = None
+            self._waiting_short = False
+            if i - self._oversold_since >= 5:
+                self._waiting_long = True
+        elif ki > overbought:
+            if self._overbought_since is None:
+                self._overbought_since = i
+            self._oversold_since = None
+            self._waiting_long = False
+            if i - self._overbought_since >= 5:
+                self._waiting_short = True
+        else:
+            self._oversold_since = None
+            self._overbought_since = None
+
+        signal = None
+        if self._waiting_long and ki >= oversold:
+            if pd.notna(ri) and pd.notna(ri_ma) and ri > ri_ma and ri_ma < 50:
+                signal = "long"
+            self._waiting_long = False
+        elif self._waiting_short and ki <= overbought:
+            if pd.notna(ri) and pd.notna(ri_ma) and ri < ri_ma and ri_ma > 50:
+                signal = "short"
+            self._waiting_short = False
+        return signal
+
+
+class ExtremeReversalStrategy(_StochRsiSwingStrategy):
+    """Deep-extreme mean-reversion entries, with the AdvRSI exit policy.
+
+    Long entry: StochRSI K and D both below `long_kd_max` while fast RSI is below
+        `long_rsi_max` and below its moving average (deeply oversold and still falling).
+    Short entry: StochRSI K and D both above `short_kd_min` while fast RSI is above
+        `short_rsi_min` and above its moving average (deeply overbought and still rising).
+    Entries are edge-triggered: one position opens when the extreme condition is first
+    met, and re-arms only after price leaves the extreme zone (so a single deep dip does
+    not stack a position on every candle).
+    Exits, liquidation and multi-position handling are inherited from AdvRSICombinedStrategy."""
+
+    params_class = StochRsiExtremeParams
+
+    def _init_entry_state(self) -> None:
+        self._prev_long_cond = False
+        self._prev_short_cond = False
+
+    def _entry_signal(self, i, k, d, rsi, rsi_ma, kd_diff) -> str | None:
+        p = self.params
+        ki, di = k.iloc[i], d.iloc[i]
+        ri, ri_ma = rsi.iloc[i], rsi_ma.iloc[i]
+        rsi_ok = pd.notna(ri) and pd.notna(ri_ma)
+
+        long_cond = (
+            ki < p.long_kd_max and di < p.long_kd_max
+            and rsi_ok and ri < p.long_rsi_max and ri < ri_ma
+        )
+        short_cond = (
+            ki > p.short_kd_min and di > p.short_kd_min
+            and rsi_ok and ri > p.short_rsi_min and ri > ri_ma
+        )
+
+        signal = None
+        if long_cond and not self._prev_long_cond:
+            signal = "long"
+        elif short_cond and not self._prev_short_cond:
+            signal = "short"
+
+        self._prev_long_cond = long_cond
+        self._prev_short_cond = short_cond
+        return signal
+
+
+class TrendFilteredMomentumStrategy(Strategy):
     """Trend-regime-filtered momentum strategy.
 
     Entry: StochRSI exits extreme zone + K/D aligned + price above/below EMA-50 + MACD histogram agrees.
@@ -392,14 +364,18 @@ class ClaudeSuggestedStrategy(Strategy):
     agrees before entry and signals the exit when that momentum exhausts.
     """
 
-    def run(self, df: pd.DataFrame, indicators: IndicatorSet, live_start_idx: int = 0) -> pd.DataFrame:
-        k, d = indicators.stoch_k, indicators.stoch_d
-        ema = indicators.ema_trend
-        macd_hist = indicators.macd_hist
+    params_class = TrendMomentumParams
+
+    def run(self, df: pd.DataFrame, indicators: Indicators, live_start_idx: int = 0) -> pd.DataFrame:
+        p = self.params
+        srsi = indicators.stoch_rsi(p.rsi_length, p.stoch_length, p.k_smooth, p.d_smooth)
+        k, d = srsi.k, srsi.d
+        ema = indicators.ema(p.ema_trend_length)
+        macd_hist = indicators.macd(p.macd_fast, p.macd_slow, p.macd_signal).hist
         close = df["Close"]
 
-        oversold = self.config.stoch_oversold
-        overbought = self.config.stoch_overbought
+        oversold = p.oversold
+        overbought = p.overbought
 
         position = 0
         entry_idx = None

@@ -10,8 +10,8 @@ import pandas as pd
 
 from config import Config
 from data import DataFetcher
-from indicators import IndicatorSet
-from strategy import AdvRSICombinedStrategy, ComboStrategy, ClaudeSuggestedStrategy, SRSIStrategy
+from indicators import Indicators
+from strategy import AdvRSICombinedStrategy, ExtremeReversalStrategy, TrendFilteredMomentumStrategy
 
 try:
     from dotenv import load_dotenv
@@ -27,9 +27,8 @@ RESOLUTION_SECONDS: dict[str, int] = {
 
 STRATEGY_MAP = {
     "AdvRSI": AdvRSICombinedStrategy,
-    "Combo": ComboStrategy,
-    "ClaudeSuggested": ClaudeSuggestedStrategy,
-    "SRSI": SRSIStrategy,
+    "TrendMomentum": TrendFilteredMomentumStrategy,
+    "ExtremeReversal": ExtremeReversalStrategy,
 }
 
 _ORDER_MAX_ATTEMPTS = 5
@@ -451,7 +450,7 @@ class Bot:
             return
 
         config = self._make_config()
-        indicators = IndicatorSet(self.df, config)
+        indicators = Indicators(self.df)
         strategy_cls = STRATEGY_MAP[self.cfg.strategy_name]
         strategy = strategy_cls(config)
 
@@ -560,7 +559,7 @@ class Bot:
         fetcher = DataFetcher(config)
         df = await asyncio.to_thread(fetcher.fetch)
 
-        indicators = IndicatorSet(df, config)
+        indicators = Indicators(df)
         strategy_cls = STRATEGY_MAP[self.cfg.strategy_name]
         strategy = strategy_cls(config)
         trades_df = strategy.run(df, indicators, live_start_idx=0)

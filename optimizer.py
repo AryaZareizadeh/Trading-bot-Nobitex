@@ -16,12 +16,20 @@ candle data depends only on (symbol, timeframe) it is fetched **once** and every
 DE evaluation is then pure CPU — so we can afford the hundreds–thousands of
 backtests DE needs.
 
+**Parallelism.** Each backtest is pure, GIL-bound Python/NumPy work, so threads
+cannot run them simultaneously. Instead we fan each DE *generation* out across a
+pool of worker processes — one per CPU core — so a 16-core machine runs ~16
+backtests at once. SciPy drives this for us when handed ``workers=pool.map`` plus
+``updating="deferred"``. See ``OptimizerJob._run_de_parallel``.
+
 Runs execute as in-memory background jobs (consistent with the rest of the
 dashboard: no DB, state lost on restart) that the frontend polls for progress.
 """
 
 import asyncio
 import json
+import multiprocessing as mp
+import os
 import time
 import uuid
 from dataclasses import fields
@@ -99,6 +107,10 @@ _DE_MAXITER = 30
 _DE_TOL = 0.01
 _DE_SEED = 42
 
+# Cores used when the user leaves the selector on "Auto" (capped to the machine's
+# CPU count, and overridable with the OPTIMIZER_WORKERS env var).
+_DEFAULT_WORKERS = 8
+
 _PREFS_FILE = Path(__file__).parent / "optimizer.json"
 _MAX_JOBS_KEPT = 20
 
@@ -153,13 +165,63 @@ def _fetch_df(symbol: str, timeframe: str, candles: int) -> pd.DataFrame:
     return DataFetcher(cfg).fetch()
 
 
+# ── Parallel evaluation across CPU cores ─────────────────────────────────────────
+# A DE generation is a batch of independent backtests. We evaluate them in a pool
+# of worker processes (sidestepping the GIL that would serialize threads). The
+# candle DataFrame and the run's fixed context (strategy, credit, leverage) are the
+# same for every backtest, so we ship them to each worker ONCE via the pool
+# initializer and cache them in this per-process global — rather than re-pickling
+# the DataFrame alongside each of the thousands of candidate vectors.
+_WORKER: dict = {}
+
+
+def _worker_init(df, strategy_name, credit, leverage, names) -> None:
+    """Pool initializer: runs once per worker process, caching the shared context."""
+    _WORKER.update(df=df, strategy=strategy_name, credit=credit,
+                   leverage=leverage, names=names)
+
+
+def _worker_objective(vector) -> float:
+    """Backtest one DE candidate inside a worker; return the value DE minimizes.
+
+    Must be a module-level function (not a closure) so it can be pickled and sent
+    to the worker processes. It reads everything but the candidate vector from the
+    per-process ``_WORKER`` cache populated by ``_worker_init``.
+    """
+    params = _build_params(_WORKER["strategy"], _WORKER["names"], vector)
+    summary = evaluate(_WORKER["df"], _WORKER["strategy"], params,
+                       _WORKER["credit"], _WORKER["leverage"])
+    return -summary["total_pnl"]   # DE minimizes, so negate to maximize profit
+
+
+def _resolve_workers() -> int:
+    """Number of worker processes to use for the DE search.
+
+    Defaults to ``_DEFAULT_WORKERS`` cores (capped to the machine's CPU count).
+    Override with the ``OPTIMIZER_WORKERS`` env var: a positive integer caps the
+    count, ``-1`` means use every core.
+    """
+    cpu = os.cpu_count() or 1
+    raw = os.getenv("OPTIMIZER_WORKERS", "").strip()
+    if raw:
+        try:
+            n = int(raw)
+        except ValueError:
+            n = 0
+        if n == -1:
+            return cpu
+        if n >= 1:
+            return min(n, cpu)
+    return min(_DEFAULT_WORKERS, cpu)
+
+
 # ── Background job ───────────────────────────────────────────────────────────────
 
 class OptimizerJob:
     """A single Differential-Evolution search over one strategy's inputs."""
 
     def __init__(self, symbol: str, strategy: str, timeframe: str, candles: int,
-                 credit: float, leverage: int):
+                 credit: float, leverage: int, cores: int = 0):
         self.id = uuid.uuid4().hex[:8]
         self.symbol = symbol
         self.strategy = strategy
@@ -167,12 +229,14 @@ class OptimizerJob:
         self.candles = candles
         self.credit = credit
         self.leverage = leverage
+        self.requested_cores = cores     # 0 = Auto; else the user-picked core count
 
         self.status = "pending"          # pending | running | done | cancelled | error
         self.error: str | None = None
         self.created_at = time.time()
 
         self.maxiter = _DE_MAXITER
+        self.workers = 1                 # CPU cores used by the search (set when DE starts)
         self.iteration = 0
         self.evaluations = 0
         self.best_pnl: float | None = None
@@ -188,7 +252,45 @@ class OptimizerJob:
         self._cancel = True
 
     # ── DE plumbing ──────────────────────────────────────────────────────────
+    def _de_kwargs(self, bounds, integrality, callback) -> dict:
+        """The DE settings shared by the serial and parallel search paths."""
+        return dict(
+            bounds=bounds,
+            integrality=integrality,
+            popsize=_DE_POPSIZE,
+            maxiter=self.maxiter,
+            tol=_DE_TOL,
+            rng=_DE_SEED,
+            polish=False,        # L-BFGS polish ignores integrality; skip it
+            mutation=(0.5, 1.0),
+            recombination=0.7,
+            callback=callback,
+            init="sobol",        # space-filling start for better global coverage
+        )
+
     def _run_de(self, df: pd.DataFrame) -> None:
+        """Pick a search path: parallel across cores, else single-core."""
+        # A specific core count picked in the UI wins; 0 means "Auto" (defer to the
+        # CPU-count / OPTIMIZER_WORKERS default).
+        if self.requested_cores and self.requested_cores >= 1:
+            self.workers = min(self.requested_cores, os.cpu_count() or 1)
+        else:
+            self.workers = _resolve_workers()
+        if self.workers <= 1:
+            self._run_de_serial(df)
+            return
+        try:
+            self._run_de_parallel(df, self.workers)
+        except Exception:
+            # Multiprocessing can fail to start in locked-down environments; never
+            # let that abort a run — fall back to the single-core path.
+            self.workers = 1
+            self.iteration = 0
+            self.evaluations = 0
+            self._run_de_serial(df)
+
+    def _run_de_serial(self, df: pd.DataFrame) -> None:
+        """Single-core search: one backtest at a time in this process."""
         names = list(PARAM_BOUNDS[self.strategy].keys())
         bounds = [PARAM_BOUNDS[self.strategy][n] for n in names]
         integrality = np.ones(len(bounds), dtype=bool)
@@ -216,23 +318,82 @@ class OptimizerJob:
                 return True   # signal DE to stop
             return False
 
-        differential_evolution(
-            objective,
-            bounds,
-            integrality=integrality,
-            popsize=_DE_POPSIZE,
-            maxiter=self.maxiter,
-            tol=_DE_TOL,
-            rng=_DE_SEED,
-            polish=False,        # L-BFGS polish ignores integrality; skip it
-            mutation=(0.5, 1.0),
-            recombination=0.7,
-            callback=callback,
-            init="sobol",        # space-filling start for better global coverage
-        )
+        differential_evolution(objective, **self._de_kwargs(bounds, integrality, callback))
 
         # Final best (in case the last improvement landed after the last callback).
         self.best_pnl = best["pnl"] if best["params"] is not None else None
+        self.best_params = best["params"]
+        self.best_summary = best["summary"]
+
+    def _run_de_parallel(self, df: pd.DataFrame, workers: int) -> None:
+        """Multi-core search: each generation's backtests run in a worker pool.
+
+        ``updating="deferred"`` is mandatory here — it makes DE evaluate a whole
+        generation before advancing, which is what lets the generation be split
+        across processes. Because the workers run in separate address spaces they
+        can't update ``best``/``evaluations`` directly, so the parent reconstructs
+        the running best from SciPy's per-generation callback instead.
+        """
+        names = list(PARAM_BOUNDS[self.strategy].keys())
+        bounds = [PARAM_BOUNDS[self.strategy][n] for n in names]
+        integrality = np.ones(len(bounds), dtype=bool)
+        # SciPy's population size for this many parameters; one generation runs this
+        # many backtests, which lets us report an approximate running total.
+        pop_per_gen = max(5, _DE_POPSIZE * len(bounds))
+
+        best = {"pnl": None, "params": None, "summary": None}
+
+        def record(vector) -> None:
+            """Re-score one DE vector in the parent and keep it if it's the best."""
+            params = _build_params(self.strategy, names, vector)
+            summary = evaluate(df, self.strategy, params, self.credit, self.leverage)
+            pnl = summary["total_pnl"]
+            if best["pnl"] is None or pnl > best["pnl"]:
+                best["pnl"] = pnl
+                best["params"] = {f.name: getattr(params, f.name) for f in fields(params)}
+                best["summary"] = summary
+
+        def callback(intermediate_result=None, convergence=None):
+            self.iteration += 1
+            # SciPy's DE calls this with the best-so-far *vector* (an ndarray) and a
+            # `convergence` value — the worker processes can't reach `best`, so the
+            # parent re-scores that vector here (one cheap backtest per generation)
+            # to recover the full summary for the live display. `getattr(.,"x",.)`
+            # also tolerates newer SciPy passing an OptimizeResult instead.
+            if intermediate_result is not None:
+                record(getattr(intermediate_result, "x", intermediate_result))
+            self.evaluations = pop_per_gen * (self.iteration + 1)   # approximate
+            self.best_pnl = best["pnl"]
+            self.best_params = best["params"]
+            self.best_summary = best["summary"]
+            if self._cancel:
+                return True   # signal DE to stop (takes effect after this generation)
+            return False
+
+        # "spawn" is the only start method on Windows and avoids fork-safety issues
+        # elsewhere; the candle data + context are handed to each worker just once.
+        ctx = mp.get_context("spawn")
+        pool = ctx.Pool(
+            processes=workers,
+            initializer=_worker_init,
+            initargs=(df, self.strategy, self.credit, self.leverage, names),
+        )
+        try:
+            result = differential_evolution(
+                _worker_objective,
+                updating="deferred",     # required to evaluate a generation in parallel
+                workers=pool.map,        # SciPy maps each generation over the pool
+                **self._de_kwargs(bounds, integrality, callback),
+            )
+        finally:
+            pool.terminate()
+            pool.join()
+
+        # Reconcile with DE's own final answer in case the last improvement landed
+        # after the final callback fired.
+        if getattr(result, "x", None) is not None:
+            record(result.x)
+        self.best_pnl = best["pnl"]
         self.best_params = best["params"]
         self.best_summary = best["summary"]
 
@@ -297,6 +458,7 @@ class OptimizerJob:
             "leverage": self.leverage,
             "iteration": self.iteration,
             "maxiter": self.maxiter,
+            "workers": self.workers,
             "evaluations": self.evaluations,
             "best_pnl": self.best_pnl,
             "best_summary": self.best_summary,
@@ -317,6 +479,7 @@ class OptimizerManager:
         defaults = {
             "symbol": "", "strategy": "", "timeframe": "240",
             "candles": _DEFAULT_CANDLES, "credit": 100.0, "leverage": 5,
+            "cores": 0,   # 0 = Auto (resolved from CPU count / OPTIMIZER_WORKERS)
         }
         if not _PREFS_FILE.exists():
             return defaults
@@ -333,7 +496,7 @@ class OptimizerManager:
         except Exception:
             pass
 
-    def save_prefs(self, symbol, strategy, timeframe, candles, credit, leverage) -> None:
+    def save_prefs(self, symbol, strategy, timeframe, candles, credit, leverage, cores=0) -> None:
         self._prefs = {
             "symbol": (symbol or "").lower().replace("/", "").strip(),
             "strategy": strategy if strategy in STRATEGY_MAP else "",
@@ -341,6 +504,7 @@ class OptimizerManager:
             "candles": _clamp_candles(candles),
             "credit": float(credit),
             "leverage": int(leverage),
+            "cores": _clamp_cores(cores),
         }
         self._save_prefs()
 
@@ -362,14 +526,16 @@ class OptimizerManager:
             "min_candles": _MIN_CANDLES,
             "max_candles": _MAX_CANDLES,
             "default_candles": _DEFAULT_CANDLES,
+            "max_cores": os.cpu_count() or 1,        # upper bound for the cores selector
+            "default_cores": _resolve_workers(),     # what "Auto" resolves to right now
         }
 
     # ── Jobs ─────────────────────────────────────────────────────────────────
-    def start_job(self, symbol, strategy, timeframe, candles, credit, leverage) -> OptimizerJob:
+    def start_job(self, symbol, strategy, timeframe, candles, credit, leverage, cores=0) -> OptimizerJob:
         self._prune()
         job = OptimizerJob(
             symbol.lower().replace("/", "").strip(), strategy, timeframe,
-            _clamp_candles(candles), float(credit), int(leverage),
+            _clamp_candles(candles), float(credit), int(leverage), _clamp_cores(cores),
         )
         self._jobs[job.id] = job
         job._task = asyncio.create_task(job.run())
@@ -395,6 +561,17 @@ def _clamp_candles(candles) -> int:
     except (TypeError, ValueError):
         return _DEFAULT_CANDLES
     return max(_MIN_CANDLES, min(_MAX_CANDLES, n))
+
+
+def _clamp_cores(cores) -> int:
+    """Normalize a requested core count: 0 (or invalid) = Auto, else 1..CPU count."""
+    try:
+        n = int(cores)
+    except (TypeError, ValueError):
+        return 0
+    if n <= 0:
+        return 0
+    return min(n, os.cpu_count() or 1)
 
 
 optimizer_manager = OptimizerManager()

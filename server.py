@@ -128,6 +128,7 @@ class OptimizerPrefsRequest(BaseModel):
     candles: int = 1000
     credit: float = 100.0
     leverage: int = Field(default=5, ge=1, le=100)
+    cores: int = Field(default=0, ge=0)   # 0 = Auto
 
 
 class OptimizerRunRequest(BaseModel):
@@ -137,6 +138,7 @@ class OptimizerRunRequest(BaseModel):
     candles: int = Field(default=1000, ge=50)
     credit: float = Field(default=100.0, gt=0)
     leverage: int = Field(default=5, ge=1, le=100)
+    cores: int = Field(default=0, ge=0)   # 0 = Auto
 
 
 # ── Margin Markets ─────────────────────────────────────────────────────────────
@@ -346,7 +348,7 @@ async def optimizer_config():
 @app.post("/api/optimizer/prefs")
 async def optimizer_save_prefs(req: OptimizerPrefsRequest):
     optimizer_manager.save_prefs(
-        req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage
+        req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage, req.cores
     )
     return {"ok": True}
 
@@ -361,10 +363,10 @@ async def optimizer_run(req: OptimizerRunRequest):
         return JSONResponse(status_code=400, content={"error": "Select a symbol."})
     # Persist the selection so the tab reopens where the user left off.
     optimizer_manager.save_prefs(
-        req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage
+        req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage, req.cores
     )
     job = optimizer_manager.start_job(
-        req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage
+        req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage, req.cores
     )
     return {"job_id": job.id}
 

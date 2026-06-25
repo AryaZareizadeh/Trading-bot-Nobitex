@@ -527,6 +527,10 @@
           <label>Leverage</label>
           <input type="number" id="oLeverage" value="5" min="1" max="100" step="1" onchange="saveOptimizerPrefs()">
         </div>
+        <div class="form-group">
+          <label>CPU cores</label>
+          <select id="oCores" onchange="saveOptimizerPrefs()"></select>
+        </div>
       </div>
     </div>
 
@@ -1946,6 +1950,18 @@ function populateOptimizerControls() {
   if (optimizerConfig.candles  != null) document.getElementById('oCandles').value  = optimizerConfig.candles;
   if (optimizerConfig.credit   != null) document.getElementById('oCredit').value   = optimizerConfig.credit;
   if (optimizerConfig.leverage != null) document.getElementById('oLeverage').value = optimizerConfig.leverage;
+
+  // CPU-cores select: "Auto" (0) plus 1..max_cores. Auto shows what it resolves to.
+  const coresSel = document.getElementById('oCores');
+  const maxCores = optimizerConfig.max_cores || 1;
+  const autoCores = optimizerConfig.default_cores || maxCores;
+  const savedCores = optimizerConfig.cores || 0;
+  let opts = `<option value="0" ${savedCores === 0 ? 'selected' : ''}>Auto (${autoCores})</option>`;
+  for (let n = 1; n <= maxCores; n++) {
+    const label = n === maxCores ? `${n} (all)` : `${n}`;
+    opts += `<option value="${n}" ${n === savedCores ? 'selected' : ''}>${label}</option>`;
+  }
+  coresSel.innerHTML = opts;
 }
 
 function _optimizerStrategySpec() {
@@ -1995,6 +2011,7 @@ function _optimizerPayload() {
     candles:   parseInt(document.getElementById('oCandles').value) || 1000,
     credit:    parseFloat(document.getElementById('oCredit').value) || 100,
     leverage:  parseInt(document.getElementById('oLeverage').value) || 5,
+    cores:     parseInt(document.getElementById('oCores').value) || 0,
   };
 }
 
@@ -2066,7 +2083,8 @@ function renderOptimizerProgress(job) {
             : job.status === 'cancelled' ? 'Cancelled'
             : 'Error';
   document.getElementById('oProgressCurrent').textContent = cur;
-  document.getElementById('oProgressCount').textContent = `${job.evaluations} backtests · gen ${job.iteration}/${job.maxiter}`;
+  const cores = job.workers > 1 ? ` · ${job.workers} cores` : '';
+  document.getElementById('oProgressCount').textContent = `${job.evaluations} backtests · gen ${job.iteration}/${job.maxiter}${cores}`;
 }
 
 function renderOptimizerResults(job) {

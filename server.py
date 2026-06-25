@@ -12,6 +12,8 @@ from pydantic import BaseModel, Field
 
 from bot import BotConfig
 from bot_manager import bot_manager
+from backtester import tester_manager
+from optimizer import optimizer_manager
 
 # ── WebSocket client registry ──────────────────────────────────────────────────
 _clients: list[WebSocket] = []
@@ -101,6 +103,40 @@ class CredentialsRequest(BaseModel):
     public_key: str = ""
     private_key: str = ""
     testnet: bool = False
+
+
+class TesterPrefsRequest(BaseModel):
+    favorites: list[str] = []
+    strategies: list[str] = []
+    timeframes: list[str] = []
+    credit: float = 100.0
+    leverage: int = Field(default=5, ge=1, le=100)
+
+
+class TesterRunRequest(BaseModel):
+    symbols: list[str]
+    strategies: list[str]
+    timeframes: list[str]
+    credit: float = Field(default=100.0, gt=0)
+    leverage: int = Field(default=5, ge=1, le=100)
+
+
+class OptimizerPrefsRequest(BaseModel):
+    symbol: str = ""
+    strategy: str = ""
+    timeframe: str = "240"
+    candles: int = 1000
+    credit: float = 100.0
+    leverage: int = Field(default=5, ge=1, le=100)
+
+
+class OptimizerRunRequest(BaseModel):
+    symbol: str
+    strategy: str
+    timeframe: str
+    candles: int = Field(default=1000, ge=50)
+    credit: float = Field(default=100.0, gt=0)
+    leverage: int = Field(default=5, ge=1, le=100)
 
 
 # ── Margin Markets ─────────────────────────────────────────────────────────────
@@ -248,6 +284,108 @@ async def set_credentials(req: CredentialsRequest):
     except ImportError:
         pass
 
+    return {"ok": True}
+
+
+# ── Strategy Tester ────────────────────────────────────────────────────────────
+@app.get("/api/tester/config")
+async def tester_config():
+    """Saved preferences plus the available strategies/timeframes and run limits."""
+    return tester_manager.get_config()
+
+
+@app.post("/api/tester/prefs")
+async def tester_save_prefs(req: TesterPrefsRequest):
+    tester_manager.save_prefs(
+        req.favorites, req.strategies, req.timeframes, req.credit, req.leverage
+    )
+    return {"ok": True}
+
+
+@app.post("/api/tester/run")
+async def tester_run(req: TesterRunRequest):
+    combos = tester_manager.build_combos(req.symbols, req.strategies, req.timeframes)
+    if not combos:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Select at least one asset, strategy, and timeframe."},
+        )
+    from backtester import _MAX_COMBOS
+    if len(combos) > _MAX_COMBOS:
+        return JSONResponse(
+            status_code=400,
+            content={"error": f"{len(combos)} combinations exceeds the limit of {_MAX_COMBOS}."},
+        )
+    # Persist this selection so the tab reopens where the user left off.
+    tester_manager.save_prefs(req.symbols, req.strategies, req.timeframes, req.credit, req.leverage)
+    job = tester_manager.start_job(combos, req.credit, req.leverage)
+    return {"job_id": job.id, "total": job.total}
+
+
+@app.get("/api/tester/run/{job_id}")
+async def tester_run_status(job_id: str):
+    job = tester_manager.get_job(job_id)
+    if job is None:
+        return JSONResponse(status_code=404, content={"error": "Job not found"})
+    return job.to_dict()
+
+
+@app.post("/api/tester/run/{job_id}/cancel")
+async def tester_run_cancel(job_id: str):
+    job = tester_manager.get_job(job_id)
+    if job is None:
+        return JSONResponse(status_code=404, content={"error": "Job not found"})
+    job.cancel()
+    return {"ok": True}
+
+
+# ── Optimizer ──────────────────────────────────────────────────────────────────
+@app.get("/api/optimizer/config")
+async def optimizer_config():
+    """Saved preferences plus available strategies (with param search ranges)."""
+    return optimizer_manager.get_config()
+
+
+@app.post("/api/optimizer/prefs")
+async def optimizer_save_prefs(req: OptimizerPrefsRequest):
+    optimizer_manager.save_prefs(
+        req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage
+    )
+    return {"ok": True}
+
+
+@app.post("/api/optimizer/run")
+async def optimizer_run(req: OptimizerRunRequest):
+    from bot import STRATEGY_MAP
+    from optimizer import PARAM_BOUNDS
+    if req.strategy not in STRATEGY_MAP or req.strategy not in PARAM_BOUNDS:
+        return JSONResponse(status_code=400, content={"error": "Unknown strategy."})
+    if not req.symbol.strip():
+        return JSONResponse(status_code=400, content={"error": "Select a symbol."})
+    # Persist the selection so the tab reopens where the user left off.
+    optimizer_manager.save_prefs(
+        req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage
+    )
+    job = optimizer_manager.start_job(
+        req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage
+    )
+    return {"job_id": job.id}
+
+
+@app.get("/api/optimizer/run/{job_id}")
+async def optimizer_run_status(job_id: str):
+    job = optimizer_manager.get_job(job_id)
+    if job is None:
+        return JSONResponse(status_code=404, content={"error": "Job not found"})
+    return job.to_dict()
+
+
+@app.post("/api/optimizer/run/{job_id}/cancel")
+async def optimizer_run_cancel(job_id: str):
+    job = optimizer_manager.get_job(job_id)
+    if job is None:
+        return JSONResponse(status_code=404, content={"error": "Job not found"})
+    job.cancel()
     return {"ok": True}
 
 

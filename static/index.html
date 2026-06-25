@@ -283,6 +283,84 @@
   .checkbox-row input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
   .checkbox-row label { font-size: 12px; color: var(--text); cursor: pointer; }
 
+  /* ── Main view tabs ── */
+  .main-tabs { display: flex; gap: 4px; padding: 0 24px; background: var(--surface); border-bottom: 1px solid var(--border); }
+  .main-tab-btn { background: none; border: none; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 700; color: var(--muted); padding: 12px 18px; border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; letter-spacing: .5px; }
+  .main-tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .main-tab-btn:hover:not(.active) { color: var(--text); }
+  .view-pane { display: none; }
+  .view-pane.active { display: block; }
+
+  /* ── Tester tab ── */
+  .tester-wrap { padding: 18px 24px 40px; max-width: 1400px; }
+  .tester-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 16px; }
+  .tester-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--accent); margin-bottom: 4px; }
+  .tester-section .hint { font-size: 11px; color: var(--muted); margin-bottom: 12px; }
+  .tester-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .tester-toolbar input[type="text"] { flex: 1; min-width: 180px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; color: var(--text); font-family: inherit; font-size: 12px; outline: none; }
+  .tester-toolbar input[type="text"]:focus { border-color: var(--accent); }
+
+  .chip-grid { display: flex; flex-wrap: wrap; gap: 7px; max-height: 230px; overflow-y: auto; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--surface2); border: 1px solid var(--border); border-radius: 16px; padding: 5px 12px; font-size: 12px; color: var(--text); cursor: pointer; transition: border-color .15s, background .15s; white-space: nowrap; user-select: none; }
+  .chip:hover { border-color: #3a4a60; }
+  .chip.active { border-color: var(--accent); background: #0e1e30; color: var(--accent); }
+  .chip .star { color: var(--muted); font-size: 13px; }
+  .chip.active .star { color: var(--yellow); }
+  .chip .chip-dir { font-size: 9px; color: var(--muted); }
+
+  .opt-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .opt-toggle { position: relative; }
+  .opt-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .opt-toggle label { display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border-radius: 8px; cursor: pointer; border: 1px solid var(--border); background: var(--surface2); font-size: 12px; color: var(--text); transition: border-color .15s, background .15s; }
+  .opt-toggle input:checked + label { border-color: var(--accent); background: #0e1e30; color: var(--accent); }
+  .opt-toggle input:focus-visible + label { outline: 2px solid var(--accent); }
+
+  .tester-run-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .tester-run-note { font-size: 11px; color: var(--muted); }
+  .tester-run-note strong { color: var(--text); }
+
+  .progress-wrap { margin-top: 14px; }
+  .progress-track { height: 8px; background: var(--surface2); border-radius: 5px; overflow: hidden; border: 1px solid var(--border); }
+  .progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width .3s ease; }
+  .progress-meta { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--muted); margin-top: 6px; gap: 12px; }
+  .progress-current { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .tf-result { margin-bottom: 18px; }
+  .tf-result-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  .tf-result-head .tf-name { font-size: 14px; font-weight: 700; color: var(--text); }
+  .tf-result-head .tf-sub { font-size: 11px; color: var(--muted); }
+  .result-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .result-table th { text-align: left; padding: 7px 10px; background: var(--surface2); color: var(--muted); border-bottom: 1px solid var(--border); text-transform: uppercase; font-size: 10px; letter-spacing: .5px; white-space: nowrap; }
+  .result-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .result-table tr:last-child td { border-bottom: none; }
+  .result-table tr:hover td { background: rgba(255,255,255,.025); }
+  .result-table .rank { color: var(--muted); width: 28px; }
+  .result-table .pnl-pos { color: var(--green); font-weight: 700; }
+  .result-table .pnl-neg { color: var(--red); font-weight: 700; }
+  .result-table .err-cell { color: var(--yellow); font-style: italic; }
+  .result-table tr.best td { background: rgba(74,222,128,.06); }
+  .medal { font-size: 12px; }
+
+  /* ── Optimizer tab ── */
+  .opt-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px 16px; }
+  .opt-form .form-group { margin: 0; }
+  .opt-form select, .opt-form input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; color: var(--text); font-family: inherit; font-size: 12px; outline: none; }
+  .opt-form select:focus, .opt-form input:focus { border-color: var(--accent); }
+  .opt-param-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px 14px; }
+  .opt-param { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 6px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; font-size: 11px; }
+  .opt-param .pname { color: var(--text); font-weight: 600; }
+  .opt-param .prange { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .opt-summary { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 14px; }
+  .opt-stat { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; min-width: 120px; }
+  .opt-stat .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+  .opt-stat .val { font-size: 18px; font-weight: 700; margin-top: 2px; }
+  .opt-result-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .opt-result-table th { text-align: left; padding: 7px 10px; background: var(--surface2); color: var(--muted); border-bottom: 1px solid var(--border); text-transform: uppercase; font-size: 10px; letter-spacing: .5px; }
+  .opt-result-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  .opt-result-table tr:last-child td { border-bottom: none; }
+  .opt-result-table .changed td { background: rgba(96,165,250,.07); }
+  .opt-result-table .tuned-val { font-weight: 700; color: var(--accent); }
+
   /* scrollbar */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: var(--surface); }
@@ -308,6 +386,16 @@
     <button class="btn btn-primary" onclick="openCreateModal()">+ New Bot</button>
   </div>
 </div>
+
+<!-- Main view tabs -->
+<div class="main-tabs">
+  <button class="main-tab-btn active" data-view="Bots" onclick="switchView('Bots')">Bots</button>
+  <button class="main-tab-btn" data-view="Tester" onclick="switchView('Tester')">Tester</button>
+  <button class="main-tab-btn" data-view="Optimizer" onclick="switchView('Optimizer')">Optimizer</button>
+</div>
+
+<!-- ═══════════════════ BOTS VIEW ═══════════════════ -->
+<div id="viewBots" class="view-pane active">
 
 <!-- Summary Bar -->
 <div class="summary-bar">
@@ -343,6 +431,131 @@
     Create your first bot to get started.
   </div>
 </div>
+
+</div><!-- /viewBots -->
+
+<!-- ═══════════════════ TESTER VIEW ═══════════════════ -->
+<div id="viewTester" class="view-pane">
+  <div class="tester-wrap">
+
+    <div class="tester-section">
+      <h3>1 · Assets</h3>
+      <div class="hint">Star the margin markets you want to test. Selections are saved as favorites.</div>
+      <div class="tester-toolbar">
+        <input type="text" id="tAssetSearch" placeholder="Filter markets…" oninput="renderTesterAssets()">
+        <button class="btn btn-neutral btn-sm" onclick="testerSelectShown()">★ Select shown</button>
+        <button class="btn btn-neutral btn-sm" onclick="testerClearAssets()">Clear</button>
+        <span class="tester-run-note"><strong id="tAssetCount">0</strong> selected</span>
+      </div>
+      <div class="chip-grid" id="tAssetGrid"></div>
+    </div>
+
+    <div class="tester-section">
+      <h3>2 · Strategies</h3>
+      <div class="hint">Each selected strategy is tested against every selected asset and timeframe.</div>
+      <div class="opt-grid" id="tStrategyGrid"></div>
+    </div>
+
+    <div class="tester-section">
+      <h3>3 · Timeframes</h3>
+      <div class="hint">One results table is produced per timeframe.</div>
+      <div class="opt-grid" id="tTimeframeGrid"></div>
+    </div>
+
+    <div class="tester-section">
+      <h3>4 · Run</h3>
+      <div class="tester-run-bar">
+        <div class="form-group" style="margin:0;width:130px">
+          <label>Credit (USDT)</label>
+          <input type="number" id="tCredit" value="100" min="1" step="1" onchange="saveTesterPrefs()">
+        </div>
+        <div class="form-group" style="margin:0;width:120px">
+          <label>Leverage</label>
+          <input type="number" id="tLeverage" value="5" min="1" max="100" step="1" onchange="saveTesterPrefs()">
+        </div>
+        <button class="btn btn-primary" id="tRunBtn" onclick="runTester()" style="padding:9px 20px">▶ Run Backtests</button>
+        <button class="btn btn-danger btn-sm" id="tCancelBtn" onclick="cancelTester()" style="display:none">■ Cancel</button>
+        <span class="tester-run-note" id="tRunNote"></span>
+      </div>
+      <div class="progress-wrap" id="tProgressWrap" style="display:none">
+        <div class="progress-track"><div class="progress-fill" id="tProgressFill"></div></div>
+        <div class="progress-meta">
+          <span class="progress-current" id="tProgressCurrent"></span>
+          <span id="tProgressCount"></span>
+        </div>
+      </div>
+    </div>
+
+    <div id="tResults"></div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════ OPTIMIZER VIEW ═══════════════════ -->
+<div id="viewOptimizer" class="view-pane">
+  <div class="tester-wrap">
+
+    <div class="tester-section">
+      <h3>Optimization Target</h3>
+      <div class="hint">
+        Pick one symbol, timeframe, candle window and strategy. A
+        <strong>Differential-Evolution</strong> global search then tunes that strategy's
+        indicator inputs to maximize backtested net P&amp;L over the selected window.
+      </div>
+      <div class="opt-form">
+        <div class="form-group">
+          <label>Symbol</label>
+          <select id="oSymbol" onchange="saveOptimizerPrefs()"></select>
+        </div>
+        <div class="form-group">
+          <label>Strategy</label>
+          <select id="oStrategy" onchange="onOptimizerStrategyChange()"></select>
+        </div>
+        <div class="form-group">
+          <label>Timeframe</label>
+          <select id="oTimeframe" onchange="saveOptimizerPrefs()"></select>
+        </div>
+        <div class="form-group">
+          <label>Past candles</label>
+          <input type="number" id="oCandles" value="1000" min="200" max="5000" step="100" onchange="saveOptimizerPrefs()">
+        </div>
+        <div class="form-group">
+          <label>Credit (USDT)</label>
+          <input type="number" id="oCredit" value="100" min="1" step="1" onchange="saveOptimizerPrefs()">
+        </div>
+        <div class="form-group">
+          <label>Leverage</label>
+          <input type="number" id="oLeverage" value="5" min="1" max="100" step="1" onchange="saveOptimizerPrefs()">
+        </div>
+      </div>
+    </div>
+
+    <div class="tester-section" id="oParamSection" style="display:none">
+      <h3>Inputs Being Tuned</h3>
+      <div class="hint">Every input below is searched within its range. Defaults shown for reference.</div>
+      <div id="oParamSpace" class="opt-param-grid"></div>
+    </div>
+
+    <div class="tester-section">
+      <h3>Run</h3>
+      <div class="tester-run-bar">
+        <button class="btn btn-primary" id="oRunBtn" onclick="runOptimizer()" style="padding:9px 20px">▶ Optimize</button>
+        <button class="btn btn-danger btn-sm" id="oCancelBtn" onclick="cancelOptimizer()" style="display:none">■ Cancel</button>
+        <span class="tester-run-note" id="oRunNote"></span>
+      </div>
+      <div class="progress-wrap" id="oProgressWrap" style="display:none">
+        <div class="progress-track"><div class="progress-fill" id="oProgressFill"></div></div>
+        <div class="progress-meta">
+          <span class="progress-current" id="oProgressCurrent"></span>
+          <span id="oProgressCount"></span>
+        </div>
+      </div>
+    </div>
+
+    <div id="oResults"></div>
+
+  </div>
+</div><!-- /viewOptimizer -->
 
 <!-- Toast container -->
 <div id="toastContainer"></div>
@@ -394,9 +607,8 @@
         <label>Strategy</label>
         <select id="fStrategy">
           <option value="AdvRSI">Advanced RSI Combined</option>
-          <option value="Combo">RSI + Stoch Combo</option>
-          <option value="ClaudeSuggested">Trend-Filtered Momentum</option>
-          <option value="SRSI">Stochastic RSI</option>
+          <option value="TrendMomentum">Trend-Filtered Momentum</option>
+          <option value="ExtremeReversal">Extreme Reversal</option>
         </select>
       </div>
       <div class="form-row">
@@ -462,9 +674,8 @@
         <label>Strategy</label>
         <select id="eStrategy">
           <option value="AdvRSI">Advanced RSI Combined</option>
-          <option value="Combo">RSI + Stoch Combo</option>
-          <option value="ClaudeSuggested">Trend-Filtered Momentum</option>
-          <option value="SRSI">Stochastic RSI</option>
+          <option value="TrendMomentum">Trend-Filtered Momentum</option>
+          <option value="ExtremeReversal">Extreme Reversal</option>
         </select>
       </div>
       <div class="form-row">
@@ -1396,6 +1607,514 @@ function onMarketChange(prefix) {
 
   const feeStr = (parseFloat(fee) * 100).toFixed(2);
   if (hint) hint.innerHTML = `${dirHtml} &nbsp;·&nbsp; Max leverage: <strong>${maxLev}×</strong> &nbsp;·&nbsp; <span class="fee">Fee: ${feeStr}%/day</span>`;
+}
+
+// ── Tester tab ────────────────────────────────────────────────────────────────
+let testerConfig = {};
+let testerFavorites = new Set();   // lowercase symbols chosen for testing (saved as favorites)
+let testerStrategies = new Set();
+let testerTimeframes = new Set();
+let _testerConfigLoaded = false;
+let testerJobId = null;
+let testerPollTimer = null;
+let _testerPrefsTimer = null;
+
+function switchView(view) {
+  document.querySelectorAll('.view-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.main-tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('view' + view).classList.add('active');
+  document.querySelector(`.main-tab-btn[data-view="${view}"]`).classList.add('active');
+  if (view === 'Tester') initTesterTab();
+  if (view === 'Optimizer') initOptimizerTab();
+}
+
+async function initTesterTab() {
+  if (!marginMarkets.length) { try { await loadMarginMarkets(); } catch (_) {} }
+  if (!_testerConfigLoaded) {
+    try {
+      const res = await fetch('/api/tester/config');
+      testerConfig = await res.json();
+      testerFavorites  = new Set((testerConfig.favorites  || []).map(s => s.toLowerCase()));
+      testerStrategies = new Set(testerConfig.strategies || []);
+      testerTimeframes = new Set(testerConfig.timeframes || []);
+      if (testerConfig.credit   != null) document.getElementById('tCredit').value   = testerConfig.credit;
+      if (testerConfig.leverage != null) document.getElementById('tLeverage').value = testerConfig.leverage;
+      _testerConfigLoaded = true;
+    } catch (_) {}
+  }
+  renderTesterAssets();
+  renderTesterStrategies();
+  renderTesterTimeframes();
+  updateRunNote();
+}
+
+// ── Asset chips ─────────────────────────────────────────────────────────────
+function renderTesterAssets() {
+  const grid = document.getElementById('tAssetGrid');
+  if (!grid) return;
+  if (!marginMarkets.length) {
+    grid.innerHTML = '<div style="color:var(--muted);font-size:12px">No markets available — check exchange connection.</div>';
+    updateAssetCount();
+    return;
+  }
+  const q = (document.getElementById('tAssetSearch').value || '').toLowerCase().trim();
+  const items = marginMarkets.filter(m => !q || m.symbol.toLowerCase().includes(q));
+  grid.innerHTML = items.map(m => {
+    const sym = m.symbol.toLowerCase();
+    const active = testerFavorites.has(sym);
+    const dir = m.buyEnabled && m.sellEnabled ? '↕' : m.buyEnabled ? '↑' : '↓';
+    return `<span class="chip ${active ? 'active' : ''}" onclick="toggleAsset('${sym}')">
+      <span class="star">${active ? '★' : '☆'}</span>${escHtml(m.symbol)}<span class="chip-dir">${dir}</span>
+    </span>`;
+  }).join('') || '<div style="color:var(--muted);font-size:12px">No markets match the filter.</div>';
+  updateAssetCount();
+}
+
+function toggleAsset(sym) {
+  if (testerFavorites.has(sym)) testerFavorites.delete(sym);
+  else testerFavorites.add(sym);
+  renderTesterAssets();
+  saveTesterPrefs();
+}
+
+function testerSelectShown() {
+  const q = (document.getElementById('tAssetSearch').value || '').toLowerCase().trim();
+  marginMarkets
+    .filter(m => !q || m.symbol.toLowerCase().includes(q))
+    .forEach(m => testerFavorites.add(m.symbol.toLowerCase()));
+  renderTesterAssets();
+  saveTesterPrefs();
+}
+
+function testerClearAssets() {
+  testerFavorites.clear();
+  renderTesterAssets();
+  saveTesterPrefs();
+}
+
+function updateAssetCount() {
+  const el = document.getElementById('tAssetCount');
+  if (el) el.textContent = testerFavorites.size;
+  updateRunNote();
+}
+
+// ── Strategy / timeframe toggles ──────────────────────────────────────────────
+function renderTesterStrategies() {
+  const grid = document.getElementById('tStrategyGrid');
+  grid.innerHTML = (testerConfig.available_strategies || []).map(s => {
+    const checked = testerStrategies.has(s.value) ? 'checked' : '';
+    return `<div class="opt-toggle">
+      <input type="checkbox" id="ts-${s.value}" ${checked} onchange="toggleStrategy('${s.value}')">
+      <label for="ts-${s.value}">${escHtml(s.label)}</label>
+    </div>`;
+  }).join('');
+}
+
+function toggleStrategy(v) {
+  if (testerStrategies.has(v)) testerStrategies.delete(v); else testerStrategies.add(v);
+  updateRunNote(); saveTesterPrefs();
+}
+
+function renderTesterTimeframes() {
+  const grid = document.getElementById('tTimeframeGrid');
+  grid.innerHTML = (testerConfig.available_timeframes || []).map(t => {
+    const checked = testerTimeframes.has(t.value) ? 'checked' : '';
+    return `<div class="opt-toggle">
+      <input type="checkbox" id="tt-${t.value}" ${checked} onchange="toggleTimeframe('${t.value}')">
+      <label for="tt-${t.value}">${escHtml(t.label)}</label>
+    </div>`;
+  }).join('');
+}
+
+function toggleTimeframe(v) {
+  if (testerTimeframes.has(v)) testerTimeframes.delete(v); else testerTimeframes.add(v);
+  updateRunNote(); saveTesterPrefs();
+}
+
+function updateRunNote() {
+  const note = document.getElementById('tRunNote');
+  if (!note) return;
+  const a = testerFavorites.size, s = testerStrategies.size, t = testerTimeframes.size;
+  const combos = a * s * t;
+  const fetches = a * t;   // candle data is shared across strategies
+  const fpm = testerConfig.fetches_per_minute || 30;
+  if (!combos) { note.textContent = 'Select assets, strategies and timeframes to begin.'; return; }
+  const secs = Math.round(fetches * 60 / fpm);
+  const eta = secs >= 60 ? `~${Math.ceil(secs / 60)} min` : `~${secs}s`;
+  note.innerHTML = `<strong>${combos}</strong> backtests · <strong>${fetches}</strong> data fetch${fetches === 1 ? '' : 'es'} (throttled to ${fpm}/min, ${eta})`;
+}
+
+// ── Persistence ───────────────────────────────────────────────────────────────
+function saveTesterPrefs() {
+  updateAssetCount();
+  clearTimeout(_testerPrefsTimer);
+  _testerPrefsTimer = setTimeout(() => {
+    const payload = {
+      favorites:  [...testerFavorites],
+      strategies: [...testerStrategies],
+      timeframes: [...testerTimeframes],
+      credit:   parseFloat(document.getElementById('tCredit').value) || 100,
+      leverage: parseInt(document.getElementById('tLeverage').value) || 5,
+    };
+    fetch('/api/tester/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).catch(() => {});
+  }, 600);
+}
+
+// ── Run ───────────────────────────────────────────────────────────────────────
+async function runTester() {
+  if (!testerFavorites.size)  { showToast('Select at least one asset', 'error'); return; }
+  if (!testerStrategies.size) { showToast('Select at least one strategy', 'error'); return; }
+  if (!testerTimeframes.size) { showToast('Select at least one timeframe', 'error'); return; }
+  const payload = {
+    symbols:    [...testerFavorites],
+    strategies: [...testerStrategies],
+    timeframes: [...testerTimeframes],
+    credit:   parseFloat(document.getElementById('tCredit').value) || 100,
+    leverage: parseInt(document.getElementById('tLeverage').value) || 5,
+  };
+  try {
+    const res  = await fetch('/api/tester/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (!res.ok) { showToast('Error: ' + (data.error || 'run failed'), 'error'); return; }
+    testerJobId = data.job_id;
+    document.getElementById('tResults').innerHTML = '';
+    _setTesterRunning(true);
+    pollTester();
+  } catch (e) { showToast('Network error: ' + e, 'error'); }
+}
+
+function _setTesterRunning(running) {
+  document.getElementById('tRunBtn').style.display    = running ? 'none' : '';
+  document.getElementById('tCancelBtn').style.display = running ? '' : 'none';
+  if (running) document.getElementById('tProgressWrap').style.display = '';
+}
+
+async function cancelTester() {
+  if (!testerJobId) return;
+  try { await fetch(`/api/tester/run/${testerJobId}/cancel`, { method: 'POST' }); } catch (_) {}
+  showToast('Cancelling…', 'info');
+}
+
+async function pollTester() {
+  if (!testerJobId) return;
+  try {
+    const res = await fetch(`/api/tester/run/${testerJobId}`);
+    if (!res.ok) { stopTesterPolling(); _setTesterRunning(false); return; }
+    const job = await res.json();
+    renderTesterProgress(job);
+    renderTesterResults(job);
+    if (['done', 'cancelled', 'error'].includes(job.status)) {
+      stopTesterPolling();
+      _setTesterRunning(false);
+      if (job.status === 'done')           showToast(`Backtests complete (${job.total})`, 'success');
+      else if (job.status === 'cancelled') showToast('Backtests cancelled', 'info');
+      else                                 showToast('Run error: ' + (job.error || 'unknown'), 'error');
+    } else {
+      testerPollTimer = setTimeout(pollTester, 1000);
+    }
+  } catch (e) {
+    testerPollTimer = setTimeout(pollTester, 1500);
+  }
+}
+
+function stopTesterPolling() {
+  clearTimeout(testerPollTimer);
+  testerPollTimer = null;
+}
+
+function renderTesterProgress(job) {
+  const pct = job.total ? Math.round(job.completed / job.total * 100) : 0;
+  document.getElementById('tProgressWrap').style.display = '';
+  const fill = document.getElementById('tProgressFill');
+  fill.style.width = pct + '%';
+  fill.style.background = job.status === 'error' ? 'var(--red)' : job.status === 'done' ? 'var(--green)' : 'var(--accent)';
+  document.getElementById('tProgressCount').textContent = `${job.completed} / ${job.total}`;
+  const cur = job.status === 'running' ? (job.current || '…')
+            : job.status === 'done' ? '✓ Complete'
+            : job.status === 'cancelled' ? 'Cancelled'
+            : 'Error';
+  document.getElementById('tProgressCurrent').textContent = cur;
+}
+
+function renderTesterResults(job) {
+  const wrap = document.getElementById('tResults');
+  const results = job.results || [];
+  if (!results.length) { wrap.innerHTML = ''; return; }
+
+  const tfOrder = (testerConfig.available_timeframes || []).map(t => t.value);
+  const tfLabel = {};
+  (testerConfig.available_timeframes || []).forEach(t => { tfLabel[t.value] = t.label; });
+
+  const groups = {};
+  results.forEach(r => { (groups[r.timeframe] = groups[r.timeframe] || []).push(r); });
+  const tfs = Object.keys(groups).sort((a, b) => {
+    const ia = tfOrder.indexOf(a), ib = tfOrder.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  });
+  const medals = ['🥇', '🥈', '🥉'];
+
+  wrap.innerHTML = tfs.map(tf => {
+    const rows = groups[tf].slice().sort((a, b) => {
+      if (a.error && !b.error) return 1;
+      if (!a.error && b.error) return -1;
+      return b.total_pnl - a.total_pnl;
+    });
+    const okCount = rows.filter(r => !r.error).length;
+    let rank = 0;
+    const body = rows.map(r => {
+      if (r.error) {
+        return `<tr><td class="rank">–</td><td style="font-weight:700">${escHtml(r.symbol)}</td>
+          <td>${escHtml(r.strategy_label || r.strategy)}</td>
+          <td class="err-cell" colspan="5">${escHtml(r.error)}</td></tr>`;
+      }
+      rank++;
+      const medal  = rank <= 3 ? `<span class="medal">${medals[rank - 1]}</span>` : rank;
+      const pnlCls = r.total_pnl > 0 ? 'pnl-pos' : r.total_pnl < 0 ? 'pnl-neg' : '';
+      const pnlStr = (r.total_pnl >= 0 ? '+' : '') + '$' + r.total_pnl.toFixed(2);
+      const wrColor = r.win_rate >= 60 ? 'var(--green)' : r.win_rate >= 45 ? 'var(--yellow)' : 'var(--red)';
+      const prof = r.profitable === true ? '<span style="color:var(--green)">✓</span>'
+                 : r.profitable === false ? '<span style="color:var(--red)">✗</span>'
+                 : '<span style="color:var(--muted)">—</span>';
+      return `<tr class="${rank === 1 ? 'best' : ''}">
+        <td class="rank">${medal}</td>
+        <td style="font-weight:700">${escHtml(r.symbol)}</td>
+        <td>${escHtml(r.strategy_label || r.strategy)}</td>
+        <td class="${pnlCls}">${pnlStr}</td>
+        <td style="color:${wrColor};font-weight:700">${r.win_rate.toFixed(1)}%</td>
+        <td>${r.trade_count}</td>
+        <td>${r.candle_count}</td>
+        <td>${prof}</td>
+      </tr>`;
+    }).join('');
+    return `<div class="tf-result">
+      <div class="tf-result-head">
+        <span class="tf-name">${escHtml(tfLabel[tf] || fmtTF(tf))}</span>
+        <span class="tf-sub">${okCount} of ${rows.length} combos · sorted by net P&amp;L</span>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="result-table">
+          <thead><tr><th>#</th><th>Asset</th><th>Strategy</th><th>Net P&amp;L</th><th>Win Rate</th><th>Trades</th><th>Candles</th><th>Profit?</th></tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════ OPTIMIZER TAB ═══════════════════
+let optimizerConfig = {};
+let _optimizerConfigLoaded = false;
+let optimizerJobId = null;
+let optimizerPollTimer = null;
+let _optimizerPrefsTimer = null;
+
+async function initOptimizerTab() {
+  if (!marginMarkets.length) { try { await loadMarginMarkets(); } catch (_) {} }
+  if (!_optimizerConfigLoaded) {
+    try {
+      const res = await fetch('/api/optimizer/config');
+      optimizerConfig = await res.json();
+      _optimizerConfigLoaded = true;
+    } catch (_) { return; }
+  }
+  populateOptimizerControls();
+  onOptimizerStrategyChange();
+  updateOptimizerNote();
+}
+
+function populateOptimizerControls() {
+  // Symbol select from margin markets.
+  const symSel = document.getElementById('oSymbol');
+  const savedSym = (optimizerConfig.symbol || '').toLowerCase();
+  symSel.innerHTML = marginMarkets.map(m => {
+    const sym = m.symbol.toLowerCase();
+    return `<option value="${sym}" ${sym === savedSym ? 'selected' : ''}>${escHtml(m.symbol)}</option>`;
+  }).join('') || '<option value="">No markets available</option>';
+
+  // Strategy select.
+  const stratSel = document.getElementById('oStrategy');
+  stratSel.innerHTML = (optimizerConfig.available_strategies || []).map(s =>
+    `<option value="${s.value}" ${s.value === optimizerConfig.strategy ? 'selected' : ''}>${escHtml(s.label)}</option>`
+  ).join('');
+
+  // Timeframe select.
+  const tfSel = document.getElementById('oTimeframe');
+  tfSel.innerHTML = (optimizerConfig.available_timeframes || []).map(t =>
+    `<option value="${t.value}" ${t.value === optimizerConfig.timeframe ? 'selected' : ''}>${escHtml(t.label)}</option>`
+  ).join('');
+
+  if (optimizerConfig.candles  != null) document.getElementById('oCandles').value  = optimizerConfig.candles;
+  if (optimizerConfig.credit   != null) document.getElementById('oCredit').value   = optimizerConfig.credit;
+  if (optimizerConfig.leverage != null) document.getElementById('oLeverage').value = optimizerConfig.leverage;
+}
+
+function _optimizerStrategySpec() {
+  const v = document.getElementById('oStrategy').value;
+  return (optimizerConfig.available_strategies || []).find(s => s.value === v);
+}
+
+function onOptimizerStrategyChange() {
+  const spec = _optimizerStrategySpec();
+  const section = document.getElementById('oParamSection');
+  const grid = document.getElementById('oParamSpace');
+  if (!spec || !spec.params) { section.style.display = 'none'; saveOptimizerPrefs(); return; }
+  grid.innerHTML = spec.params.map(p => `
+    <div class="opt-param">
+      <span class="pname">${escHtml(p.name)}</span>
+      <span class="prange">${p.low}–${p.high} <span style="color:var(--border)">·</span> def ${p.default}</span>
+    </div>`).join('');
+  section.style.display = '';
+  updateOptimizerNote();
+  saveOptimizerPrefs();
+}
+
+function updateOptimizerNote() {
+  const note = document.getElementById('oRunNote');
+  if (!note) return;
+  const spec = _optimizerStrategySpec();
+  const n = spec && spec.params ? spec.params.length : 0;
+  if (!n) { note.textContent = ''; return; }
+  note.innerHTML = `Searching <strong>${n}</strong> inputs via Differential Evolution · one data fetch, then pure-CPU backtests.`;
+}
+
+function saveOptimizerPrefs() {
+  clearTimeout(_optimizerPrefsTimer);
+  _optimizerPrefsTimer = setTimeout(() => {
+    fetch('/api/optimizer/prefs', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(_optimizerPayload()),
+    }).catch(() => {});
+  }, 600);
+}
+
+function _optimizerPayload() {
+  return {
+    symbol:    document.getElementById('oSymbol').value || '',
+    strategy:  document.getElementById('oStrategy').value || '',
+    timeframe: document.getElementById('oTimeframe').value || '240',
+    candles:   parseInt(document.getElementById('oCandles').value) || 1000,
+    credit:    parseFloat(document.getElementById('oCredit').value) || 100,
+    leverage:  parseInt(document.getElementById('oLeverage').value) || 5,
+  };
+}
+
+async function runOptimizer() {
+  const payload = _optimizerPayload();
+  if (!payload.symbol)   { showToast('Select a symbol', 'error'); return; }
+  if (!payload.strategy) { showToast('Select a strategy', 'error'); return; }
+  try {
+    const res  = await fetch('/api/optimizer/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (!res.ok) { showToast('Error: ' + (data.error || 'run failed'), 'error'); return; }
+    optimizerJobId = data.job_id;
+    document.getElementById('oResults').innerHTML = '';
+    _setOptimizerRunning(true);
+    pollOptimizer();
+  } catch (e) { showToast('Network error: ' + e, 'error'); }
+}
+
+function _setOptimizerRunning(running) {
+  document.getElementById('oRunBtn').style.display    = running ? 'none' : '';
+  document.getElementById('oCancelBtn').style.display = running ? '' : 'none';
+  if (running) document.getElementById('oProgressWrap').style.display = '';
+}
+
+async function cancelOptimizer() {
+  if (!optimizerJobId) return;
+  try { await fetch(`/api/optimizer/run/${optimizerJobId}/cancel`, { method: 'POST' }); } catch (_) {}
+  showToast('Cancelling…', 'info');
+}
+
+async function pollOptimizer() {
+  if (!optimizerJobId) return;
+  try {
+    const res = await fetch(`/api/optimizer/run/${optimizerJobId}`);
+    if (!res.ok) { stopOptimizerPolling(); _setOptimizerRunning(false); return; }
+    const job = await res.json();
+    renderOptimizerProgress(job);
+    renderOptimizerResults(job);
+    if (['done', 'cancelled', 'error'].includes(job.status)) {
+      stopOptimizerPolling();
+      _setOptimizerRunning(false);
+      if (job.status === 'done')           showToast('Optimization complete', 'success');
+      else if (job.status === 'cancelled') showToast('Optimization cancelled', 'info');
+      else                                 showToast('Run error: ' + (job.error || 'unknown'), 'error');
+    } else {
+      optimizerPollTimer = setTimeout(pollOptimizer, 1000);
+    }
+  } catch (e) {
+    optimizerPollTimer = setTimeout(pollOptimizer, 1500);
+  }
+}
+
+function stopOptimizerPolling() {
+  clearTimeout(optimizerPollTimer);
+  optimizerPollTimer = null;
+}
+
+function renderOptimizerProgress(job) {
+  const wrap = document.getElementById('oProgressWrap');
+  wrap.style.display = '';
+  const pct = job.maxiter ? Math.min(100, Math.round(job.iteration / job.maxiter * 100)) : 0;
+  const fill = document.getElementById('oProgressFill');
+  fill.style.width = (job.status === 'done' ? 100 : pct) + '%';
+  fill.style.background = job.status === 'error' ? 'var(--red)' : job.status === 'done' ? 'var(--green)' : 'var(--accent)';
+  const best = job.best_pnl != null ? ` · best $${job.best_pnl.toFixed(2)}` : '';
+  const cur = job.status === 'running' ? `Fetching & searching…${best}`
+            : job.status === 'pending' ? 'Starting…'
+            : job.status === 'done' ? '✓ Complete'
+            : job.status === 'cancelled' ? 'Cancelled'
+            : 'Error';
+  document.getElementById('oProgressCurrent').textContent = cur;
+  document.getElementById('oProgressCount').textContent = `${job.evaluations} backtests · gen ${job.iteration}/${job.maxiter}`;
+}
+
+function renderOptimizerResults(job) {
+  const wrap = document.getElementById('oResults');
+  if (job.status === 'error') {
+    wrap.innerHTML = `<div class="tester-section"><div class="err-cell" style="color:var(--yellow)">${escHtml(job.error || 'error')}</div></div>`;
+    return;
+  }
+  if (!job.best_summary || !job.params || !job.params.length) { wrap.innerHTML = ''; return; }
+
+  const s = job.best_summary;
+  const base = job.baseline || {};
+  const bestPnl = job.best_pnl != null ? job.best_pnl : (s.total_pnl || 0);
+  const basePnl = base.total_pnl != null ? base.total_pnl : 0;
+  const delta = bestPnl - basePnl;
+  const pnlCls = bestPnl > 0 ? 'pnl-pos' : bestPnl < 0 ? 'pnl-neg' : '';
+  const deltaStr = (delta >= 0 ? '+' : '') + '$' + delta.toFixed(2);
+  const wrColor = (s.win_rate || 0) >= 60 ? 'var(--green)' : (s.win_rate || 0) >= 45 ? 'var(--yellow)' : 'var(--red)';
+
+  const paramRows = job.params.map(p => {
+    const changed = String(p.value) !== String(p.default);
+    return `<tr class="${changed ? 'changed' : ''}">
+      <td>${escHtml(p.name)}</td>
+      <td class="tuned-val">${p.value}</td>
+      <td style="color:var(--muted)">${p.default}</td>
+      <td style="color:var(--muted)">${p.low}–${p.high}</td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="tester-section">
+      <h3>Best Inputs Found</h3>
+      <div class="hint">${escHtml(job.symbol)} · ${escHtml(job.strategy_label || job.strategy)} · ${escHtml(fmtTF(job.timeframe))} · ${job.candle_count} candles</div>
+      <div class="opt-summary">
+        <div class="opt-stat"><div class="lbl">Optimized P&amp;L</div><div class="val ${pnlCls}">${bestPnl >= 0 ? '+' : ''}$${bestPnl.toFixed(2)}</div></div>
+        <div class="opt-stat"><div class="lbl">vs. Defaults</div><div class="val" style="color:${delta >= 0 ? 'var(--green)' : 'var(--red)'}">${deltaStr}</div></div>
+        <div class="opt-stat"><div class="lbl">Win Rate</div><div class="val" style="color:${wrColor}">${(s.win_rate || 0).toFixed(1)}%</div></div>
+        <div class="opt-stat"><div class="lbl">Trades</div><div class="val">${s.trade_count || 0}</div></div>
+        <div class="opt-stat"><div class="lbl">Backtests Run</div><div class="val">${job.evaluations}</div></div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="opt-result-table">
+          <thead><tr><th>Input</th><th>Tuned</th><th>Default</th><th>Range</th></tr></thead>
+          <tbody>${paramRows}</tbody>
+        </table>
+      </div>
+      <div class="hint" style="margin-top:10px">Baseline (default inputs): net P&amp;L $${basePnl.toFixed(2)} · ${(base.win_rate || 0).toFixed(1)}% win · ${base.trade_count || 0} trades. Highlighted rows changed from the default.</div>
+    </div>`;
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────

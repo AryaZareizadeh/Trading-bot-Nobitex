@@ -1,11 +1,11 @@
 [
   {
-    "id": "bd8d4549",
-    "name": "bd8d4549",
+    "id": "fec1cdb8",
+    "name": "",
     "symbol": "zecusdt",
-    "strategy_name": "AdvRSI",
-    "timeframe": "240",
-    "credit": 10.0,
+    "strategy_name": "ExtremeReversal",
+    "timeframe": "5",
+    "credit": 10.7,
     "leverage": 2,
     "mode": "real"
   }

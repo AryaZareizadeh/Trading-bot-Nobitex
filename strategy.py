@@ -35,16 +35,27 @@ class AdvRsiParams:
 
 
 @dataclass
-class StochRsiExtremeParams(AdvRsiParams):
-    """AdvRSI indicator inputs plus the extreme-zone entry thresholds.
+class StochRsiExtremeParams:
+    """ExtremeReversal's own indicator inputs plus the extreme-zone entry thresholds.
 
-    Inherits the exact indicator inputs of AdvRsiParams (so the same StochRSI and
-    RSI series are reused), and adds the deep-extreme entry gates.
+    Defines its own StochRSI and RSI parameters (rather than sharing AdvRSI's), so
+    ExtremeReversal can be tuned independently while the shared Indicators provider
+    still reuses any series whose parameters happen to match another strategy's.
     """
-    long_kd_max: float = 8     # StochRSI K and D must both be below this for a long
-    long_rsi_max: float = 25   # fast RSI must be below this for a long
-    short_kd_min: float = 92   # StochRSI K and D must both be above this for a short
-    short_rsi_min: float = 75  # fast RSI must be above this for a short
+    # StochRSI / RSI indicator inputs (own copy, independent of AdvRsiParams)
+    rsi_length: int = 40
+    stoch_length: int = 36
+    k_smooth: int = 7
+    d_smooth: int = 5
+    rsi_fast_length: int = 9
+    rsi_ma_length: int = 7
+    oversold: int = 22
+    overbought: int = 78
+    # Deep-extreme entry gates
+    long_kd_max: float = 7     # StochRSI K and D must both be below this for a long
+    long_rsi_max: float = 30   # fast RSI must be below this for a long
+    short_kd_min: float = 93   # StochRSI K and D must both be above this for a short
+    short_rsi_min: float = 70  # fast RSI must be above this for a short
 
 
 @dataclass

@@ -43,19 +43,19 @@ class StochRsiExtremeParams:
     still reuses any series whose parameters happen to match another strategy's.
     """
     # StochRSI / RSI indicator inputs (own copy, independent of AdvRsiParams)
-    rsi_length: int = 40
-    stoch_length: int = 36
-    k_smooth: int = 7
-    d_smooth: int = 5
-    rsi_fast_length: int = 9
-    rsi_ma_length: int = 7
-    oversold: int = 22
-    overbought: int = 78
+    rsi_length: int = 56
+    stoch_length: int = 37
+    k_smooth: int = 8
+    d_smooth: int = 4
+    rsi_fast_length: int = 20
+    rsi_ma_length: int = 2
+    oversold: int = 24
+    overbought: int = 76
     # Deep-extreme entry gates
-    long_kd_max: float = 7     # StochRSI K and D must both be below this for a long
-    long_rsi_max: float = 30   # fast RSI must be below this for a long
-    short_kd_min: float = 93   # StochRSI K and D must both be above this for a short
-    short_rsi_min: float = 70  # fast RSI must be above this for a short
+    long_kd_max: float = 24     # StochRSI K and D must both be below this for a long
+    long_rsi_max: float = 43   # fast RSI must be below this for a long
+    short_kd_min: float = 79   # StochRSI K and D must both be above this for a short
+    short_rsi_min: float = 82  # fast RSI must be above this for a short
 
 
 @dataclass
@@ -70,6 +70,13 @@ class TrendMomentumParams:
     macd_signal: int = 9
     oversold: int = 22
     overbought: int = 78
+
+
+PARAMS_CLASS: dict[str, type] = {
+    "AdvRSI": AdvRsiParams,
+    "ExtremeReversal": StochRsiExtremeParams,
+    "TrendMomentum": TrendMomentumParams,
+}
 
 
 class Strategy(ABC):

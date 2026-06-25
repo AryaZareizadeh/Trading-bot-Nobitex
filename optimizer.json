@@ -1,8 +1,45 @@
 {
-  "symbol": "btcusdt",
+  "symbol": "zecusdt",
   "strategy": "AdvRSI",
   "timeframe": "240",
   "candles": 500,
-  "credit": 100.0,
-  "leverage": 5
+  "credit": 50.0,
+  "leverage": 2,
+  "cores": 0,
+  "maxiter": 40,
+  "objective": "profit",
+  "custom_bounds": {
+    "rsi_length": [
+      2,
+      100
+    ],
+    "stoch_length": [
+      2,
+      100
+    ],
+    "k_smooth": [
+      1,
+      30
+    ],
+    "d_smooth": [
+      1,
+      30
+    ],
+    "rsi_fast_length": [
+      2,
+      50
+    ],
+    "rsi_ma_length": [
+      2,
+      50
+    ],
+    "oversold": [
+      1,
+      50
+    ],
+    "overbought": [
+      50,
+      99
+    ]
+  }
 }

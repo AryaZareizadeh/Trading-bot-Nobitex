@@ -1,12 +1,50 @@
 [
   {
-    "id": "fec1cdb8",
-    "name": "",
+    "id": "34dcceea",
+    "name": "ZECUSDT ExtremeReversal (Optimized)",
     "symbol": "zecusdt",
     "strategy_name": "ExtremeReversal",
     "timeframe": "5",
-    "credit": 10.7,
+    "credit": 10.0,
     "leverage": 2,
-    "mode": "real"
+    "mode": "real",
+    "custom_params": {
+      "rsi_length": 42,
+      "stoch_length": 62,
+      "k_smooth": 26,
+      "d_smooth": 3,
+      "rsi_fast_length": 15,
+      "rsi_ma_length": 2,
+      "oversold": 7,
+      "overbought": 85,
+      "long_kd_max": 15,
+      "long_rsi_max": 46,
+      "short_kd_min": 50,
+      "short_rsi_min": 44
+    }
+  },
+  {
+    "id": "6829384a",
+    "name": "ZECUSDT ExtremeReversal (Optimized) (copy)",
+    "symbol": "zecusdt",
+    "strategy_name": "ExtremeReversal",
+    "timeframe": "5",
+    "credit": 10.0,
+    "leverage": 2,
+    "mode": "simulation",
+    "custom_params": {
+      "rsi_length": 42,
+      "stoch_length": 62,
+      "k_smooth": 26,
+      "d_smooth": 3,
+      "rsi_fast_length": 15,
+      "rsi_ma_length": 2,
+      "oversold": 7,
+      "overbought": 85,
+      "long_kd_max": 15,
+      "long_rsi_max": 46,
+      "short_kd_min": 50,
+      "short_rsi_min": 44
+    }
   }
 ]

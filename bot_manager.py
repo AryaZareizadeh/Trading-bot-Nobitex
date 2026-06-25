@@ -21,6 +21,7 @@ class BotManager:
                 "credit": bot.cfg.credit,
                 "leverage": bot.cfg.leverage,
                 "mode": bot.cfg.mode,
+                "custom_params": bot.cfg.custom_params,
             }
             for bot in self._bots.values()
         ]

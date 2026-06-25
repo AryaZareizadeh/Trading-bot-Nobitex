@@ -85,6 +85,7 @@ class CreateBotRequest(BaseModel):
     credit: float = Field(gt=0)
     leverage: int = Field(default=5, ge=1, le=100)
     mode: str = "simulation"
+    custom_params: Optional[dict] = None
 
 
 class PatchBotRequest(BaseModel):
@@ -128,6 +129,10 @@ class OptimizerPrefsRequest(BaseModel):
     candles: int = 1000
     credit: float = 100.0
     leverage: int = Field(default=5, ge=1, le=100)
+    cores: int = Field(default=0, ge=0)   # 0 = Auto
+    maxiter: int = Field(default=30, ge=5, le=500)
+    objective: str = "profit"             # profit | winrate | balanced
+    custom_bounds: Optional[dict] = None  # param_name -> [low, high]
 
 
 class OptimizerRunRequest(BaseModel):
@@ -137,6 +142,10 @@ class OptimizerRunRequest(BaseModel):
     candles: int = Field(default=1000, ge=50)
     credit: float = Field(default=100.0, gt=0)
     leverage: int = Field(default=5, ge=1, le=100)
+    cores: int = Field(default=0, ge=0)   # 0 = Auto
+    maxiter: int = Field(default=30, ge=5, le=500)
+    objective: str = "profit"             # profit | winrate | balanced
+    custom_bounds: Optional[dict] = None  # param_name -> [low, high]
 
 
 # ── Margin Markets ─────────────────────────────────────────────────────────────
@@ -156,7 +165,8 @@ async def get_margin_markets():
                 "feeRate": info.get("positionFeeRate", "0.001"),
             }
             for sym, info in markets_raw.items()
-            if info.get("buyEnabled") or info.get("sellEnabled")
+            if (info.get("buyEnabled") or info.get("sellEnabled"))
+            and (not sym.upper().endswith("IRT") or sym.upper() == "USDTIRT")
         ]
         result.sort(key=lambda x: x["symbol"])
         return result
@@ -346,7 +356,8 @@ async def optimizer_config():
 @app.post("/api/optimizer/prefs")
 async def optimizer_save_prefs(req: OptimizerPrefsRequest):
     optimizer_manager.save_prefs(
-        req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage
+        req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
+        req.cores, req.maxiter, req.objective, req.custom_bounds,
     )
     return {"ok": True}
 
@@ -359,12 +370,24 @@ async def optimizer_run(req: OptimizerRunRequest):
         return JSONResponse(status_code=400, content={"error": "Unknown strategy."})
     if not req.symbol.strip():
         return JSONResponse(status_code=400, content={"error": "Select a symbol."})
+    if req.custom_bounds:
+        for name, val in req.custom_bounds.items():
+            if not isinstance(val, (list, tuple)) or len(val) != 2:
+                return JSONResponse(status_code=400, content={"error": f"Bad bounds for '{name}': expected [min, max]."})
+            try:
+                lo, hi = int(val[0]), int(val[1])
+            except (TypeError, ValueError):
+                return JSONResponse(status_code=400, content={"error": f"Bad bounds for '{name}': values must be integers."})
+            if lo >= hi:
+                return JSONResponse(status_code=400, content={"error": f"Parameter '{name}': min ({lo}) must be less than max ({hi})."})
     # Persist the selection so the tab reopens where the user left off.
     optimizer_manager.save_prefs(
-        req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage
+        req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
+        req.cores, req.maxiter, req.objective, req.custom_bounds,
     )
     job = optimizer_manager.start_job(
-        req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage
+        req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
+        req.cores, req.maxiter, req.objective, req.custom_bounds,
     )
     return {"job_id": job.id}
 
@@ -417,6 +440,7 @@ async def create_bot(req: CreateBotRequest):
         leverage=req.leverage,
         mode=req.mode,
         name=req.name,
+        custom_params=req.custom_params or None,
     )
     bot = bot_manager.create_bot(cfg)
     return bot.to_state_dict()
@@ -449,6 +473,7 @@ async def edit_bot(bot_id: str, req: PatchBotRequest):
         leverage=req.leverage if req.leverage is not None else bot.cfg.leverage,
         mode=new_mode,
         name=req.name if req.name is not None else bot.cfg.name,
+        custom_params=bot.cfg.custom_params,  # preserve existing optimized inputs
     )
     bot.reconfigure(new_cfg)
     bot_manager._save()
@@ -472,6 +497,7 @@ async def duplicate_bot(bot_id: str):
         leverage=src.cfg.leverage,
         mode=src.cfg.mode,
         name=f"{src.cfg.name or src.id} (copy)",
+        custom_params=src.cfg.custom_params,
     )
     bot = bot_manager.create_bot(cfg)
     return bot.to_state_dict()

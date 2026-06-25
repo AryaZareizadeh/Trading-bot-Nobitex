@@ -11,7 +11,8 @@ import pandas as pd
 from config import Config
 from data import DataFetcher
 from indicators import Indicators
-from strategy import AdvRSICombinedStrategy, ExtremeReversalStrategy, TrendFilteredMomentumStrategy
+from strategy import (AdvRSICombinedStrategy, ExtremeReversalStrategy,
+                      TrendFilteredMomentumStrategy, PARAMS_CLASS)
 
 try:
     from dotenv import load_dotenv
@@ -60,6 +61,7 @@ class BotConfig:
     mode: str = "simulation"
     name: str = ""
     id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    custom_params: Optional[dict] = None   # optimized indicator inputs to use instead of defaults
 
 
 class Bot:
@@ -138,6 +140,15 @@ class Bot:
     @property
     def id(self) -> str:
         return self.cfg.id
+
+    def _build_custom_params(self):
+        """Build the strategy's params dataclass from cfg.custom_params, or None to use defaults."""
+        if not self.cfg.custom_params or self.cfg.strategy_name not in PARAMS_CLASS:
+            return None
+        try:
+            return PARAMS_CLASS[self.cfg.strategy_name](**self.cfg.custom_params)
+        except Exception:
+            return None
 
     # ── Real-trading helpers ───────────────────────────────────────────────────
 
@@ -450,7 +461,8 @@ class Bot:
         config = self._make_config()
         indicators = Indicators(self.df)
         strategy_cls = STRATEGY_MAP[self.cfg.strategy_name]
-        strategy = strategy_cls(config)
+        custom_p = self._build_custom_params()
+        strategy = strategy_cls(config, custom_p) if custom_p is not None else strategy_cls(config)
 
         live_start_idx = 0
         if self._live_from_ts is not None:
@@ -559,7 +571,8 @@ class Bot:
 
         indicators = Indicators(df)
         strategy_cls = STRATEGY_MAP[self.cfg.strategy_name]
-        strategy = strategy_cls(config)
+        custom_p = self._build_custom_params()
+        strategy = strategy_cls(config, custom_p) if custom_p is not None else strategy_cls(config)
         trades_df = strategy.run(df, indicators, live_start_idx=0)
 
         candle_count = len(df)

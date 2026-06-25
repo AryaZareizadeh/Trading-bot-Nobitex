@@ -72,6 +72,13 @@ class TrendMomentumParams:
     overbought: int = 78
 
 
+PARAMS_CLASS: dict[str, type] = {
+    "AdvRSI": AdvRsiParams,
+    "ExtremeReversal": StochRsiExtremeParams,
+    "TrendMomentum": TrendMomentumParams,
+}
+
+
 class Strategy(ABC):
     #: Default parameter dataclass for this strategy; overridden per subclass.
     params_class: type | None = None

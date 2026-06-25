@@ -346,7 +346,7 @@
   .opt-form .form-group { margin: 0; }
   .opt-form select, .opt-form input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; color: var(--text); font-family: inherit; font-size: 12px; outline: none; }
   .opt-form select:focus, .opt-form input:focus { border-color: var(--accent); }
-  .opt-param-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px 14px; }
+  .opt-param-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 14px; }
   .opt-param { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 6px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; font-size: 11px; }
   .opt-param .pname { color: var(--text); font-weight: 600; }
   .opt-param .prange { color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -366,6 +366,37 @@
   ::-webkit-scrollbar-track { background: var(--surface); }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
   ::-webkit-scrollbar-thumb:hover { background: #3a4a60; }
+
+  /* ── Clock & candle timer ── */
+  .clock-widget { display: flex; flex-direction: column; align-items: flex-end; margin-right: 8px; }
+  .clock-time { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); letter-spacing: 1px; }
+  .clock-label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .candle-timer { font-size: 10px; color: var(--accent); font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .candle-timer-label { color: var(--muted); }
+
+  /* ── Optimizer range inputs ── */
+  .opt-range-input { width: 56px !important; padding: 4px 6px !important; font-size: 12px !important; text-align: center; }
+  .opt-param-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
+  .opt-param-row .pname { color: var(--text); font-weight: 600; flex: 1; }
+  .opt-param-row .pcontrols { display: flex; align-items: center; gap: 6px; color: var(--muted); white-space: nowrap; }
+  .opt-param-row .pdef { color: var(--muted); font-size: 10px; }
+  .opt-param-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+
+  /* ── Optimizer objective selector ── */
+  .opt-objective { display: flex; gap: 8px; flex-wrap: wrap; }
+  .opt-obj-option { position: relative; }
+  .opt-obj-option input[type="radio"] { position: absolute; opacity: 0; width: 0; height: 0; }
+  .opt-obj-option label { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 14px; border-radius: 8px; cursor: pointer; border: 1px solid var(--border); background: var(--surface2); font-size: 12px; color: var(--text); transition: border-color .15s, background .15s; }
+  .opt-obj-option label .obj-sub { font-size: 9px; color: var(--muted); text-align: center; max-width: 90px; }
+  .opt-obj-option input:checked + label { border-color: var(--accent); background: #0e1e30; color: var(--accent); }
+  .opt-obj-option input:checked + label .obj-sub { color: var(--accent); opacity: .7; }
+
+  /* ── Optimizer history table ── */
+  .opt-history-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .opt-history-table th { text-align: left; padding: 5px 8px; background: var(--surface2); color: var(--muted); border-bottom: 1px solid var(--border); text-transform: uppercase; font-size: 9px; letter-spacing: .5px; }
+  .opt-history-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  .opt-history-table tr:last-child td { border-bottom: none; }
+  .opt-history-table .best-row td { background: rgba(56,189,248,.06); }
 </style>
 </head>
 <body>
@@ -380,6 +411,10 @@
     </div>
   </div>
   <div class="topbar-right">
+    <div class="clock-widget">
+      <span class="clock-time" id="clockTime">--:--:--</span>
+      <span class="clock-label">local time</span>
+    </div>
     <button class="btn btn-neutral btn-sm" onclick="startAll()" title="Start All Bots">▶ All</button>
     <button class="btn btn-neutral btn-sm" onclick="stopAll()" title="Stop All Bots">■ All</button>
     <button class="btn btn-neutral btn-sm btn-icon" onclick="openSettingsModal()" title="Exchange Settings">⚙</button>
@@ -531,12 +566,38 @@
           <label>CPU cores</label>
           <select id="oCores" onchange="saveOptimizerPrefs()"></select>
         </div>
+        <div class="form-group">
+          <label>Generations</label>
+          <input type="number" id="oMaxiter" value="30" min="5" max="500" step="5" onchange="saveOptimizerPrefs()">
+        </div>
+      </div>
+    </div>
+
+    <div class="tester-section">
+      <h3>Optimization Goal</h3>
+      <div class="hint">Choose what the optimizer should maximize. "Balanced" weights both metrics equally.</div>
+      <div class="opt-objective">
+        <div class="opt-obj-option">
+          <input type="radio" name="oObjective" id="oObjProfit" value="profit" checked onchange="saveOptimizerPrefs()">
+          <label for="oObjProfit">Highest Profit<span class="obj-sub">Maximize net P&amp;L</span></label>
+        </div>
+        <div class="opt-obj-option">
+          <input type="radio" name="oObjective" id="oObjWinrate" value="winrate" onchange="saveOptimizerPrefs()">
+          <label for="oObjWinrate">Highest Win Rate<span class="obj-sub">Maximize % of winning trades</span></label>
+        </div>
+        <div class="opt-obj-option">
+          <input type="radio" name="oObjective" id="oObjBalanced" value="balanced" onchange="saveOptimizerPrefs()">
+          <label for="oObjBalanced">Balanced<span class="obj-sub">Profit % + Win Rate weighted equally</span></label>
+        </div>
       </div>
     </div>
 
     <div class="tester-section" id="oParamSection" style="display:none">
-      <h3>Inputs Being Tuned</h3>
-      <div class="hint">Every input below is searched within its range. Defaults shown for reference.</div>
+      <div class="opt-param-section-header">
+        <h3>Parameter Search Ranges</h3>
+        <button class="btn btn-neutral btn-sm" onclick="resetOptimizerBounds()" title="Reset all bounds to their defaults">↺ Reset to Defaults</button>
+      </div>
+      <div class="hint">Each parameter is searched within its min–max range. Edit the bounds to focus the search. Default value shown for reference.</div>
       <div id="oParamSpace" class="opt-param-grid"></div>
     </div>
 
@@ -557,6 +618,7 @@
     </div>
 
     <div id="oResults"></div>
+    <div id="oChart"></div>
 
   </div>
 </div><!-- /viewOptimizer -->
@@ -785,6 +847,7 @@
   </div>
 </div>
 
+<script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
 <script>
 // ── State ─────────────────────────────────────────────────────────────────────
 let bots = [];
@@ -794,6 +857,35 @@ let editingBotId = null;
 let prevClosedTrades = {};    // bot_id → closed_trade_count
 let prevPositionKeys = {};    // bot_id → Set of entry_time strings for open positions
 let notifPermission = 'default';
+let _pendingOptParams = null; // optimized params to apply when creating a new bot
+
+// ── Clock ─────────────────────────────────────────────────────────────────────
+function updateClock() {
+  const el = document.getElementById('clockTime');
+  if (!el) return;
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2, '0');
+  const m = String(now.getMinutes()).padStart(2, '0');
+  const s = String(now.getSeconds()).padStart(2, '0');
+  el.textContent = `${h}:${m}:${s}`;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Candle timer ──────────────────────────────────────────────────────────────
+const _TF_SECS = {'1':60,'5':300,'15':900,'30':1800,'60':3600,'180':10800,'240':14400,'D':86400};
+function nextCandleStr(tf) {
+  const secs = _TF_SECS[String(tf)];
+  if (!secs) return '';
+  const nowSec = Math.floor(Date.now() / 1000);
+  let rem = secs - (nowSec % secs);
+  if (rem <= 0) rem = secs;
+  const h = Math.floor(rem / 3600);
+  const mn = Math.floor((rem % 3600) / 60);
+  const sc = rem % 60;
+  const pad = n => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(mn)}:${pad(sc)}` : `${pad(mn)}:${pad(sc)}`;
+}
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 function connectWS() {
@@ -948,7 +1040,10 @@ function renderRow(b) {
   <td class="col-trades"><span style="font-weight:600">${b.trade_count}</span><span style="color:var(--muted)"> / ${b.candle_count}</span></td>
   <td class="col-metrics">${metricsHtml}</td>
   <td class="col-equity">${renderSparkline(b.balance_history)}</td>
-  <td class="col-updated" style="color:var(--muted);font-size:11px">${ago}</td>
+  <td class="col-updated" style="font-size:11px">
+    <div style="color:var(--muted)">${ago}</div>
+    <div class="candle-timer"><span class="candle-timer-label">next </span>${nextCandleStr(b.timeframe)}</div>
+  </td>
   <td class="col-actions">
     <div class="row-actions">
       ${startBtn}${stopBtn}
@@ -1174,11 +1269,10 @@ function showToast(msg, type = 'info') {
 setInterval(() => renderGrid(), 10000);
 
 // ── Modals ────────────────────────────────────────────────────────────────────
-function openCreateModal() {
-  populateSymbolSelect('f', 'zecusdt');
-  document.getElementById('createModal').classList.add('open');
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  if (id === 'createModal') _pendingOptParams = null;
 }
-function closeModal(id)     { document.getElementById(id).classList.remove('open'); }
 
 // Close modals on backdrop click
 document.querySelectorAll('.modal-overlay').forEach(el => {
@@ -1187,6 +1281,12 @@ document.querySelectorAll('.modal-overlay').forEach(el => {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
 });
+
+function openCreateModal() {
+  _pendingOptParams = null;   // clear any stale optimizer params
+  populateSymbolSelect('f', 'zecusdt');
+  document.getElementById('createModal').classList.add('open');
+}
 
 // ── Create Bot ────────────────────────────────────────────────────────────────
 async function submitCreate() {
@@ -1200,11 +1300,15 @@ async function submitCreate() {
     leverage:      parseInt(document.getElementById('fLeverage').value) || 5,
     mode:          modeEl ? modeEl.value : 'simulation',
   };
+  if (_pendingOptParams) {
+    payload.custom_params = _pendingOptParams;
+    _pendingOptParams = null;
+  }
   try {
     const res = await fetch('/api/bots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (!res.ok) { showToast('Error: ' + (await res.text()), 'error'); return; }
     closeModal('createModal');
-    showToast('Bot created', 'success');
+    showToast('Bot created' + (payload.custom_params ? ' with optimized inputs' : ''), 'success');
   } catch (e) { showToast('Network error: ' + e, 'error'); }
 }
 
@@ -1911,6 +2015,7 @@ let _optimizerConfigLoaded = false;
 let optimizerJobId = null;
 let optimizerPollTimer = null;
 let _optimizerPrefsTimer = null;
+let _optCharts = []; // lightweight-charts instances; destroyed on each new run
 
 async function initOptimizerTab() {
   if (!marginMarkets.length) { try { await loadMarginMarkets(); } catch (_) {} }
@@ -1950,6 +2055,12 @@ function populateOptimizerControls() {
   if (optimizerConfig.candles  != null) document.getElementById('oCandles').value  = optimizerConfig.candles;
   if (optimizerConfig.credit   != null) document.getElementById('oCredit').value   = optimizerConfig.credit;
   if (optimizerConfig.leverage != null) document.getElementById('oLeverage').value = optimizerConfig.leverage;
+  if (optimizerConfig.maxiter  != null) document.getElementById('oMaxiter').value  = optimizerConfig.maxiter;
+
+  // Restore saved objective
+  const savedObj = optimizerConfig.objective || 'profit';
+  const objEl = document.querySelector(`input[name="oObjective"][value="${savedObj}"]`);
+  if (objEl) objEl.checked = true;
 
   // CPU-cores select: "Auto" (0) plus 1..max_cores. Auto shows what it resolves to.
   const coresSel = document.getElementById('oCores');
@@ -1974,14 +2085,49 @@ function onOptimizerStrategyChange() {
   const section = document.getElementById('oParamSection');
   const grid = document.getElementById('oParamSpace');
   if (!spec || !spec.params) { section.style.display = 'none'; saveOptimizerPrefs(); return; }
-  grid.innerHTML = spec.params.map(p => `
-    <div class="opt-param">
+  const savedBounds = optimizerConfig.custom_bounds || {};
+  grid.innerHTML = spec.params.map(p => {
+    const saved = savedBounds[p.name];
+    const lo = (saved && saved[0] != null) ? saved[0] : p.low;
+    const hi = (saved && saved[1] != null) ? saved[1] : p.high;
+    return `<div class="opt-param-row">
       <span class="pname">${escHtml(p.name)}</span>
-      <span class="prange">${p.low}–${p.high} <span style="color:var(--border)">·</span> def ${p.default}</span>
-    </div>`).join('');
+      <span class="pcontrols">
+        <input type="number" class="opt-range-input" id="op-lo-${p.name}" value="${lo}" min="1" max="9999" onchange="saveOptimizerPrefs()">
+        <span>–</span>
+        <input type="number" class="opt-range-input" id="op-hi-${p.name}" value="${hi}" min="1" max="9999" onchange="saveOptimizerPrefs()">
+        <span class="pdef">· def ${p.default}</span>
+      </span>
+    </div>`;
+  }).join('');
   section.style.display = '';
   updateOptimizerNote();
   saveOptimizerPrefs();
+}
+
+function _getCustomBounds() {
+  const spec = _optimizerStrategySpec();
+  if (!spec || !spec.params) return null;
+  const bounds = {};
+  spec.params.forEach(p => {
+    const loRaw = parseInt(document.getElementById(`op-lo-${p.name}`)?.value);
+    const hiRaw = parseInt(document.getElementById(`op-hi-${p.name}`)?.value);
+    bounds[p.name] = [Number.isNaN(loRaw) ? p.low : loRaw, Number.isNaN(hiRaw) ? p.high : hiRaw];
+  });
+  return bounds;
+}
+
+function resetOptimizerBounds() {
+  const spec = _optimizerStrategySpec();
+  if (!spec || !spec.params) return;
+  spec.params.forEach(p => {
+    const loEl = document.getElementById(`op-lo-${p.name}`);
+    const hiEl = document.getElementById(`op-hi-${p.name}`);
+    if (loEl) loEl.value = p.low;
+    if (hiEl) hiEl.value = p.high;
+  });
+  saveOptimizerPrefs();
+  showToast('Bounds reset to defaults', 'info');
 }
 
 function updateOptimizerNote() {
@@ -2005,13 +2151,16 @@ function saveOptimizerPrefs() {
 
 function _optimizerPayload() {
   return {
-    symbol:    document.getElementById('oSymbol').value || '',
-    strategy:  document.getElementById('oStrategy').value || '',
-    timeframe: document.getElementById('oTimeframe').value || '240',
-    candles:   parseInt(document.getElementById('oCandles').value) || 1000,
-    credit:    parseFloat(document.getElementById('oCredit').value) || 100,
-    leverage:  parseInt(document.getElementById('oLeverage').value) || 5,
-    cores:     parseInt(document.getElementById('oCores').value) || 0,
+    symbol:        document.getElementById('oSymbol').value || '',
+    strategy:      document.getElementById('oStrategy').value || '',
+    timeframe:     document.getElementById('oTimeframe').value || '240',
+    candles:       parseInt(document.getElementById('oCandles').value) || 1000,
+    credit:        parseFloat(document.getElementById('oCredit').value) || 100,
+    leverage:      parseInt(document.getElementById('oLeverage').value) || 5,
+    cores:         parseInt(document.getElementById('oCores').value) || 0,
+    maxiter:       parseInt(document.getElementById('oMaxiter')?.value) || 30,
+    objective:     document.querySelector('input[name="oObjective"]:checked')?.value || 'profit',
+    custom_bounds: _getCustomBounds(),
   };
 }
 
@@ -2019,12 +2168,25 @@ async function runOptimizer() {
   const payload = _optimizerPayload();
   if (!payload.symbol)   { showToast('Select a symbol', 'error'); return; }
   if (!payload.strategy) { showToast('Select a strategy', 'error'); return; }
+  if (payload.custom_bounds) {
+    for (const [name, [lo, hi]] of Object.entries(payload.custom_bounds)) {
+      if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo >= hi) {
+        showToast(`"${name}": min (${lo}) must be less than max (${hi})`, 'error');
+        return;
+      }
+    }
+  }
   try {
     const res  = await fetch('/api/optimizer/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const data = await res.json();
-    if (!res.ok) { showToast('Error: ' + (data.error || 'run failed'), 'error'); return; }
+    if (!res.ok) {
+      const msg = data.error || (Array.isArray(data.detail) ? data.detail.map(d => d.msg).join('; ') : data.detail) || 'run failed';
+      showToast('Error: ' + msg, 'error');
+      return;
+    }
     optimizerJobId = data.job_id;
     document.getElementById('oResults').innerHTML = '';
+    destroyOptCharts();
     _setOptimizerRunning(true);
     pollOptimizer();
   } catch (e) { showToast('Network error: ' + e, 'error'); }
@@ -2034,6 +2196,27 @@ function _setOptimizerRunning(running) {
   document.getElementById('oRunBtn').style.display    = running ? 'none' : '';
   document.getElementById('oCancelBtn').style.display = running ? '' : 'none';
   if (running) document.getElementById('oProgressWrap').style.display = '';
+}
+
+function renderOptimizerProgress(job) {
+  const wrap = document.getElementById('oProgressWrap');
+  wrap.style.display = '';
+  const pct = job.maxiter ? Math.min(100, Math.round(job.iteration / job.maxiter * 100)) : 0;
+  const fill = document.getElementById('oProgressFill');
+  fill.style.width = (job.status === 'done' ? 100 : pct) + '%';
+  fill.style.background = job.status === 'error' ? 'var(--red)' : job.status === 'done' ? 'var(--green)' : 'var(--accent)';
+  let bestInfo = '';
+  if (job.best_pnl != null) bestInfo += ` · P&L $${job.best_pnl.toFixed(2)}`;
+  if (job.best_summary?.win_rate != null) bestInfo += ` · WR ${job.best_summary.win_rate.toFixed(1)}%`;
+  const cur = job.status === 'running' ? `Searching…${bestInfo}`
+            : job.status === 'pending' ? 'Starting…'
+            : job.status === 'done' ? '✓ Complete'
+            : job.status === 'cancelled' ? 'Cancelled'
+            : 'Error';
+  document.getElementById('oProgressCurrent').textContent = cur;
+  const cores = job.workers > 1 ? ` · ${job.workers} cores` : '';
+  const objLabel = {profit:'profit',winrate:'win rate',balanced:'balanced'}[job.objective] || 'profit';
+  document.getElementById('oProgressCount').textContent = `${job.evaluations} backtests · gen ${job.iteration}/${job.maxiter}${cores} · goal: ${objLabel}`;
 }
 
 async function cancelOptimizer() {
@@ -2069,23 +2252,6 @@ function stopOptimizerPolling() {
   optimizerPollTimer = null;
 }
 
-function renderOptimizerProgress(job) {
-  const wrap = document.getElementById('oProgressWrap');
-  wrap.style.display = '';
-  const pct = job.maxiter ? Math.min(100, Math.round(job.iteration / job.maxiter * 100)) : 0;
-  const fill = document.getElementById('oProgressFill');
-  fill.style.width = (job.status === 'done' ? 100 : pct) + '%';
-  fill.style.background = job.status === 'error' ? 'var(--red)' : job.status === 'done' ? 'var(--green)' : 'var(--accent)';
-  const best = job.best_pnl != null ? ` · best $${job.best_pnl.toFixed(2)}` : '';
-  const cur = job.status === 'running' ? `Fetching & searching…${best}`
-            : job.status === 'pending' ? 'Starting…'
-            : job.status === 'done' ? '✓ Complete'
-            : job.status === 'cancelled' ? 'Cancelled'
-            : 'Error';
-  document.getElementById('oProgressCurrent').textContent = cur;
-  const cores = job.workers > 1 ? ` · ${job.workers} cores` : '';
-  document.getElementById('oProgressCount').textContent = `${job.evaluations} backtests · gen ${job.iteration}/${job.maxiter}${cores}`;
-}
 
 function renderOptimizerResults(job) {
   const wrap = document.getElementById('oResults');
@@ -2093,7 +2259,42 @@ function renderOptimizerResults(job) {
     wrap.innerHTML = `<div class="tester-section"><div class="err-cell" style="color:var(--yellow)">${escHtml(job.error || 'error')}</div></div>`;
     return;
   }
-  if (!job.best_summary || !job.params || !job.params.length) { wrap.innerHTML = ''; return; }
+
+  let histHtml = '';
+
+  if (job.best_trades && job.best_trades.length > 0) {
+    const tradeRows = job.best_trades.map(t => {
+      const pnl = parseFloat(t['P&L ($)'] || 0);
+      const pnlCls = pnl > 0 ? 'pnl-pos' : pnl < 0 ? 'pnl-neg' : '';
+      const pnlStr = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
+      const posColor = t['Position'] === 'Long' ? 'var(--green)' : 'var(--red)';
+      const liqMark = t['Liquidated'] ? ' <span style="color:var(--red);font-size:0.75em">LIQ</span>' : '';
+      return `<tr class="${t['Liquidated'] ? 'liq-row' : ''}">
+        <td style="color:var(--muted)">#${t['Trade #']}</td>
+        <td style="color:${posColor}">${escHtml(t['Position'] || '')}</td>
+        <td style="color:var(--muted);font-size:0.82em">${escHtml(String(t['Start Time'] || ''))}</td>
+        <td style="color:var(--muted);font-size:0.82em">${escHtml(String(t['End Time'] || ''))}</td>
+        <td class="${pnlCls}">${pnlStr}${liqMark}</td>
+        <td style="color:var(--muted)">${escHtml(String(t['Balance ($)'] || ''))}</td>
+      </tr>`;
+    }).join('');
+    histHtml = `
+      <div class="tester-section">
+        <h3>Best Backtest History</h3>
+        <div class="hint">Individual trades from the best parameter set found. Liquidated trades are marked LIQ.</div>
+        <div style="overflow-x:auto;max-height:260px;overflow-y:auto">
+          <table class="opt-history-table">
+            <thead><tr><th>#</th><th>Side</th><th>Entry Time</th><th>Exit Time</th><th>P&amp;L</th><th>Balance</th></tr></thead>
+            <tbody>${tradeRows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  }
+
+  if (!job.best_summary || !job.params || !job.params.length) {
+    wrap.innerHTML = histHtml;
+    return;
+  }
 
   const s = job.best_summary;
   const base = job.baseline || {};
@@ -2114,10 +2315,15 @@ function renderOptimizerResults(job) {
     </tr>`;
   }).join('');
 
-  wrap.innerHTML = `
+  const isDone = job.status === 'done' || job.status === 'cancelled';
+  const applyBtn = isDone
+    ? `<button class="btn btn-success btn-sm" onclick="applyOptimizerToBot()" style="margin-top:12px">→ Apply to New Bot</button>`
+    : '';
+
+  wrap.innerHTML = histHtml + `
     <div class="tester-section">
       <h3>Best Inputs Found</h3>
-      <div class="hint">${escHtml(job.symbol)} · ${escHtml(job.strategy_label || job.strategy)} · ${escHtml(fmtTF(job.timeframe))} · ${job.candle_count} candles</div>
+      <div class="hint">${escHtml(job.symbol)} · ${escHtml(job.strategy_label || job.strategy)} · ${escHtml(fmtTF(job.timeframe))} · ${job.candle_count} candles · goal: ${escHtml({profit:'highest profit',winrate:'highest win rate',balanced:'balanced'}[job.objective] || job.objective)}</div>
       <div class="opt-summary">
         <div class="opt-stat"><div class="lbl">Optimized P&amp;L</div><div class="val ${pnlCls}">${bestPnl >= 0 ? '+' : ''}$${bestPnl.toFixed(2)}</div></div>
         <div class="opt-stat"><div class="lbl">vs. Defaults</div><div class="val" style="color:${delta >= 0 ? 'var(--green)' : 'var(--red)'}">${deltaStr}</div></div>
@@ -2132,7 +2338,168 @@ function renderOptimizerResults(job) {
         </table>
       </div>
       <div class="hint" style="margin-top:10px">Baseline (default inputs): net P&amp;L $${basePnl.toFixed(2)} · ${(base.win_rate || 0).toFixed(1)}% win · ${base.trade_count || 0} trades. Highlighted rows changed from the default.</div>
+      ${applyBtn}
     </div>`;
+
+  // Store current job for the Apply button.
+  window._lastOptimizerJob = job;
+
+  // Render chart once data is available (only when job is finished)
+  if (job.chart_data) renderOptChart(job);
+}
+
+// ── Optimizer chart ───────────────────────────────────────────────────────────
+
+function destroyOptCharts() {
+  _optCharts.forEach(c => { try { c.remove(); } catch (_) {} });
+  _optCharts = [];
+  document.getElementById('oChart').innerHTML = '';
+}
+
+function renderOptChart(job) {
+  const container = document.getElementById('oChart');
+  if (!job?.chart_data?.candles?.length) { destroyOptCharts(); return; }
+
+  const cd   = job.chart_data;
+  const ind  = cd.indicators || {};
+  const candles = cd.candles;
+  const trades  = job.best_trades || [];
+
+  // Only rebuild if chart_data changed (compare first/last candle time)
+  const sig = candles[0]?.time + ':' + candles[candles.length - 1]?.time + ':' + cd.strategy;
+  if (container.dataset.sig === sig) return;
+  container.dataset.sig = sig;
+
+  destroyOptCharts();
+
+  container.innerHTML = `
+    <div class="tester-section" style="margin-top:16px;padding-bottom:8px">
+      <h3 style="margin-bottom:8px">BEST BACKTEST CHART</h3>
+      <div id="oChartPrice" style="height:340px;border-radius:4px;overflow:hidden"></div>
+      <div style="color:var(--muted);font-size:0.75em;margin:4px 0 2px 4px">STOCH RSI</div>
+      <div id="oChartStoch" style="height:150px;border-radius:4px;overflow:hidden"></div>
+      <div style="color:var(--muted);font-size:0.75em;margin:4px 0 2px 4px">${ind.macd_hist ? 'MACD HISTOGRAM' : 'RSI'}</div>
+      <div id="oChartInd2"  style="height:120px;border-radius:4px;overflow:hidden"></div>
+    </div>`;
+
+  const theme = {
+    layout:   { background: { color: 'transparent' }, textColor: '#8b949e' },
+    grid:     { vertLines: { color: '#1e2029' }, horzLines: { color: '#1e2029' } },
+    timeScale:{ timeVisible: true, secondsVisible: false, borderColor: '#2a3447' },
+    crosshair:{ mode: 0 },
+    rightPriceScale: { borderColor: '#2a3447' },
+  };
+
+  // ── Price chart ──────────────────────────────────────────────────────────
+  const priceDiv = document.getElementById('oChartPrice');
+  const priceChart = LightweightCharts.createChart(priceDiv, { ...theme, autoSize: true, height: 340 });
+  _optCharts.push(priceChart);
+
+  const candleSeries = priceChart.addCandlestickSeries({
+    upColor: '#4ade80', downColor: '#f87171',
+    borderUpColor: '#4ade80', borderDownColor: '#f87171',
+    wickUpColor: '#4ade80', wickDownColor: '#f87171',
+  });
+  candleSeries.setData(candles);
+
+  if (ind.ema) {
+    const emaSeries = priceChart.addLineSeries({ color: '#fbbf24', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'EMA' });
+    emaSeries.setData(candles.map((c, i) => ind.ema[i] != null ? { time: c.time, value: ind.ema[i] } : null).filter(Boolean));
+  }
+
+  // Trade entry/exit markers
+  const markers = [];
+  trades.forEach(t => {
+    const isLong = t.Position === 'Long';
+    if (t._start_ts) markers.push({
+      time: t._start_ts,
+      position: isLong ? 'belowBar' : 'aboveBar',
+      color: isLong ? '#4ade80' : '#f87171',
+      shape: isLong ? 'arrowUp' : 'arrowDown',
+      size: 1,
+    });
+    if (t._end_ts) markers.push({
+      time: t._end_ts,
+      position: isLong ? 'aboveBar' : 'belowBar',
+      color: t.Liquidated ? '#f97316' : (isLong ? '#86efac' : '#fca5a5'),
+      shape: t.Liquidated ? 'square' : 'circle',
+      size: 1,
+    });
+  });
+  markers.sort((a, b) => a.time - b.time);
+  candleSeries.setMarkers(markers);
+
+  // ── StochRSI panel ───────────────────────────────────────────────────────
+  const stochDiv = document.getElementById('oChartStoch');
+  const stochChart = LightweightCharts.createChart(stochDiv, { ...theme, autoSize: true, height: 150 });
+  _optCharts.push(stochChart);
+
+  if (ind.stoch_k) {
+    const kSeries = stochChart.addLineSeries({ color: '#38bdf8', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'K' });
+    kSeries.setData(candles.map((c, i) => ind.stoch_k[i] != null ? { time: c.time, value: ind.stoch_k[i] } : null).filter(Boolean));
+    const dSeries = stochChart.addLineSeries({ color: '#f97316', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'D' });
+    dSeries.setData(candles.map((c, i) => ind.stoch_d[i] != null ? { time: c.time, value: ind.stoch_d[i] } : null).filter(Boolean));
+    if (ind.oversold  != null) kSeries.createPriceLine({ price: ind.oversold,   color: '#4ade8055', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'OS' });
+    if (ind.overbought != null) kSeries.createPriceLine({ price: ind.overbought, color: '#f8717155', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'OB' });
+  }
+
+  // ── RSI or MACD panel ────────────────────────────────────────────────────
+  const ind2Div = document.getElementById('oChartInd2');
+  const ind2Chart = LightweightCharts.createChart(ind2Div, { ...theme, autoSize: true, height: 120 });
+  _optCharts.push(ind2Chart);
+
+  if (ind.macd_hist) {
+    const macdSeries = ind2Chart.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false, title: 'MACD' });
+    macdSeries.setData(candles.map((c, i) => {
+      const v = ind.macd_hist[i];
+      return v != null ? { time: c.time, value: v, color: v >= 0 ? '#4ade8088' : '#f8717188' } : null;
+    }).filter(Boolean));
+  } else if (ind.rsi) {
+    const rsiSeries = ind2Chart.addLineSeries({ color: '#a78bfa', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'RSI' });
+    rsiSeries.setData(candles.map((c, i) => ind.rsi[i] != null ? { time: c.time, value: ind.rsi[i] } : null).filter(Boolean));
+    if (ind.rsi_ma) {
+      const rsiMaSeries = ind2Chart.addLineSeries({ color: '#f97316', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'MA' });
+      rsiMaSeries.setData(candles.map((c, i) => ind.rsi_ma[i] != null ? { time: c.time, value: ind.rsi_ma[i] } : null).filter(Boolean));
+    }
+    rsiSeries.createPriceLine({ price: 50, color: '#ffffff22', lineWidth: 1, lineStyle: 1 });
+  }
+
+  // ── Sync time-scale scrolling across all panels ──────────────────────────
+  const panels = [priceChart, stochChart, ind2Chart];
+  panels.forEach((src, si) => {
+    src.timeScale().subscribeVisibleLogicalRangeChange(range => {
+      if (!range) return;
+      panels.forEach((tgt, ti) => { if (ti !== si) tgt.timeScale().setVisibleLogicalRange(range); });
+    });
+  });
+
+  priceChart.timeScale().fitContent();
+}
+
+function applyOptimizerToBot() {
+  const job = window._lastOptimizerJob;
+  if (!job || !job.best_params) { showToast('No optimization result to apply', 'error'); return; }
+
+  // Store the optimized params — submitCreate() will include them.
+  _pendingOptParams = job.best_params;
+
+  // Pre-fill the Create Bot modal with the optimizer's settings.
+  populateSymbolSelect('f');
+  setTimeout(() => {
+    // Find and select the matching symbol.
+    const symSel = document.getElementById('fSymbol');
+    const target = (job.symbol || '').toLowerCase().replace('/', '');
+    for (const opt of symSel.options) {
+      if (opt.value.toLowerCase().replace('/', '') === target) { opt.selected = true; break; }
+    }
+    document.getElementById('fStrategy').value = job.strategy || '';
+    const tfSel = document.getElementById('fTimeframe');
+    for (const opt of tfSel.options) { if (opt.value === String(job.timeframe)) { opt.selected = true; break; } }
+    document.getElementById('fCredit').value  = job.credit  || 100;
+    document.getElementById('fLeverage').value = job.leverage || 5;
+    document.getElementById('fName').value = `${job.symbol?.toUpperCase() || ''} ${job.strategy || ''} (Optimized)`;
+    document.getElementById('createModal').classList.add('open');
+  }, 50);
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────

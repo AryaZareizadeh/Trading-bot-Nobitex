@@ -1,0 +1,22 @@
+{
+  "favorites": [
+    "btcusdt",
+    "ethusdt",
+    "zecusdt",
+    "dogeusdt",
+    "xrpusdt"
+  ],
+  "strategies": [
+    "ExtremeReversal"
+  ],
+  "timeframes": [
+    "60",
+    "240",
+    "D",
+    "15",
+    "5",
+    "30"
+  ],
+  "credit": 100.0,
+  "leverage": 5
+}

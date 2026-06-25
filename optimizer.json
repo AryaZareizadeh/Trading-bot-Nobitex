@@ -1,0 +1,8 @@
+{
+  "symbol": "btcusdt",
+  "strategy": "AdvRSI",
+  "timeframe": "240",
+  "candles": 500,
+  "credit": 100.0,
+  "leverage": 5
+}

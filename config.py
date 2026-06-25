@@ -7,24 +7,10 @@ class Config:
     interval: str = "240"  # Nobitex resolution: minutes as string, or "D"/"W"/"M"
     limit: int = 2000
 
-    rsi_length: int = 40
-    stoch_length: int = 36
-    k_smooth: int = 7
-    d_smooth: int = 5
-
-    rsi_fast_length: int = 14
-    rsi_ma_length: int = 7
-
+    # Per-strategy indicator parameters live on each strategy's params dataclass
+    # (see strategy.py). These remain only for chart annotation thresholds.
     rsi_oversold: int = 30
     rsi_overbought: int = 70
-
-    stoch_oversold: int = 22
-    stoch_overbought: int = 78
-
-    ema_trend_length: int = 50
-    macd_fast: int = 12
-    macd_slow: int = 26
-    macd_signal: int = 9
 
     leverage: int = 5
     trade_size: int = 100

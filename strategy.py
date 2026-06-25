@@ -30,8 +30,10 @@ class AdvRsiParams:
     d_smooth: int = 5
     rsi_fast_length: int = 14
     rsi_ma_length: int = 7
-    oversold: int = 22
-    overbought: int = 78
+    oversold: int = 22       # entry: zone detection threshold
+    overbought: int = 78     # entry: zone detection threshold
+    exit_oversold: int = 22  # exit: close longs on K-cross / close shorts on D-rise
+    exit_overbought: int = 78  # exit: close shorts on K-cross / close longs on D-drop
 
 
 @dataclass
@@ -182,6 +184,8 @@ class _StochRsiSwingStrategy(Strategy):
         rsi, rsi_ma = indicators.rsi_with_ma(p.rsi_fast_length, p.rsi_ma_length)
         kd_diff = (k - d).fillna(0)
         oversold, overbought = p.oversold, p.overbought
+        exit_oversold = getattr(p, 'exit_oversold', oversold)
+        exit_overbought = getattr(p, 'exit_overbought', overbought)
         open_longs: list[int] = []
         open_shorts: list[int] = []
         trade_idx = 0
@@ -210,9 +214,9 @@ class _StochRsiSwingStrategy(Strategy):
                 open_longs = surviving_longs
 
                 if open_longs:
-                    d_dropped = prev_d >= overbought and di < overbought
-                    mid_long = ki < overbought and diff < -0.08 * ki and pd.notna(ri) and 45 < ri < 55
-                    k_crossed_below_oversold = prev_k >= oversold and ki < oversold
+                    d_dropped = prev_d >= exit_overbought and di < exit_overbought
+                    mid_long = ki < exit_overbought and diff < -0.08 * ki and pd.notna(ri) and 45 < ri < 55
+                    k_crossed_below_oversold = prev_k >= exit_oversold and ki < exit_oversold
                     if d_dropped or mid_long or k_crossed_below_oversold:
                         for entry_idx in open_longs:
                             record, pnl = self._make_trade_record(trade_idx, "Long", df, entry_idx, i, balance)
@@ -235,9 +239,9 @@ class _StochRsiSwingStrategy(Strategy):
                 open_shorts = surviving_shorts
 
                 if open_shorts:
-                    d_rose = prev_d <= oversold and di > oversold
-                    mid_short = ki > oversold and diff > 0.08 * ki and pd.notna(ri) and 45 < ri < 55
-                    k_crossed_above_overbought = prev_k <= overbought and ki > overbought
+                    d_rose = prev_d <= exit_oversold and di > exit_oversold
+                    mid_short = ki > exit_oversold and diff > 0.08 * ki and pd.notna(ri) and 45 < ri < 55
+                    k_crossed_above_overbought = prev_k <= exit_overbought and ki > exit_overbought
                     if d_rose or mid_short or k_crossed_above_overbought:
                         for entry_idx in open_shorts:
                             record, pnl = self._make_trade_record(trade_idx, "Short", df, entry_idx, i, balance)
@@ -329,7 +333,7 @@ class AdvRSICombinedStrategy(_StochRsiSwingStrategy):
 
 
 class ExtremeReversalStrategy(_StochRsiSwingStrategy):
-    """Deep-extreme mean-reversion entries, with the AdvRSI exit policy.
+    """[BETA — unfinished] Deep-extreme mean-reversion entries, with the AdvRSI exit policy.
 
     Long entry: StochRSI K and D both below `long_kd_max` while fast RSI is below
         `long_rsi_max` and below its moving average (deeply oversold and still falling).
@@ -339,6 +343,8 @@ class ExtremeReversalStrategy(_StochRsiSwingStrategy):
     met, and re-arms only after price leaves the extreme zone (so a single deep dip does
     not stack a position on every candle).
     Exits, liquidation and multi-position handling are inherited from AdvRSICombinedStrategy."""
+
+    beta = True  # unfinished — do not use in production
 
     params_class = StochRsiExtremeParams
 

@@ -2,11 +2,11 @@
   "symbol": "zecusdt",
   "strategy": "AdvRSI",
   "timeframe": "5",
-  "candles": 500,
+  "candles": 1000,
   "credit": 10.0,
   "leverage": 2,
   "cores": 0,
-  "maxiter": 50,
+  "maxiter": 60,
   "objective": "profit",
   "custom_bounds": {
     "rsi_length": [
@@ -38,6 +38,14 @@
       50
     ],
     "overbought": [
+      50,
+      99
+    ],
+    "exit_oversold": [
+      1,
+      50
+    ],
+    "exit_overbought": [
       50,
       99
     ]

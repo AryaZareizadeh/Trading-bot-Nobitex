@@ -34,6 +34,7 @@ class AdvRsiParams:
     overbought: int = 78     # entry: zone detection threshold
     exit_oversold: int = 22  # exit: close longs on K-cross / close shorts on D-rise
     exit_overbought: int = 78  # exit: close shorts on K-cross / close longs on D-drop
+    entry_wait_candles: int = 5  # candles K must spend in extreme zone before entry arms
 
 
 @dataclass
@@ -307,14 +308,14 @@ class AdvRSICombinedStrategy(_StochRsiSwingStrategy):
                 self._oversold_since = i
             self._overbought_since = None
             self._waiting_short = False
-            if i - self._oversold_since >= 5:
+            if i - self._oversold_since >= p.entry_wait_candles:
                 self._waiting_long = True
         elif ki > overbought:
             if self._overbought_since is None:
                 self._overbought_since = i
             self._oversold_since = None
             self._waiting_long = False
-            if i - self._overbought_since >= 5:
+            if i - self._overbought_since >= p.entry_wait_candles:
                 self._waiting_short = True
         else:
             self._oversold_since = None

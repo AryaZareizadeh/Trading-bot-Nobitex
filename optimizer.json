@@ -1,8 +1,8 @@
 {
   "symbol": "zecusdt",
   "strategy": "AdvRSI",
-  "timeframe": "5",
-  "candles": 1000,
+  "timeframe": "240",
+  "candles": 500,
   "credit": 10.0,
   "leverage": 2,
   "cores": 0,
@@ -48,6 +48,10 @@
     "exit_overbought": [
       50,
       99
+    ],
+    "entry_wait_candles": [
+      0,
+      20
     ]
   }
 }

@@ -65,6 +65,7 @@ PARAM_BOUNDS: dict[str, dict[str, tuple[int, int]]] = {
         "overbought": (50, 99),
         "exit_oversold": (1, 50),
         "exit_overbought": (50, 99),
+        "entry_wait_candles": (0, 20),
     },
     "ExtremeReversal": {
         "rsi_length": (2, 100),

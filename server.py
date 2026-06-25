@@ -203,9 +203,6 @@ async def get_margin_markets():
         {"symbol": "LINKUSDT", "srcCurrency": "link", "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
         {"symbol": "UNIUSDT",  "srcCurrency": "uni",  "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
         {"symbol": "BNBUSDT",  "srcCurrency": "bnb",  "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": False, "sellEnabled": True,  "feeRate": "0.001"},
-        {"symbol": "BTCIRT",   "srcCurrency": "btc",  "dstCurrency": "rls",  "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
-        {"symbol": "ETHIRT",   "srcCurrency": "eth",  "dstCurrency": "rls",  "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
-        {"symbol": "LTCIRT",   "srcCurrency": "ltc",  "dstCurrency": "rls",  "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
     ]
     return {"ok": True, "markets": fallback, "source": "fallback"}
 

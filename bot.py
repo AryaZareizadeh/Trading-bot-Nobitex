@@ -145,8 +145,6 @@ class Bot:
         sym = self.cfg.symbol.lower()
         if sym.endswith("usdt"):
             return sym[:-4], "usdt"
-        if sym.endswith("irt"):
-            return sym[:-3], "rls"
         raise ValueError(f"Cannot infer currency pair from symbol {sym!r}")
 
     def _strategy_signal(self) -> str:

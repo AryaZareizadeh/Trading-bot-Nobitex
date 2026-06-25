@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from bot import BotConfig
 from bot_manager import bot_manager
 from backtester import tester_manager
+from optimizer import optimizer_manager
 
 # ── WebSocket client registry ──────────────────────────────────────────────────
 _clients: list[WebSocket] = []
@@ -116,6 +117,24 @@ class TesterRunRequest(BaseModel):
     symbols: list[str]
     strategies: list[str]
     timeframes: list[str]
+    credit: float = Field(default=100.0, gt=0)
+    leverage: int = Field(default=5, ge=1, le=100)
+
+
+class OptimizerPrefsRequest(BaseModel):
+    symbol: str = ""
+    strategy: str = ""
+    timeframe: str = "240"
+    candles: int = 1000
+    credit: float = 100.0
+    leverage: int = Field(default=5, ge=1, le=100)
+
+
+class OptimizerRunRequest(BaseModel):
+    symbol: str
+    strategy: str
+    timeframe: str
+    candles: int = Field(default=1000, ge=50)
     credit: float = Field(default=100.0, gt=0)
     leverage: int = Field(default=5, ge=1, le=100)
 
@@ -314,6 +333,56 @@ async def tester_run_status(job_id: str):
 @app.post("/api/tester/run/{job_id}/cancel")
 async def tester_run_cancel(job_id: str):
     job = tester_manager.get_job(job_id)
+    if job is None:
+        return JSONResponse(status_code=404, content={"error": "Job not found"})
+    job.cancel()
+    return {"ok": True}
+
+
+# ── Optimizer ──────────────────────────────────────────────────────────────────
+@app.get("/api/optimizer/config")
+async def optimizer_config():
+    """Saved preferences plus available strategies (with param search ranges)."""
+    return optimizer_manager.get_config()
+
+
+@app.post("/api/optimizer/prefs")
+async def optimizer_save_prefs(req: OptimizerPrefsRequest):
+    optimizer_manager.save_prefs(
+        req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage
+    )
+    return {"ok": True}
+
+
+@app.post("/api/optimizer/run")
+async def optimizer_run(req: OptimizerRunRequest):
+    from bot import STRATEGY_MAP
+    from optimizer import PARAM_BOUNDS
+    if req.strategy not in STRATEGY_MAP or req.strategy not in PARAM_BOUNDS:
+        return JSONResponse(status_code=400, content={"error": "Unknown strategy."})
+    if not req.symbol.strip():
+        return JSONResponse(status_code=400, content={"error": "Select a symbol."})
+    # Persist the selection so the tab reopens where the user left off.
+    optimizer_manager.save_prefs(
+        req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage
+    )
+    job = optimizer_manager.start_job(
+        req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage
+    )
+    return {"job_id": job.id}
+
+
+@app.get("/api/optimizer/run/{job_id}")
+async def optimizer_run_status(job_id: str):
+    job = optimizer_manager.get_job(job_id)
+    if job is None:
+        return JSONResponse(status_code=404, content={"error": "Job not found"})
+    return job.to_dict()
+
+
+@app.post("/api/optimizer/run/{job_id}/cancel")
+async def optimizer_run_cancel(job_id: str):
+    job = optimizer_manager.get_job(job_id)
     if job is None:
         return JSONResponse(status_code=404, content={"error": "Job not found"})
     job.cancel()

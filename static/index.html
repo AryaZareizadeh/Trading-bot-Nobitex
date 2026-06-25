@@ -341,6 +341,26 @@
   .result-table tr.best td { background: rgba(74,222,128,.06); }
   .medal { font-size: 12px; }
 
+  /* ── Optimizer tab ── */
+  .opt-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px 16px; }
+  .opt-form .form-group { margin: 0; }
+  .opt-form select, .opt-form input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; color: var(--text); font-family: inherit; font-size: 12px; outline: none; }
+  .opt-form select:focus, .opt-form input:focus { border-color: var(--accent); }
+  .opt-param-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px 14px; }
+  .opt-param { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 6px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; font-size: 11px; }
+  .opt-param .pname { color: var(--text); font-weight: 600; }
+  .opt-param .prange { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .opt-summary { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 14px; }
+  .opt-stat { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; min-width: 120px; }
+  .opt-stat .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+  .opt-stat .val { font-size: 18px; font-weight: 700; margin-top: 2px; }
+  .opt-result-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .opt-result-table th { text-align: left; padding: 7px 10px; background: var(--surface2); color: var(--muted); border-bottom: 1px solid var(--border); text-transform: uppercase; font-size: 10px; letter-spacing: .5px; }
+  .opt-result-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  .opt-result-table tr:last-child td { border-bottom: none; }
+  .opt-result-table .changed td { background: rgba(96,165,250,.07); }
+  .opt-result-table .tuned-val { font-weight: 700; color: var(--accent); }
+
   /* scrollbar */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: var(--surface); }
@@ -371,6 +391,7 @@
 <div class="main-tabs">
   <button class="main-tab-btn active" data-view="Bots" onclick="switchView('Bots')">Bots</button>
   <button class="main-tab-btn" data-view="Tester" onclick="switchView('Tester')">Tester</button>
+  <button class="main-tab-btn" data-view="Optimizer" onclick="switchView('Optimizer')">Optimizer</button>
 </div>
 
 <!-- ═══════════════════ BOTS VIEW ═══════════════════ -->
@@ -469,6 +490,72 @@
 
   </div>
 </div>
+
+<!-- ═══════════════════ OPTIMIZER VIEW ═══════════════════ -->
+<div id="viewOptimizer" class="view-pane">
+  <div class="tester-wrap">
+
+    <div class="tester-section">
+      <h3>Optimization Target</h3>
+      <div class="hint">
+        Pick one symbol, timeframe, candle window and strategy. A
+        <strong>Differential-Evolution</strong> global search then tunes that strategy's
+        indicator inputs to maximize backtested net P&amp;L over the selected window.
+      </div>
+      <div class="opt-form">
+        <div class="form-group">
+          <label>Symbol</label>
+          <select id="oSymbol" onchange="saveOptimizerPrefs()"></select>
+        </div>
+        <div class="form-group">
+          <label>Strategy</label>
+          <select id="oStrategy" onchange="onOptimizerStrategyChange()"></select>
+        </div>
+        <div class="form-group">
+          <label>Timeframe</label>
+          <select id="oTimeframe" onchange="saveOptimizerPrefs()"></select>
+        </div>
+        <div class="form-group">
+          <label>Past candles</label>
+          <input type="number" id="oCandles" value="1000" min="200" max="5000" step="100" onchange="saveOptimizerPrefs()">
+        </div>
+        <div class="form-group">
+          <label>Credit (USDT)</label>
+          <input type="number" id="oCredit" value="100" min="1" step="1" onchange="saveOptimizerPrefs()">
+        </div>
+        <div class="form-group">
+          <label>Leverage</label>
+          <input type="number" id="oLeverage" value="5" min="1" max="100" step="1" onchange="saveOptimizerPrefs()">
+        </div>
+      </div>
+    </div>
+
+    <div class="tester-section" id="oParamSection" style="display:none">
+      <h3>Inputs Being Tuned</h3>
+      <div class="hint">Every input below is searched within its range. Defaults shown for reference.</div>
+      <div id="oParamSpace" class="opt-param-grid"></div>
+    </div>
+
+    <div class="tester-section">
+      <h3>Run</h3>
+      <div class="tester-run-bar">
+        <button class="btn btn-primary" id="oRunBtn" onclick="runOptimizer()" style="padding:9px 20px">▶ Optimize</button>
+        <button class="btn btn-danger btn-sm" id="oCancelBtn" onclick="cancelOptimizer()" style="display:none">■ Cancel</button>
+        <span class="tester-run-note" id="oRunNote"></span>
+      </div>
+      <div class="progress-wrap" id="oProgressWrap" style="display:none">
+        <div class="progress-track"><div class="progress-fill" id="oProgressFill"></div></div>
+        <div class="progress-meta">
+          <span class="progress-current" id="oProgressCurrent"></span>
+          <span id="oProgressCount"></span>
+        </div>
+      </div>
+    </div>
+
+    <div id="oResults"></div>
+
+  </div>
+</div><!-- /viewOptimizer -->
 
 <!-- Toast container -->
 <div id="toastContainer"></div>
@@ -1538,6 +1625,7 @@ function switchView(view) {
   document.getElementById('view' + view).classList.add('active');
   document.querySelector(`.main-tab-btn[data-view="${view}"]`).classList.add('active');
   if (view === 'Tester') initTesterTab();
+  if (view === 'Optimizer') initOptimizerTab();
 }
 
 async function initTesterTab() {
@@ -1811,6 +1899,222 @@ function renderTesterResults(job) {
       </div>
     </div>`;
   }).join('');
+}
+
+// ═══════════════════ OPTIMIZER TAB ═══════════════════
+let optimizerConfig = {};
+let _optimizerConfigLoaded = false;
+let optimizerJobId = null;
+let optimizerPollTimer = null;
+let _optimizerPrefsTimer = null;
+
+async function initOptimizerTab() {
+  if (!marginMarkets.length) { try { await loadMarginMarkets(); } catch (_) {} }
+  if (!_optimizerConfigLoaded) {
+    try {
+      const res = await fetch('/api/optimizer/config');
+      optimizerConfig = await res.json();
+      _optimizerConfigLoaded = true;
+    } catch (_) { return; }
+  }
+  populateOptimizerControls();
+  onOptimizerStrategyChange();
+  updateOptimizerNote();
+}
+
+function populateOptimizerControls() {
+  // Symbol select from margin markets.
+  const symSel = document.getElementById('oSymbol');
+  const savedSym = (optimizerConfig.symbol || '').toLowerCase();
+  symSel.innerHTML = marginMarkets.map(m => {
+    const sym = m.symbol.toLowerCase();
+    return `<option value="${sym}" ${sym === savedSym ? 'selected' : ''}>${escHtml(m.symbol)}</option>`;
+  }).join('') || '<option value="">No markets available</option>';
+
+  // Strategy select.
+  const stratSel = document.getElementById('oStrategy');
+  stratSel.innerHTML = (optimizerConfig.available_strategies || []).map(s =>
+    `<option value="${s.value}" ${s.value === optimizerConfig.strategy ? 'selected' : ''}>${escHtml(s.label)}</option>`
+  ).join('');
+
+  // Timeframe select.
+  const tfSel = document.getElementById('oTimeframe');
+  tfSel.innerHTML = (optimizerConfig.available_timeframes || []).map(t =>
+    `<option value="${t.value}" ${t.value === optimizerConfig.timeframe ? 'selected' : ''}>${escHtml(t.label)}</option>`
+  ).join('');
+
+  if (optimizerConfig.candles  != null) document.getElementById('oCandles').value  = optimizerConfig.candles;
+  if (optimizerConfig.credit   != null) document.getElementById('oCredit').value   = optimizerConfig.credit;
+  if (optimizerConfig.leverage != null) document.getElementById('oLeverage').value = optimizerConfig.leverage;
+}
+
+function _optimizerStrategySpec() {
+  const v = document.getElementById('oStrategy').value;
+  return (optimizerConfig.available_strategies || []).find(s => s.value === v);
+}
+
+function onOptimizerStrategyChange() {
+  const spec = _optimizerStrategySpec();
+  const section = document.getElementById('oParamSection');
+  const grid = document.getElementById('oParamSpace');
+  if (!spec || !spec.params) { section.style.display = 'none'; saveOptimizerPrefs(); return; }
+  grid.innerHTML = spec.params.map(p => `
+    <div class="opt-param">
+      <span class="pname">${escHtml(p.name)}</span>
+      <span class="prange">${p.low}–${p.high} <span style="color:var(--border)">·</span> def ${p.default}</span>
+    </div>`).join('');
+  section.style.display = '';
+  updateOptimizerNote();
+  saveOptimizerPrefs();
+}
+
+function updateOptimizerNote() {
+  const note = document.getElementById('oRunNote');
+  if (!note) return;
+  const spec = _optimizerStrategySpec();
+  const n = spec && spec.params ? spec.params.length : 0;
+  if (!n) { note.textContent = ''; return; }
+  note.innerHTML = `Searching <strong>${n}</strong> inputs via Differential Evolution · one data fetch, then pure-CPU backtests.`;
+}
+
+function saveOptimizerPrefs() {
+  clearTimeout(_optimizerPrefsTimer);
+  _optimizerPrefsTimer = setTimeout(() => {
+    fetch('/api/optimizer/prefs', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(_optimizerPayload()),
+    }).catch(() => {});
+  }, 600);
+}
+
+function _optimizerPayload() {
+  return {
+    symbol:    document.getElementById('oSymbol').value || '',
+    strategy:  document.getElementById('oStrategy').value || '',
+    timeframe: document.getElementById('oTimeframe').value || '240',
+    candles:   parseInt(document.getElementById('oCandles').value) || 1000,
+    credit:    parseFloat(document.getElementById('oCredit').value) || 100,
+    leverage:  parseInt(document.getElementById('oLeverage').value) || 5,
+  };
+}
+
+async function runOptimizer() {
+  const payload = _optimizerPayload();
+  if (!payload.symbol)   { showToast('Select a symbol', 'error'); return; }
+  if (!payload.strategy) { showToast('Select a strategy', 'error'); return; }
+  try {
+    const res  = await fetch('/api/optimizer/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (!res.ok) { showToast('Error: ' + (data.error || 'run failed'), 'error'); return; }
+    optimizerJobId = data.job_id;
+    document.getElementById('oResults').innerHTML = '';
+    _setOptimizerRunning(true);
+    pollOptimizer();
+  } catch (e) { showToast('Network error: ' + e, 'error'); }
+}
+
+function _setOptimizerRunning(running) {
+  document.getElementById('oRunBtn').style.display    = running ? 'none' : '';
+  document.getElementById('oCancelBtn').style.display = running ? '' : 'none';
+  if (running) document.getElementById('oProgressWrap').style.display = '';
+}
+
+async function cancelOptimizer() {
+  if (!optimizerJobId) return;
+  try { await fetch(`/api/optimizer/run/${optimizerJobId}/cancel`, { method: 'POST' }); } catch (_) {}
+  showToast('Cancelling…', 'info');
+}
+
+async function pollOptimizer() {
+  if (!optimizerJobId) return;
+  try {
+    const res = await fetch(`/api/optimizer/run/${optimizerJobId}`);
+    if (!res.ok) { stopOptimizerPolling(); _setOptimizerRunning(false); return; }
+    const job = await res.json();
+    renderOptimizerProgress(job);
+    renderOptimizerResults(job);
+    if (['done', 'cancelled', 'error'].includes(job.status)) {
+      stopOptimizerPolling();
+      _setOptimizerRunning(false);
+      if (job.status === 'done')           showToast('Optimization complete', 'success');
+      else if (job.status === 'cancelled') showToast('Optimization cancelled', 'info');
+      else                                 showToast('Run error: ' + (job.error || 'unknown'), 'error');
+    } else {
+      optimizerPollTimer = setTimeout(pollOptimizer, 1000);
+    }
+  } catch (e) {
+    optimizerPollTimer = setTimeout(pollOptimizer, 1500);
+  }
+}
+
+function stopOptimizerPolling() {
+  clearTimeout(optimizerPollTimer);
+  optimizerPollTimer = null;
+}
+
+function renderOptimizerProgress(job) {
+  const wrap = document.getElementById('oProgressWrap');
+  wrap.style.display = '';
+  const pct = job.maxiter ? Math.min(100, Math.round(job.iteration / job.maxiter * 100)) : 0;
+  const fill = document.getElementById('oProgressFill');
+  fill.style.width = (job.status === 'done' ? 100 : pct) + '%';
+  fill.style.background = job.status === 'error' ? 'var(--red)' : job.status === 'done' ? 'var(--green)' : 'var(--accent)';
+  const best = job.best_pnl != null ? ` · best $${job.best_pnl.toFixed(2)}` : '';
+  const cur = job.status === 'running' ? `Fetching & searching…${best}`
+            : job.status === 'pending' ? 'Starting…'
+            : job.status === 'done' ? '✓ Complete'
+            : job.status === 'cancelled' ? 'Cancelled'
+            : 'Error';
+  document.getElementById('oProgressCurrent').textContent = cur;
+  document.getElementById('oProgressCount').textContent = `${job.evaluations} backtests · gen ${job.iteration}/${job.maxiter}`;
+}
+
+function renderOptimizerResults(job) {
+  const wrap = document.getElementById('oResults');
+  if (job.status === 'error') {
+    wrap.innerHTML = `<div class="tester-section"><div class="err-cell" style="color:var(--yellow)">${escHtml(job.error || 'error')}</div></div>`;
+    return;
+  }
+  if (!job.best_summary || !job.params || !job.params.length) { wrap.innerHTML = ''; return; }
+
+  const s = job.best_summary;
+  const base = job.baseline || {};
+  const bestPnl = job.best_pnl != null ? job.best_pnl : (s.total_pnl || 0);
+  const basePnl = base.total_pnl != null ? base.total_pnl : 0;
+  const delta = bestPnl - basePnl;
+  const pnlCls = bestPnl > 0 ? 'pnl-pos' : bestPnl < 0 ? 'pnl-neg' : '';
+  const deltaStr = (delta >= 0 ? '+' : '') + '$' + delta.toFixed(2);
+  const wrColor = (s.win_rate || 0) >= 60 ? 'var(--green)' : (s.win_rate || 0) >= 45 ? 'var(--yellow)' : 'var(--red)';
+
+  const paramRows = job.params.map(p => {
+    const changed = String(p.value) !== String(p.default);
+    return `<tr class="${changed ? 'changed' : ''}">
+      <td>${escHtml(p.name)}</td>
+      <td class="tuned-val">${p.value}</td>
+      <td style="color:var(--muted)">${p.default}</td>
+      <td style="color:var(--muted)">${p.low}–${p.high}</td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <div class="tester-section">
+      <h3>Best Inputs Found</h3>
+      <div class="hint">${escHtml(job.symbol)} · ${escHtml(job.strategy_label || job.strategy)} · ${escHtml(fmtTF(job.timeframe))} · ${job.candle_count} candles</div>
+      <div class="opt-summary">
+        <div class="opt-stat"><div class="lbl">Optimized P&amp;L</div><div class="val ${pnlCls}">${bestPnl >= 0 ? '+' : ''}$${bestPnl.toFixed(2)}</div></div>
+        <div class="opt-stat"><div class="lbl">vs. Defaults</div><div class="val" style="color:${delta >= 0 ? 'var(--green)' : 'var(--red)'}">${deltaStr}</div></div>
+        <div class="opt-stat"><div class="lbl">Win Rate</div><div class="val" style="color:${wrColor}">${(s.win_rate || 0).toFixed(1)}%</div></div>
+        <div class="opt-stat"><div class="lbl">Trades</div><div class="val">${s.trade_count || 0}</div></div>
+        <div class="opt-stat"><div class="lbl">Backtests Run</div><div class="val">${job.evaluations}</div></div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="opt-result-table">
+          <thead><tr><th>Input</th><th>Tuned</th><th>Default</th><th>Range</th></tr></thead>
+          <tbody>${paramRows}</tbody>
+        </table>
+      </div>
+      <div class="hint" style="margin-top:10px">Baseline (default inputs): net P&amp;L $${basePnl.toFixed(2)} · ${(base.win_rate || 0).toFixed(1)}% win · ${base.trade_count || 0} trades. Highlighted rows changed from the default.</div>
+    </div>`;
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────

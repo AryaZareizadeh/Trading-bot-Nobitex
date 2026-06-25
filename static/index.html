@@ -640,11 +640,11 @@
         <label>Trading Mode</label>
         <div class="mode-toggle">
           <div class="mode-option">
-            <input type="radio" name="fMode" id="fModeSim" value="simulation" checked>
+            <input type="radio" name="fMode" id="fModeSim" value="simulation" checked onchange="refreshCreateBudget()">
             <label for="fModeSim"><span class="mode-title">Simulation</span><span class="mode-sub">Paper trading — no real orders</span></label>
           </div>
           <div class="mode-option">
-            <input type="radio" name="fMode" id="fModeReal" value="real">
+            <input type="radio" name="fMode" id="fModeReal" value="real" onchange="refreshCreateBudget()">
             <label for="fModeReal"><span class="mode-title">Real Trade</span><span class="mode-sub">API key required</span></label>
           </div>
         </div>
@@ -680,7 +680,8 @@
       <div class="form-row">
         <div class="form-group">
           <label>Credit (USDT)</label>
-          <input type="number" id="fCredit" value="100" min="1" step="1">
+          <input type="number" id="fCredit" value="100" min="1" step="1" oninput="validateCreateBudget()">
+          <div class="market-hint" id="fCreditHint"></div>
         </div>
         <div class="form-group">
           <label>Leverage</label>
@@ -1286,11 +1287,64 @@ function openCreateModal() {
   _pendingOptParams = null;   // clear any stale optimizer params
   populateSymbolSelect('f', 'zecusdt');
   document.getElementById('createModal').classList.add('open');
+  refreshCreateBudget();
+}
+
+// Margin USDT budget for a new live bot ({available, committed, remaining}), or
+// null when no budget applies (simulation, or wallet unreadable).
+let _createBudget = null;
+
+async function refreshCreateBudget() {
+  const hint = document.getElementById('fCreditHint');
+  const credit = document.getElementById('fCredit');
+  const isReal = document.getElementById('fModeReal')?.checked;
+  _createBudget = null;
+  hint.style.color = '';
+  credit.removeAttribute('max');
+  if (!isReal) { hint.textContent = ''; return; }
+  hint.textContent = 'Checking available margin USDT…';
+  try {
+    const res = await fetch('/api/wallet');
+    const data = await res.json();
+    if (!data.ok) {
+      hint.textContent = data.error === 'no_credentials'
+        ? 'No exchange credentials — connect to enforce a budget.'
+        : 'Wallet unavailable — budget not enforced.';
+      return;
+    }
+    const b = data.usdt_budget;
+    if (!b || b.remaining == null) { hint.textContent = 'Budget unavailable.'; return; }
+    _createBudget = b;
+    credit.setAttribute('max', String(Math.max(0, b.remaining)));
+    validateCreateBudget();
+  } catch (e) {
+    hint.textContent = 'Wallet check failed — budget not enforced.';
+  }
+}
+
+// Render the credit hint and return true if the credit is within budget
+// (or no budget applies).
+function validateCreateBudget() {
+  const hint = document.getElementById('fCreditHint');
+  const isReal = document.getElementById('fModeReal')?.checked;
+  if (!isReal || !_createBudget) { hint.style.color = ''; return true; }
+  const b = _createBudget;
+  const credit = parseFloat(document.getElementById('fCredit').value) || 0;
+  const over = credit > b.remaining + 1e-9;
+  hint.style.color = over ? 'var(--danger, #f87171)' : '';
+  hint.textContent = over
+    ? `Credit ${fmtWallet(credit)} exceeds available ${fmtWallet(b.remaining)} USDT.`
+    : `Available: ${fmtWallet(b.remaining)} USDT (free ${fmtWallet(b.available)} − ${fmtWallet(b.committed)} committed to running live bots).`;
+  return !over;
 }
 
 // ── Create Bot ────────────────────────────────────────────────────────────────
 async function submitCreate() {
   const modeEl = document.querySelector('input[name="fMode"]:checked');
+  if (modeEl && modeEl.value === 'real' && !validateCreateBudget()) {
+    showToast(`Credit exceeds available margin USDT (${fmtWallet(_createBudget && _createBudget.remaining)} remaining)`, 'error');
+    return;
+  }
   const payload = {
     name:          document.getElementById('fName').value.trim(),
     symbol:        document.getElementById('fSymbol').value.trim() || 'btcusdt',
@@ -1359,6 +1413,18 @@ async function submitEdit() {
 // ── Bot Controls ──────────────────────────────────────────────────────────────
 let _pendingStartBotId = null;
 
+// POST a start request, surfacing a budget/other rejection as a toast.
+async function postStart(id) {
+  const res = await fetch(`/api/bots/${id}/start`, { method: 'POST' });
+  if (!res.ok) {
+    let msg = 'Start failed';
+    try { msg = (await res.json()).error || msg; } catch (_) {}
+    showToast(msg, 'error');
+    return false;
+  }
+  return true;
+}
+
 async function startBot(id) {
   showToast('Running 500-candle backtest…', 'info');
   try {
@@ -1366,14 +1432,12 @@ async function startBot(id) {
     const data = await res.json();
 
     if (!res.ok || !data.ok) {
-      await fetch(`/api/bots/${id}/start`, { method: 'POST' });
-      showToast('Backtest unavailable — bot started', 'info');
+      if (await postStart(id)) showToast('Backtest unavailable — bot started', 'info');
       return;
     }
 
     if (data.trade_count === 0) {
-      await fetch(`/api/bots/${id}/start`, { method: 'POST' });
-      showToast(`No trades found in ${data.candle_count} candles — bot started`, 'info');
+      if (await postStart(id)) showToast(`No trades found in ${data.candle_count} candles — bot started`, 'info');
       return;
     }
 
@@ -1381,7 +1445,7 @@ async function startBot(id) {
     _showBacktestModal(data);
 
   } catch (e) {
-    await fetch(`/api/bots/${id}/start`, { method: 'POST' });
+    await postStart(id);
   }
 }
 
@@ -1464,8 +1528,7 @@ async function confirmStartBot() {
   _pendingStartBotId = null;
   document.getElementById('backtestModal').classList.remove('open');
   if (!id) return;
-  await fetch(`/api/bots/${id}/start`, { method: 'POST' });
-  showToast('Bot started', 'success');
+  if (await postStart(id)) showToast('Bot started', 'success');
 }
 
 function cancelBacktest() {
@@ -1493,8 +1556,14 @@ async function duplicateBot(id) {
 }
 
 async function startAll() {
-  await fetch('/api/bots/actions/start-all', { method: 'POST' });
-  showToast('Starting all bots…', 'info');
+  const res = await fetch('/api/bots/actions/start-all', { method: 'POST' });
+  let blocked = [];
+  try { blocked = (await res.json()).blocked || []; } catch (_) {}
+  if (blocked.length) {
+    showToast(`${blocked.length} live bot(s) blocked — over margin USDT budget`, 'error');
+  } else {
+    showToast('Starting all bots…', 'info');
+  }
 }
 async function stopAll() {
   await fetch('/api/bots/actions/stop-all', { method: 'POST' });
@@ -2387,8 +2456,18 @@ function renderOptChart(job) {
     grid:     { vertLines: { color: '#1e2029' }, horzLines: { color: '#1e2029' } },
     timeScale:{ timeVisible: true, secondsVisible: false, borderColor: '#2a3447' },
     crosshair:{ mode: 0 },
-    rightPriceScale: { borderColor: '#2a3447' },
+    // Pin an equal price-scale width on every pane so the plot areas line up
+    // horizontally — otherwise differing label widths ($411.15 vs 80 vs 0.012)
+    // give each chart a different drawing width and the x-axes drift apart.
+    rightPriceScale: { borderColor: '#2a3447', minimumWidth: 64 },
   };
+
+  // Map an indicator array to chart points spanning the FULL candle domain.
+  // Null (warmup) values become lightweight-charts "whitespace" points ({time}
+  // with no value) instead of being filtered out — keeping every series on the
+  // same time axis so the cross-pane logical-range sync below stays aligned.
+  const toSeries = (arr) => candles.map((c, i) =>
+    (arr && arr[i] != null) ? { time: c.time, value: arr[i] } : { time: c.time });
 
   // ── Price chart ──────────────────────────────────────────────────────────
   const priceDiv = document.getElementById('oChartPrice');
@@ -2404,7 +2483,7 @@ function renderOptChart(job) {
 
   if (ind.ema) {
     const emaSeries = priceChart.addLineSeries({ color: '#fbbf24', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'EMA' });
-    emaSeries.setData(candles.map((c, i) => ind.ema[i] != null ? { time: c.time, value: ind.ema[i] } : null).filter(Boolean));
+    emaSeries.setData(toSeries(ind.ema));
   }
 
   // Trade entry/exit markers
@@ -2436,9 +2515,9 @@ function renderOptChart(job) {
 
   if (ind.stoch_k) {
     const kSeries = stochChart.addLineSeries({ color: '#38bdf8', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'K' });
-    kSeries.setData(candles.map((c, i) => ind.stoch_k[i] != null ? { time: c.time, value: ind.stoch_k[i] } : null).filter(Boolean));
+    kSeries.setData(toSeries(ind.stoch_k));
     const dSeries = stochChart.addLineSeries({ color: '#f97316', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'D' });
-    dSeries.setData(candles.map((c, i) => ind.stoch_d[i] != null ? { time: c.time, value: ind.stoch_d[i] } : null).filter(Boolean));
+    dSeries.setData(toSeries(ind.stoch_d));
     if (ind.oversold  != null) kSeries.createPriceLine({ price: ind.oversold,   color: '#4ade8055', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'OS' });
     if (ind.overbought != null) kSeries.createPriceLine({ price: ind.overbought, color: '#f8717155', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'OB' });
   }
@@ -2452,14 +2531,14 @@ function renderOptChart(job) {
     const macdSeries = ind2Chart.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false, title: 'MACD' });
     macdSeries.setData(candles.map((c, i) => {
       const v = ind.macd_hist[i];
-      return v != null ? { time: c.time, value: v, color: v >= 0 ? '#4ade8088' : '#f8717188' } : null;
-    }).filter(Boolean));
+      return v != null ? { time: c.time, value: v, color: v >= 0 ? '#4ade8088' : '#f8717188' } : { time: c.time };
+    }));
   } else if (ind.rsi) {
     const rsiSeries = ind2Chart.addLineSeries({ color: '#a78bfa', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'RSI' });
-    rsiSeries.setData(candles.map((c, i) => ind.rsi[i] != null ? { time: c.time, value: ind.rsi[i] } : null).filter(Boolean));
+    rsiSeries.setData(toSeries(ind.rsi));
     if (ind.rsi_ma) {
       const rsiMaSeries = ind2Chart.addLineSeries({ color: '#f97316', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'MA' });
-      rsiMaSeries.setData(candles.map((c, i) => ind.rsi_ma[i] != null ? { time: c.time, value: ind.rsi_ma[i] } : null).filter(Boolean));
+      rsiMaSeries.setData(toSeries(ind.rsi_ma));
     }
     rsiSeries.createPriceLine({ price: 50, color: '#ffffff22', lineWidth: 1, lineStyle: 1 });
   }

@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from bot import BotConfig
+from bot import BotConfig, BotStatus
 from bot_manager import bot_manager
 from backtester import tester_manager
 from optimizer import optimizer_manager
@@ -218,6 +218,58 @@ async def get_margin_markets():
 
 
 # ── Wallet ─────────────────────────────────────────────────────────────────────
+# ── Live-bot margin USDT budgeting ───────────────────────────────────────────
+def _margin_usdt_from(margin: dict) -> float:
+    """Free USDT in a margin-wallet dict: balance - blocked."""
+    usdt = margin.get("USDT") or margin.get("usdt") or {}
+    try:
+        return float(usdt.get("balance") or 0) - float(usdt.get("blocked") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _margin_usdt_free() -> Optional[float]:
+    """Free margin (تعهدی) USDT, or None if it can't be read (no creds / API error)."""
+    try:
+        from nobitex_client import NobitexClient
+        testnet = os.getenv("NOBITEX_TESTNET", "false").lower() == "true"
+        client = NobitexClient(testnet=testnet)
+        return _margin_usdt_from(client.wallets("margin"))
+    except Exception:
+        return None
+
+
+def _committed_real_credit(exclude_id: Optional[str] = None) -> float:
+    """Sum of credit committed by real-mode bots that are currently running."""
+    total = 0.0
+    for b in bot_manager.get_all():
+        if b.id == exclude_id:
+            continue
+        if b.cfg.mode == "real" and b.status == BotStatus.RUNNING:
+            total += float(b.cfg.credit)
+    return total
+
+
+async def _budget_block_reason(bot) -> Optional[str]:
+    """Error message if starting `bot` would over-commit margin USDT, else None.
+
+    Skips simulation bots and the no-credentials case (can't read the wallet).
+    """
+    if bot.cfg.mode != "real":
+        return None
+    free = await asyncio.to_thread(_margin_usdt_free)
+    if free is None:
+        return None  # no credentials / API error — don't block on missing data
+    remaining = free - _committed_real_credit(exclude_id=bot.id)
+    if bot.cfg.credit > remaining + 1e-9:
+        return (
+            f"Insufficient margin USDT: bot needs {bot.cfg.credit:.2f}, "
+            f"only {remaining:.2f} available after running live bots "
+            f"(free {free:.2f})"
+        )
+    return None
+
+
 @app.get("/api/wallet")
 async def get_wallet():
     try:
@@ -226,7 +278,14 @@ async def get_wallet():
         client = NobitexClient(testnet=testnet)
         spot = await asyncio.to_thread(client.wallets, "spot")
         margin = await asyncio.to_thread(client.wallets, "margin")
-        return {"ok": True, "spot": spot, "margin": margin}
+        available = _margin_usdt_from(margin)
+        committed = _committed_real_credit()
+        budget = {
+            "available": round(available, 2),
+            "committed": round(committed, 2),
+            "remaining": round(available - committed, 2),
+        }
+        return {"ok": True, "spot": spot, "margin": margin, "usdt_budget": budget}
     except ValueError:
         return {"ok": False, "error": "no_credentials"}
     except Exception as e:
@@ -412,8 +471,31 @@ async def optimizer_run_cancel(job_id: str):
 # ── Bulk bot actions (must be registered before {bot_id} routes) ───────────────
 @app.post("/api/bots/actions/start-all")
 async def start_all_bots():
-    await asyncio.gather(*[bot.start() for bot in bot_manager.get_all()])
-    return {"ok": True}
+    # Simulation bots start in parallel (no budget constraint).
+    sims = [b for b in bot_manager.get_all() if b.cfg.mode != "real"]
+    await asyncio.gather(*[b.start() for b in sims])
+
+    # Real bots start sequentially so the committed total stays accurate as each
+    # one begins running; skip (don't abort the batch) any that over-commit.
+    free = await asyncio.to_thread(_margin_usdt_free)
+    blocked: list[dict] = []
+    reals = [
+        b for b in bot_manager.get_all()
+        if b.cfg.mode == "real" and b.status != BotStatus.RUNNING
+    ]
+    for b in reals:
+        if free is not None:
+            remaining = free - _committed_real_credit(exclude_id=b.id)
+            if b.cfg.credit > remaining + 1e-9:
+                blocked.append({
+                    "id": b.id,
+                    "name": b.cfg.name or b.id,
+                    "credit": round(float(b.cfg.credit), 2),
+                    "remaining": round(remaining, 2),
+                })
+                continue
+        await b.start()
+    return {"ok": True, "blocked": blocked}
 
 
 @app.post("/api/bots/actions/stop-all")
@@ -520,6 +602,9 @@ async def start_bot(bot_id: str):
     bot = bot_manager.get_bot(bot_id)
     if bot is None:
         return JSONResponse(status_code=404, content={"error": "Bot not found"})
+    reason = await _budget_block_reason(bot)
+    if reason:
+        return JSONResponse(status_code=400, content={"error": reason})
     await bot.start()
     return bot.to_state_dict()
 

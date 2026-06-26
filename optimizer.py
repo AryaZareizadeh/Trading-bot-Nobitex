@@ -30,6 +30,7 @@ import asyncio
 import json
 import multiprocessing as mp
 import os
+import sys
 import time
 import uuid
 from dataclasses import fields
@@ -143,7 +144,7 @@ def _build_params(strategy_name: str, names: list[str], vector) -> object:
     return PARAMS_CLASS[strategy_name](**kwargs)
 
 
-def _compute_score(summary: dict, objective: str, credit: float) -> float:
+def _compute_score(summary: dict, objective: str, credit: float, min_price_change: float = 5.0) -> float:
     """Return the value DE minimizes for the given objective (lower = better)."""
     pnl = summary.get("total_pnl", 0.0)
     wr = summary.get("win_rate", 0.0)
@@ -155,6 +156,13 @@ def _compute_score(summary: dict, objective: str, credit: float) -> float:
         # Maximize both: normalize pnl to percentage-of-credit, then sum with win rate.
         pnl_pct = (pnl / credit * 100) if credit > 0 else 0.0
         return -(pnl_pct + wr)
+    if objective == "large_move":
+        # Maximize the % of trades where |price change| >= threshold.
+        changes = summary.get("price_changes", [])
+        tc = len(changes)
+        if tc == 0:
+            return 100.0
+        return -(sum(1 for c in changes if abs(c) >= min_price_change) / tc * 100)
     # Default: maximize profit.
     return -pnl
 
@@ -190,10 +198,66 @@ def _fetch_df(symbol: str, timeframe: str, candles: int) -> pd.DataFrame:
 _WORKER: dict = {}
 
 
-def _worker_init(df, strategy_name, credit, leverage, names, objective) -> None:
+def _system_cpu_count() -> int:
+    """Total logical processors on the hardware, regardless of process affinity.
+
+    Python 3.13 changed os.cpu_count() to return the affinity-limited count.
+    When a process is pinned to a CPU subset (e.g. only E-cores on an Intel hybrid
+    chip), that causes the worker cap to silently freeze at the affinity count.
+    This function always returns the hardware total so user-selected core counts
+    are not silently truncated.
+    """
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            # ALL_PROCESSOR_GROUPS = 0xFFFF: total across every processor group
+            n = ctypes.windll.kernel32.GetMaximumProcessorCount(0xFFFF)
+            if n > 0:
+                return n
+        except Exception:
+            pass
+    return os.cpu_count() or 1
+
+
+def _expand_cpu_affinity() -> None:
+    """Expand this worker's CPU affinity and priority for full P+E core use.
+
+    Spawned worker processes inherit the parent's (possibly restricted) affinity
+    mask and default to background priority. On Intel hybrid CPUs (12th-gen+),
+    both of those facts conspire to pin workers to E-cores only:
+    - restricted affinity → only E-cores in the mask
+    - background priority → Intel Thread Director routes remaining work to E-cores
+    This function runs once per worker (via _worker_init) to undo both effects.
+    """
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            proc = kernel32.GetCurrentProcess()
+            # 1. Expand affinity to the full system mask (all P+E cores)
+            proc_mask = ctypes.c_size_t()
+            sys_mask = ctypes.c_size_t()
+            if kernel32.GetProcessAffinityMask(proc, ctypes.byref(proc_mask),
+                                               ctypes.byref(sys_mask)):
+                kernel32.SetProcessAffinityMask(proc, sys_mask)
+            # 2. Raise priority so Intel Thread Director routes to P-cores
+            ABOVE_NORMAL_PRIORITY_CLASS = 0x00008000
+            kernel32.SetPriorityClass(proc, ABOVE_NORMAL_PRIORITY_CLASS)
+        except Exception:
+            pass
+    else:
+        try:
+            os.sched_setaffinity(0, range(_system_cpu_count()))
+        except (AttributeError, OSError):
+            pass
+
+
+def _worker_init(df, strategy_name, credit, leverage, names, objective, min_price_change) -> None:
     """Pool initializer: runs once per worker process, caching the shared context."""
+    _expand_cpu_affinity()
     _WORKER.update(df=df, strategy=strategy_name, credit=credit,
-                   leverage=leverage, names=names, objective=objective)
+                   leverage=leverage, names=names, objective=objective,
+                   min_price_change=min_price_change)
 
 
 def _worker_objective(vector) -> float:
@@ -206,7 +270,7 @@ def _worker_objective(vector) -> float:
     params = _build_params(_WORKER["strategy"], _WORKER["names"], vector)
     summary = evaluate(_WORKER["df"], _WORKER["strategy"], params,
                        _WORKER["credit"], _WORKER["leverage"])
-    return _compute_score(summary, _WORKER["objective"], _WORKER["credit"])
+    return _compute_score(summary, _WORKER["objective"], _WORKER["credit"], _WORKER["min_price_change"])
 
 
 def _resolve_workers() -> int:
@@ -216,7 +280,7 @@ def _resolve_workers() -> int:
     Override with the ``OPTIMIZER_WORKERS`` env var: a positive integer caps the
     count, ``-1`` means use every core.
     """
-    cpu = os.cpu_count() or 1
+    cpu = _system_cpu_count()
     raw = os.getenv("OPTIMIZER_WORKERS", "").strip()
     if raw:
         try:
@@ -239,7 +303,8 @@ class OptimizerJob:
                  credit: float, leverage: int, cores: int = 0,
                  maxiter: int = _DE_MAXITER,
                  custom_bounds: dict | None = None,
-                 objective: str = "profit"):
+                 objective: str = "profit",
+                 min_price_change: float = 5.0):
         self.id = uuid.uuid4().hex[:8]
         self.symbol = symbol
         self.strategy = strategy
@@ -249,6 +314,7 @@ class OptimizerJob:
         self.leverage = leverage
         self.requested_cores = cores     # 0 = Auto; else the user-picked core count
         self.objective = objective
+        self.min_price_change = float(min_price_change) if min_price_change else 5.0
         self.custom_bounds = custom_bounds or {}
 
         self.status = "pending"          # pending | running | done | cancelled | error
@@ -308,7 +374,7 @@ class OptimizerJob:
         # A specific core count picked in the UI wins; 0 means "Auto" (defer to the
         # CPU-count / OPTIMIZER_WORKERS default).
         if self.requested_cores and self.requested_cores >= 1:
-            self.workers = min(self.requested_cores, os.cpu_count() or 1)
+            self.workers = min(self.requested_cores, _system_cpu_count())
         else:
             self.workers = _resolve_workers()
         if self.workers <= 1:
@@ -336,7 +402,7 @@ class OptimizerJob:
         def objective(vector) -> float:
             params = _build_params(self.strategy, names, vector)
             summary = evaluate(df, self.strategy, params, self.credit, self.leverage)
-            score = _compute_score(summary, self.objective, self.credit)
+            score = _compute_score(summary, self.objective, self.credit, self.min_price_change)
             self.evaluations += 1
             if score < best["score"]:
                 best["score"] = score
@@ -391,7 +457,7 @@ class OptimizerJob:
             """Re-score one DE vector in the parent and keep it if it's the best."""
             params = _build_params(self.strategy, names, vector)
             summary = evaluate(df, self.strategy, params, self.credit, self.leverage)
-            score = _compute_score(summary, self.objective, self.credit)
+            score = _compute_score(summary, self.objective, self.credit, self.min_price_change)
             if best["score"] is None or score < best["score"]:
                 best["score"] = score
                 best["pnl"] = summary["total_pnl"]
@@ -428,7 +494,7 @@ class OptimizerJob:
         pool = ctx.Pool(
             processes=workers,
             initializer=_worker_init,
-            initargs=(df, self.strategy, self.credit, self.leverage, names, self.objective),
+            initargs=(df, self.strategy, self.credit, self.leverage, names, self.objective, self.min_price_change),
         )
         try:
             result = differential_evolution(
@@ -626,6 +692,7 @@ class OptimizerManager:
         defaults = {
             "symbol": "", "strategy": "", "timeframe": "240",
             "candles": _DEFAULT_CANDLES, "credit": 100.0, "leverage": 5,
+            "min_price_change": 5.0,
             "cores": 0,       # 0 = Auto
             "maxiter": _DE_MAXITER,
             "objective": "profit",
@@ -648,7 +715,7 @@ class OptimizerManager:
 
     def save_prefs(self, symbol, strategy, timeframe, candles, credit, leverage,
                    cores=0, maxiter=_DE_MAXITER, objective="profit",
-                   custom_bounds=None) -> None:
+                   custom_bounds=None, min_price_change=5.0) -> None:
         self._prefs = {
             "symbol": (symbol or "").lower().replace("/", "").strip(),
             "strategy": strategy if strategy in STRATEGY_MAP else "",
@@ -658,8 +725,9 @@ class OptimizerManager:
             "leverage": int(leverage),
             "cores": _clamp_cores(cores),
             "maxiter": max(5, min(500, int(maxiter))) if maxiter else _DE_MAXITER,
-            "objective": objective if objective in ("profit", "winrate", "balanced") else "profit",
+            "objective": objective if objective in ("profit", "winrate", "balanced", "large_move") else "profit",
             "custom_bounds": custom_bounds if isinstance(custom_bounds, dict) else None,
+            "min_price_change": max(0.1, float(min_price_change)) if min_price_change else 5.0,
         }
         self._save_prefs()
 
@@ -681,7 +749,7 @@ class OptimizerManager:
             "min_candles": _MIN_CANDLES,
             "max_candles": _MAX_CANDLES,
             "default_candles": _DEFAULT_CANDLES,
-            "max_cores": os.cpu_count() or 1,        # upper bound for the cores selector
+            "max_cores": _system_cpu_count(),          # upper bound for the cores selector
             "default_cores": _resolve_workers(),     # what "Auto" resolves to right now
             "default_maxiter": _DE_MAXITER,
         }
@@ -689,12 +757,13 @@ class OptimizerManager:
     # ── Jobs ─────────────────────────────────────────────────────────────────
     def start_job(self, symbol, strategy, timeframe, candles, credit, leverage,
                   cores=0, maxiter=_DE_MAXITER, objective="profit",
-                  custom_bounds=None) -> OptimizerJob:
+                  custom_bounds=None, min_price_change=5.0) -> OptimizerJob:
         self._prune()
         job = OptimizerJob(
             symbol.lower().replace("/", "").strip(), strategy, timeframe,
             _clamp_candles(candles), float(credit), int(leverage), _clamp_cores(cores),
             maxiter=maxiter, custom_bounds=custom_bounds, objective=objective,
+            min_price_change=min_price_change,
         )
         self._jobs[job.id] = job
         job._task = asyncio.create_task(job.run())
@@ -730,7 +799,7 @@ def _clamp_cores(cores) -> int:
         return 0
     if n <= 0:
         return 0
-    return min(n, os.cpu_count() or 1)
+    return min(n, _system_cpu_count())
 
 
 optimizer_manager = OptimizerManager()

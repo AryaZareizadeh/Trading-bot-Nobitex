@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -18,11 +19,78 @@ from optimizer import optimizer_manager
 # ── WebSocket client registry ──────────────────────────────────────────────────
 _clients: list[WebSocket] = []
 
+# ── Exchange-level position cache (refreshed every 30 s) ──────────────────────
+_exchange_state: dict = {
+    "positions": [],
+    "last_synced": None,
+    "error": None,
+}
+
+
+def _normalize_exchange_position(raw: dict) -> dict:
+    src = raw.get("srcCurrency", "")
+    dst = raw.get("dstCurrency", "")
+    return {
+        "exchange_id":         raw.get("id"),
+        "direction":           "Long" if raw.get("side") == "buy" else "Short",
+        "entry_time":          raw.get("openedAt", ""),
+        "entry_price":         float(raw.get("entryPrice") or 0),
+        "unrealized_pnl":      float(raw.get("unrealizedPNL") or 0),
+        "unrealized_pnl_pct":  float(raw.get("unrealizedPNLPercent") or 0),
+        "liquidation_price":   float(raw.get("liquidationPrice") or 0),
+        "mark_price":          float(raw.get("markPrice") or 0),
+        "margin_ratio":        float(raw.get("marginRatio") or 0),
+        "collateral":          float(raw.get("collateral") or 0),
+        "delegated_amount":    float(raw.get("delegatedAmount") or 0),
+        "src_currency":        src,
+        "dst_currency":        dst,
+        "symbol":              f"{src}{dst}".upper(),
+        "attributed_bot_id":   None,
+        "attributed_bot_name": None,
+    }
+
+
+def _attribute_positions(positions: list[dict]) -> None:
+    claimed: dict[int, tuple[str, str]] = {}
+    for bot in bot_manager.get_all():
+        if bot.cfg.mode == "real" and bot._exchange_position_id is not None:
+            claimed[bot._exchange_position_id] = (bot.id, bot.cfg.name or bot.id)
+    for pos in positions:
+        exc_id = pos.get("exchange_id")
+        if exc_id in claimed:
+            pos["attributed_bot_id"], pos["attributed_bot_name"] = claimed[exc_id]
+
+
+async def _exchange_sync_loop() -> None:
+    while True:
+        try:
+            from nobitex_client import NobitexClient
+            testnet = os.getenv("NOBITEX_TESTNET", "false").lower() == "true"
+            client = NobitexClient(testnet=testnet)
+            raw = await asyncio.to_thread(client.positions, "active")
+            normalized = [
+                _normalize_exchange_position(p)
+                for p in raw
+                if p.get("status") == "Open"
+            ]
+            _attribute_positions(normalized)
+            _exchange_state["positions"] = normalized
+            _exchange_state["last_synced"] = datetime.now(timezone.utc).isoformat()
+            _exchange_state["error"] = None
+        except ValueError:
+            _exchange_state["error"] = "no_credentials"
+        except Exception as exc:
+            _exchange_state["error"] = str(exc)
+        await asyncio.sleep(30)
+
 
 async def _broadcast_loop() -> None:
     while True:
         if _clients:
-            payload = json.dumps(bot_manager.get_all_states())
+            payload = json.dumps({
+                "bots": bot_manager.get_all_states(),
+                "exchange": _exchange_state,
+            })
             dead: list[WebSocket] = []
             for ws in list(_clients):
                 try:
@@ -37,9 +105,11 @@ async def _broadcast_loop() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     bot_manager.load()
-    task = asyncio.create_task(_broadcast_loop())
+    broadcast_task = asyncio.create_task(_broadcast_loop())
+    exchange_task  = asyncio.create_task(_exchange_sync_loop())
     yield
-    task.cancel()
+    broadcast_task.cancel()
+    exchange_task.cancel()
 
 
 # ── App ────────────────────────────────────────────────────────────────────────
@@ -56,7 +126,10 @@ async def ws_endpoint(websocket: WebSocket):
     await websocket.accept()
     _clients.append(websocket)
     try:
-        await websocket.send_text(json.dumps(bot_manager.get_all_states()))
+        await websocket.send_text(json.dumps({
+            "bots": bot_manager.get_all_states(),
+            "exchange": _exchange_state,
+        }))
     except Exception:
         pass
     try:
@@ -131,8 +204,9 @@ class OptimizerPrefsRequest(BaseModel):
     leverage: int = Field(default=5, ge=1, le=100)
     cores: int = Field(default=0, ge=0)   # 0 = Auto
     maxiter: int = Field(default=30, ge=5, le=500)
-    objective: str = "profit"             # profit | winrate | balanced
+    objective: str = "profit"             # profit | winrate | balanced | large_move
     custom_bounds: Optional[dict] = None  # param_name -> [low, high]
+    min_price_change: float = Field(default=5.0, gt=0, le=100)
 
 
 class OptimizerRunRequest(BaseModel):
@@ -144,8 +218,9 @@ class OptimizerRunRequest(BaseModel):
     leverage: int = Field(default=5, ge=1, le=100)
     cores: int = Field(default=0, ge=0)   # 0 = Auto
     maxiter: int = Field(default=30, ge=5, le=500)
-    objective: str = "profit"             # profit | winrate | balanced
+    objective: str = "profit"             # profit | winrate | balanced | large_move
     custom_bounds: Optional[dict] = None  # param_name -> [low, high]
+    min_price_change: float = Field(default=5.0, gt=0, le=100)
 
 
 # ── Margin Markets ─────────────────────────────────────────────────────────────
@@ -259,14 +334,24 @@ async def get_wallet():
         client = NobitexClient(testnet=testnet)
         spot = await asyncio.to_thread(client.wallets, "spot")
         margin = await asyncio.to_thread(client.wallets, "margin")
-        available = _margin_usdt_from(margin)
+        usdt_data = margin.get("USDT") or margin.get("usdt") or {}
+        balance_raw = float(usdt_data.get("balance", 0) or 0)
+        blocked_raw = float(usdt_data.get("blocked", 0) or 0)
+        available = balance_raw - blocked_raw
         committed = _committed_real_credit()
         budget = {
             "available": round(available, 2),
             "committed": round(committed, 2),
             "remaining": round(available - committed, 2),
         }
-        return {"ok": True, "spot": spot, "margin": margin, "usdt_budget": budget}
+        return {
+            "ok": True,
+            "spot": spot,
+            "margin": margin,
+            "usdt_budget": budget,
+            "usdt_available": round(available, 2),
+            "usdt_locked_in": round(blocked_raw, 2),
+        }
     except ValueError:
         return {"ok": False, "error": "no_credentials"}
     except Exception as e:
@@ -397,7 +482,7 @@ async def optimizer_config():
 async def optimizer_save_prefs(req: OptimizerPrefsRequest):
     optimizer_manager.save_prefs(
         req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
-        req.cores, req.maxiter, req.objective, req.custom_bounds,
+        req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change,
     )
     return {"ok": True}
 
@@ -423,11 +508,11 @@ async def optimizer_run(req: OptimizerRunRequest):
     # Persist the selection so the tab reopens where the user left off.
     optimizer_manager.save_prefs(
         req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
-        req.cores, req.maxiter, req.objective, req.custom_bounds,
+        req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change,
     )
     job = optimizer_manager.start_job(
         req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
-        req.cores, req.maxiter, req.objective, req.custom_bounds,
+        req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change,
     )
     return {"job_id": job.id}
 

@@ -33,9 +33,12 @@ STRATEGY_MAP = {
 }
 
 _ORDER_MAX_ATTEMPTS = 5
-_FILL_POLL_SECONDS = 30    # seconds to wait for a fill before cancelling and retrying
-_FILL_POLL_INTERVAL = 5    # seconds between fill checks within the poll window
-_PARTIAL_FILL_TIMEOUT = 300   # seconds; hard cap for partial-fill wait before giving up
+_ORDER_TIMEOUT_BY_TF: dict[str, int] = {
+    "1": 300, "5": 300, "15": 300, "30": 300,   # 5 min
+    "60": 1800, "180": 1800, "240": 1800,         # 30 min
+    "D": 5400,                                     # 90 min
+}
+_FILL_POLL_INTERVAL = 5       # seconds between fill-status checks
 _POSITION_LOOKUP_RETRIES = 3  # retries when position not visible immediately after fill
 _POSITION_LOOKUP_DELAY = 2    # seconds between each position lookup retry
 _DUPLICATE_ORDER_SLEEP = 12   # seconds to sleep after DuplicateOrder (past Nobitex's 10s dedup window)
@@ -102,6 +105,7 @@ class Bot:
         self._real_state: str = "none"
         self._exchange_position_id: Optional[int] = None
         self._real_positions: list[dict] = []
+        self._pending_order: Optional[dict] = None
 
     # ── Logging ───────────────────────────────────────────────────────────────
 
@@ -136,6 +140,7 @@ class Bot:
         self._real_state = "none"
         self._exchange_position_id = None
         self._real_positions = []
+        self._pending_order = None
         self.status = BotStatus.IDLE
         self._log_event(
             "reconfigured",
@@ -200,25 +205,6 @@ class Bot:
             })
         return result
 
-    def _resolve_order_price(self, client, symbol: str, attempt: int) -> Optional[float]:
-        """Price to send as the market-order slippage cap.
-
-        Always prefer the live orderbook price — the last candle close is stale the
-        moment the candle closes. Fall back to the last close only if the live fetch
-        fails. live_price hits the public orderbook (300/min, no auth).
-        """
-        try:
-            price = client.live_price(symbol)
-            self._log_event("info", f"Attempt {attempt}: live price ${price:.2f}")
-            return price
-        except Exception as exc:
-            fallback = float(self.df["Close"].iloc[-1]) if self.df is not None else self.current_price
-            self._log_event(
-                "warning",
-                f"Attempt {attempt}: live price fetch failed ({exc}), using last candle close",
-            )
-            return fallback
-
     def _fetch_delegation_limit(
         self, client, symbol: str, side: str, leverage: int
     ) -> Optional[float]:
@@ -261,61 +247,6 @@ class Bot:
                 amount = max_amount
         return f"{amount:.6f}"
 
-    async def _poll_order_until_filled(self, client, order_id: int) -> tuple[str, float]:
-        """Poll order_status until the order resolves, then report the outcome.
-
-        Returns (outcome, matched_amount):
-          ("done", amt)       — fully filled
-          ("canceled", amt)   — cancelled by the exchange (amt > 0 means partial fill)
-          ("timeout_zero", 0) — no fill within the poll window; caller cancels & retries
-
-        order_status is cheap (300/min) so we poll it every _FILL_POLL_INTERVAL rather
-        than the rate-limited positions endpoint. A partial fill keeps polling *beyond*
-        the window until Done/Canceled — cancelling a partially-filled order would
-        strand an open position. Transient status errors are retried; CancelledError
-        propagates to the caller (which cancels the pending order).
-        """
-        max_polls = max(1, _FILL_POLL_SECONDS // _FILL_POLL_INTERVAL)
-        polls = 0
-        matched = 0.0
-        started_at = time.monotonic()
-        while True:
-            await asyncio.sleep(_FILL_POLL_INTERVAL)
-            polls += 1
-            try:
-                info = client.order_status(order_id)
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                self._log_event("warning", f"Order #{order_id} status check failed: {exc} — retrying")
-                continue
-
-            matched = float(info.get("matchedAmount") or 0)
-            status = info.get("status", "Active")
-
-            if status == "Done":
-                self._log_event("order_filled", f"Order #{order_id} fully filled ({matched} matched)")
-                return "done", matched
-            if status == "Canceled":
-                self._log_event("warning", f"Order #{order_id} cancelled by exchange ({matched} matched)")
-                return "canceled", matched
-
-            # Still Active.
-            if polls >= max_polls:
-                if matched > 0:
-                    # Partial fill — keep waiting; cancelling now would strand a position.
-                    if time.monotonic() - started_at >= _PARTIAL_FILL_TIMEOUT:
-                        self._log_event(
-                            "warning",
-                            f"Order #{order_id} partial fill ({matched}) timed out after {_PARTIAL_FILL_TIMEOUT}s — treating as canceled",
-                        )
-                        return "canceled", matched
-                    self._log_event(
-                        "info", f"Order #{order_id} partially filled ({matched}) — waiting for full fill"
-                    )
-                    continue
-                return "timeout_zero", 0.0
-
     def _find_position_by_symbol(
         self, client, src: str, dst: str, side: str, existing_ids: set[int]
     ) -> Optional[dict]:
@@ -346,22 +277,18 @@ class Bot:
                 return p
         return matches[0]
 
-    async def _place_order_with_retry(
+    async def _place_single_order(
         self, client, src: str, dst: str, side: str, leverage: int
     ) -> list[dict]:
-        """Place a market order and confirm the resulting position, retrying up to
-        _ORDER_MAX_ATTEMPTS times. Returns the active-positions list on success.
+        """Place one order at the last candle close price. Retry placement up to
+        _ORDER_MAX_ATTEMPTS times on API/network errors (exponential backoff, capped at 30 s).
 
-        Each attempt:
-          1. price  = live orderbook price (slippage cap)
-          2. amount = credit*leverage/price, capped to the delegation limit
-          3. place the order; fatal API errors abort, transient ones retry
-          4. confirm the fill via _poll_order_until_filled (order_status, 300/min)
-          5. on a fill, locate the position via _find_position_by_symbol
-             (matches market+side, so a fill merged into an existing position is found)
+        Poll for fill for up to _ORDER_TIMEOUT_BY_TF[timeframe] (5/30/90 min depending on timeframe):
+          - Full fill or exchange Done  → success
+          - >50% filled at timeout      → leave the order open, proceed with partial position
+          - ≤50% filled at timeout      → cancel, proceed if any fill occurred
 
-        A zero fill cancels the order and retries with a fresh live price. Raises on
-        fatal API errors or when all attempts are exhausted.
+        Sets self._pending_order while waiting so the dashboard can show progress.
         """
         from nobitex_client import NobitexAPIError
 
@@ -369,13 +296,12 @@ class Bot:
         existing_ids: set[int] = {p["id"] for p in client.positions("active")}
         limit_val = self._fetch_delegation_limit(client, symbol, side, leverage)
 
-        for attempt in range(1, _ORDER_MAX_ATTEMPTS + 1):
-            price = self._resolve_order_price(client, symbol, attempt)
-            if price is None:
-                raise RuntimeError("No price available for order placement")
-            amount_str = self._compute_order_amount(src, side, leverage, price, limit_val)
+        price = float(self.df["Close"].iloc[-1])
+        amount_str = self._compute_order_amount(src, side, leverage, price, limit_val)
 
-            # ── Place order ────────────────────────────────────────────────────
+        # ── Place the order (placement retries only) ───────────────────────────
+        order_id = None
+        for attempt in range(1, _ORDER_MAX_ATTEMPTS + 1):
             try:
                 order = client.open_margin_order(
                     src_currency=src,
@@ -387,82 +313,118 @@ class Bot:
                     execution="market",
                 )
                 order_id = order.get("id")
-                self._log_event(
-                    "info",
-                    f"Attempt {attempt}/{_ORDER_MAX_ATTEMPTS}: order #{order_id} placed @ ${price:.2f} — polling for fill…",
-                )
+                if order_id is not None:
+                    self._log_event("info", f"Order #{order_id} placed @ ${price:.2f} (last candle close)")
+                    break
+                self._log_event("warning", f"Placement attempt {attempt}/{_ORDER_MAX_ATTEMPTS}: no order id in response")
             except NobitexAPIError as exc:
                 if exc.code == "DuplicateOrder":
-                    self._log_event(
-                        "warning",
-                        f"Attempt {attempt}/{_ORDER_MAX_ATTEMPTS}: DuplicateOrder — sleeping {_DUPLICATE_ORDER_SLEEP}s",
-                    )
+                    self._log_event("warning", f"Placement attempt {attempt}/{_ORDER_MAX_ATTEMPTS}: DuplicateOrder — sleeping {_DUPLICATE_ORDER_SLEEP}s")
                     await asyncio.sleep(_DUPLICATE_ORDER_SLEEP)
                     continue
                 if exc.code in _FATAL_ORDER_ERRORS:
                     raise
-                self._log_event("warning", f"Attempt {attempt}/{_ORDER_MAX_ATTEMPTS}: order rejected [{exc.code}]")
-                continue
+                self._log_event("warning", f"Placement attempt {attempt}/{_ORDER_MAX_ATTEMPTS}: rejected [{exc.code}]")
             except Exception as exc:
-                self._log_event("warning", f"Attempt {attempt}/{_ORDER_MAX_ATTEMPTS}: order error: {exc}")
-                continue
+                self._log_event("warning", f"Placement attempt {attempt}/{_ORDER_MAX_ATTEMPTS}: error: {exc}")
 
-            if order_id is None:
-                self._log_event("warning", f"Attempt {attempt}/{_ORDER_MAX_ATTEMPTS}: order accepted without an id — retrying")
-                continue
+            if attempt < _ORDER_MAX_ATTEMPTS:
+                await asyncio.sleep(min(2 ** (attempt - 1), 30))
 
-            # ── Confirm the fill before looking for the position ───────────────
+        if order_id is None:
+            raise RuntimeError(f"Order placement failed after {_ORDER_MAX_ATTEMPTS} attempts")
+
+        self._pending_order = {
+            "order_id": order_id,
+            "side": side,
+            "amount": float(amount_str),
+            "price": price,
+            "placed_at": datetime.now(timezone.utc).isoformat(),
+            "matched_pct": 0.0,
+        }
+
+        # ── Poll for fill up to the timeframe-dependent timeout ────────────────
+        order_timeout = _ORDER_TIMEOUT_BY_TF.get(self.cfg.timeframe, 300)
+        timeout_label = f"{order_timeout // 60}-min"
+        started_at = time.monotonic()
+        order_amount = float(amount_str)
+        matched = 0.0
+
+        while True:
+            await asyncio.sleep(_FILL_POLL_INTERVAL)
+            elapsed = time.monotonic() - started_at
+
             try:
-                outcome, matched = await self._poll_order_until_filled(client, order_id)
+                info = client.order_status(order_id)
             except asyncio.CancelledError:
-                # Bot was stopped while waiting — cancel the pending order before exiting.
                 try:
                     client.cancel_order(order_id)
                     self._log_event("warning", f"Bot stopped: cancelled pending order #{order_id}")
                 except Exception:
                     pass
-                raise
-
-            if outcome == "done" or matched > 0:
-                # Retry position lookup with delays — the exchange backend may take a few
-                # seconds to reflect a newly filled position in /positions/list.
-                pos = None
-                for lookup in range(1, _POSITION_LOOKUP_RETRIES + 1):
-                    if lookup > 1:
-                        await asyncio.sleep(_POSITION_LOOKUP_DELAY)
-                    pos = self._find_position_by_symbol(client, src, dst, side, existing_ids)
-                    if pos is not None:
-                        break
-                    self._log_event(
-                        "warning",
-                        f"Attempt {attempt}/{_ORDER_MAX_ATTEMPTS}: position not yet visible (lookup {lookup}/{_POSITION_LOOKUP_RETRIES})",
-                    )
-                if pos is not None:
-                    self._exchange_position_id = pos["id"]
-                    self._log_event(
-                        "order_filled",
-                        f"Attempt {attempt}/{_ORDER_MAX_ATTEMPTS}: position {pos['id']} confirmed @ ${price:.2f}",
-                    )
-                    return client.positions("active")
-                self._log_event(
-                    "warning",
-                    f"Attempt {attempt}/{_ORDER_MAX_ATTEMPTS}: order filled but position not found after {_POSITION_LOOKUP_RETRIES} lookups — retrying order",
-                )
-                continue
-
-            # ── Zero fill — cancel and retry with a fresh live price ───────────
-            try:
-                client.cancel_order(order_id)
-                self._log_event(
-                    "warning",
-                    f"Attempt {attempt}/{_ORDER_MAX_ATTEMPTS}: order #{order_id} unfilled after {_FILL_POLL_SECONDS}s — cancelled, retrying with live price",
-                )
-            except asyncio.CancelledError:
+                self._pending_order = None
                 raise
             except Exception as exc:
-                self._log_event("warning", f"Attempt {attempt}/{_ORDER_MAX_ATTEMPTS}: cancel failed: {exc} — retrying anyway")
+                self._log_event("warning", f"Order #{order_id} status check failed: {exc}")
+                if elapsed >= order_timeout:
+                    break
+                continue
 
-        raise RuntimeError(f"Position not confirmed after {_ORDER_MAX_ATTEMPTS} attempts")
+            matched = float(info.get("matchedAmount") or 0)
+            status = info.get("status", "Active")
+            matched_pct = (matched / order_amount * 100) if order_amount > 0 else 0.0
+            self._pending_order["matched_pct"] = round(matched_pct, 1)
+
+            if status == "Done":
+                self._log_event("order_filled", f"Order #{order_id} fully filled")
+                self._pending_order = None
+                break
+
+            if status == "Canceled":
+                self._log_event("warning", f"Order #{order_id} cancelled by exchange ({matched_pct:.0f}% filled)")
+                self._pending_order = None
+                if matched == 0:
+                    raise RuntimeError("Order cancelled by exchange with no fill")
+                break  # partial fill — proceed to position lookup
+
+            if elapsed >= order_timeout:
+                if matched_pct > 50:
+                    self._log_event("info", f"Order #{order_id}: {matched_pct:.0f}% filled at {timeout_label} timeout — leaving order open")
+                    self._pending_order = None
+                    break
+                else:
+                    try:
+                        client.cancel_order(order_id)
+                        self._log_event("warning", f"Order #{order_id}: {matched_pct:.0f}% filled at {timeout_label} timeout — cancelled")
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception as exc:
+                        self._log_event("warning", f"Cancel failed: {exc}")
+                    self._pending_order = None
+                    if matched == 0:
+                        raise RuntimeError("Order timed out with no fill")
+                    break  # partial fill — proceed to position lookup
+
+        # ── Locate the resulting position ──────────────────────────────────────
+        if matched <= 0:
+            raise RuntimeError("Order resolved with no fill")
+
+        pos = None
+        for lookup in range(1, _POSITION_LOOKUP_RETRIES + 1):
+            if lookup > 1:
+                await asyncio.sleep(_POSITION_LOOKUP_DELAY)
+            pos = self._find_position_by_symbol(client, src, dst, side, existing_ids)
+            if pos is not None:
+                break
+            self._log_event("warning", f"Position not yet visible (lookup {lookup}/{_POSITION_LOOKUP_RETRIES})")
+
+        if pos is not None:
+            self._exchange_position_id = pos["id"]
+            self._log_event("order_filled", f"Position {pos['id']} confirmed @ ${price:.2f}")
+        else:
+            self._log_event("warning", "Order filled but position not found after lookups")
+
+        return client.positions("active")
 
     def _ensure_exchange_client(self) -> bool:
         """Lazily construct the Nobitex client. Returns True if one is available."""
@@ -590,7 +552,24 @@ class Bot:
                     self._log_event("info", f"Adopted existing exchange position {existing['id']} for {signal}")
                     all_positions = client.positions("active")
                 else:
-                    all_positions = await self._place_order_with_retry(
+                    # Pre-order wallet check: ensure free margin covers the required credit.
+                    try:
+                        w = client.wallets("margin")
+                        usdt_w = w.get("USDT") or w.get("usdt") or {}
+                        bal = float(usdt_w.get("balance", 0) or 0)
+                        blocked = float(usdt_w.get("blocked", 0) or 0)
+                        free_margin = bal - blocked
+                        if free_margin < self.cfg.credit:
+                            self._log_event(
+                                "warning",
+                                f"Insufficient margin: {free_margin:.2f} USDT free < {self.cfg.credit:.2f} credit — skipping trade",
+                            )
+                            self._real_positions = self._normalize_positions(client.positions("active"))
+                            return
+                    except Exception as exc:
+                        self._log_event("warning", f"Wallet check failed: {exc} — proceeding anyway")
+
+                    all_positions = await self._place_single_order(
                         client, src, dst, side, self.cfg.leverage
                     )
             else:
@@ -786,14 +765,14 @@ class Bot:
     async def _run_loop(self) -> None:
         try:
             fetcher = DataFetcher(self._make_config())
-            for attempt in range(5):
+            for attempt in range(10):
                 try:
                     self.df = await asyncio.to_thread(fetcher.fetch)
                     break
                 except Exception as exc:
-                    if attempt == 4:
+                    if attempt == 9:
                         raise RuntimeError(f"Initial data fetch failed: {exc}") from exc
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(min(2 ** attempt, 30))
 
             _res = RESOLUTION_SECONDS[self.cfg.timeframe]
             self._live_from_ts = self.df.index[-1] + pd.Timedelta(seconds=_res)
@@ -801,6 +780,9 @@ class Bot:
             self.last_updated = datetime.now(timezone.utc)
             self.error = None
             self._log_event("data_loaded", f"Loaded {len(self.df)} warmup candles. Live trading starts at next candle close.")
+
+            if self.cfg.mode == "real":
+                await self._sync_exchange()
 
             while not self._stop_event.is_set():
                 candle_secs = RESOLUTION_SECONDS[self.cfg.timeframe]
@@ -822,21 +804,24 @@ class Bot:
 
                 new_df: Optional[pd.DataFrame] = None
                 fetcher = DataFetcher(self._make_config())
-                for attempt in range(5):
+                for attempt in range(10):
                     try:
                         new_df = await asyncio.to_thread(fetcher.fetch_latest)
                         if new_df is not None and not new_df.empty:
                             break
                     except Exception:
                         pass
-                    if attempt < 4:
-                        await asyncio.sleep(2 ** attempt)
+                    if attempt < 9:
+                        await asyncio.sleep(min(2 ** attempt, 30))
 
                 if new_df is None or new_df.empty:
                     try:
                         self.df = await asyncio.to_thread(fetcher.fetch)
+                        _res = RESOLUTION_SECONDS[self.cfg.timeframe]
+                        self._live_from_ts = self.df.index[-1] + pd.Timedelta(seconds=_res)
                         self.error = "Candle fetch failed; did full re-fetch for integrity."
                         self._log_event("warning", self.error)
+                        self._log_event("warning", "live_from_ts advanced past re-fetched candles — no new entries until next close")
                     except Exception as exc:
                         self.error = f"Full re-fetch failed: {exc}"
                         self._log_event("error", self.error)
@@ -846,8 +831,11 @@ class Bot:
                     if not ok:
                         try:
                             self.df = await asyncio.to_thread(fetcher.fetch)
+                            _res = RESOLUTION_SECONDS[self.cfg.timeframe]
+                            self._live_from_ts = self.df.index[-1] + pd.Timedelta(seconds=_res)
                             self.error = "Data gap detected; re-fetched all candles."
                             self._log_event("warning", self.error)
+                            self._log_event("warning", "live_from_ts advanced past re-fetched candles — no new entries until next close")
                         except Exception as exc:
                             self.error = f"Gap repair failed: {exc}"
                             self._log_event("error", self.error)
@@ -903,6 +891,7 @@ class Bot:
         if self.cfg.mode == "real":
             d["exchange_state"] = self._real_state
             d["exchange_position_id"] = self._exchange_position_id
+        d["pending_order"] = self._pending_order
         return d
 
     def to_detail_dict(self) -> dict:

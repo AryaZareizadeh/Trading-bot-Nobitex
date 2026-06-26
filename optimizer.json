@@ -1,12 +1,12 @@
 {
   "symbol": "zecusdt",
   "strategy": "AdvRSI",
-  "timeframe": "15",
-  "candles": 500,
-  "credit": 2.5,
-  "leverage": 2,
-  "cores": 0,
-  "maxiter": 50,
+  "timeframe": "240",
+  "candles": 4000,
+  "credit": 100.0,
+  "leverage": 5,
+  "cores": 10,
+  "maxiter": 100,
   "objective": "profit",
   "custom_bounds": {
     "rsi_length": [
@@ -53,5 +53,6 @@
       0,
       20
     ]
-  }
+  },
+  "min_price_change": 2.0
 }

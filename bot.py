@@ -35,12 +35,17 @@ STRATEGY_MAP = {
 _ORDER_MAX_ATTEMPTS = 5
 _FILL_POLL_SECONDS = 30    # seconds to wait for a fill before cancelling and retrying
 _FILL_POLL_INTERVAL = 5    # seconds between fill checks within the poll window
+_PARTIAL_FILL_TIMEOUT = 300   # seconds; hard cap for partial-fill wait before giving up
+_POSITION_LOOKUP_RETRIES = 3  # retries when position not visible immediately after fill
+_POSITION_LOOKUP_DELAY = 2    # seconds between each position lookup retry
+_DUPLICATE_ORDER_SLEEP = 12   # seconds to sleep after DuplicateOrder (past Nobitex's 10s dedup window)
 
 # Errors where retrying the same order will never help
 _FATAL_ORDER_ERRORS = frozenset({
     "InsufficientBalance", "SmallOrder", "AmountUnavailable",
     "LeverageTooHigh", "LeverageUnavailable", "TradingUnavailable",
     "MarketClosed", "UnsupportedMarginSrc", "MarginClosed",
+    "ExceedDlegationLimit",  # bot already capped to limit; immediate retry is futile (API typo: missing 'e')
 })
 
 
@@ -273,6 +278,7 @@ class Bot:
         max_polls = max(1, _FILL_POLL_SECONDS // _FILL_POLL_INTERVAL)
         polls = 0
         matched = 0.0
+        started_at = time.monotonic()
         while True:
             await asyncio.sleep(_FILL_POLL_INTERVAL)
             polls += 1
@@ -298,6 +304,12 @@ class Bot:
             if polls >= max_polls:
                 if matched > 0:
                     # Partial fill — keep waiting; cancelling now would strand a position.
+                    if time.monotonic() - started_at >= _PARTIAL_FILL_TIMEOUT:
+                        self._log_event(
+                            "warning",
+                            f"Order #{order_id} partial fill ({matched}) timed out after {_PARTIAL_FILL_TIMEOUT}s — treating as canceled",
+                        )
+                        return "canceled", matched
                     self._log_event(
                         "info", f"Order #{order_id} partially filled ({matched}) — waiting for full fill"
                     )
@@ -380,6 +392,13 @@ class Bot:
                     f"Attempt {attempt}/{_ORDER_MAX_ATTEMPTS}: order #{order_id} placed @ ${price:.2f} — polling for fill…",
                 )
             except NobitexAPIError as exc:
+                if exc.code == "DuplicateOrder":
+                    self._log_event(
+                        "warning",
+                        f"Attempt {attempt}/{_ORDER_MAX_ATTEMPTS}: DuplicateOrder — sleeping {_DUPLICATE_ORDER_SLEEP}s",
+                    )
+                    await asyncio.sleep(_DUPLICATE_ORDER_SLEEP)
+                    continue
                 if exc.code in _FATAL_ORDER_ERRORS:
                     raise
                 self._log_event("warning", f"Attempt {attempt}/{_ORDER_MAX_ATTEMPTS}: order rejected [{exc.code}]")
@@ -405,7 +424,19 @@ class Bot:
                 raise
 
             if outcome == "done" or matched > 0:
-                pos = self._find_position_by_symbol(client, src, dst, side, existing_ids)
+                # Retry position lookup with delays — the exchange backend may take a few
+                # seconds to reflect a newly filled position in /positions/list.
+                pos = None
+                for lookup in range(1, _POSITION_LOOKUP_RETRIES + 1):
+                    if lookup > 1:
+                        await asyncio.sleep(_POSITION_LOOKUP_DELAY)
+                    pos = self._find_position_by_symbol(client, src, dst, side, existing_ids)
+                    if pos is not None:
+                        break
+                    self._log_event(
+                        "warning",
+                        f"Attempt {attempt}/{_ORDER_MAX_ATTEMPTS}: position not yet visible (lookup {lookup}/{_POSITION_LOOKUP_RETRIES})",
+                    )
                 if pos is not None:
                     self._exchange_position_id = pos["id"]
                     self._log_event(
@@ -415,7 +446,7 @@ class Bot:
                     return client.positions("active")
                 self._log_event(
                     "warning",
-                    f"Attempt {attempt}/{_ORDER_MAX_ATTEMPTS}: order filled but no matching position found — retrying",
+                    f"Attempt {attempt}/{_ORDER_MAX_ATTEMPTS}: order filled but position not found after {_POSITION_LOOKUP_RETRIES} lookups — retrying order",
                 )
                 continue
 
@@ -447,27 +478,56 @@ class Bot:
             self.error = f"Exchange client init failed: {exc}"
             return False
 
-    def _close_exchange_position(self, client, price_str: str) -> bool:
-        """Submit a market close for the tracked position. Returns True on success.
+    async def _close_exchange_position(self, client, price_str: str) -> bool:
+        """Submit and confirm a market close for the tracked position. Returns True on success.
 
-        On failure — a stale id (already liquidated/expired/closed) or a transient
-        error — reset _exchange_position_id and _real_state so the next sync starts
+        Polls the close order until it fills before returning True — this prevents the next
+        _sync_exchange() from opening a new position while the old one is still settling.
+
+        On failure: reset _exchange_position_id and _real_state so the next sync starts
         clean instead of looping forever on a dead id, then return False.
+        If the close order was submitted but didn't fill, we do NOT reset state so the
+        next sync can retry the close.
         """
         pos_id = self._exchange_position_id
         try:
             pos = client.position(pos_id)
-            close_amt = (
-                pos.get("delegatedAmount")
-                or pos.get("liability")
-                or f"{round(self.cfg.credit * self.cfg.leverage / float(price_str), 6):.6f}"
+
+            # Use liability minus any already-in-order amount (API max: 10 decimal places).
+            # liability > delegatedAmount for shorts (includes accrued fees), so always prefer
+            # liability to avoid leaving residual debt or getting ExceedLiability errors.
+            liability           = float(pos.get("liability") or 0)
+            liability_in_order  = float(pos.get("liabilityInOrder") or 0)
+            remaining           = round(liability - liability_in_order, 10)
+
+            if remaining <= 0:
+                # A close order already covers the full liability — skip duplicate submission.
+                self._log_event("info", f"Position {pos_id}: close already pending — skipping duplicate")
+                return True
+
+            fallback  = f"{round(self.cfg.credit * self.cfg.leverage / float(price_str), 6):.6f}"
+            close_amt = str(remaining) if liability > 0 else fallback
+
+            close_order = client.close_position(
+                pos_id, amount=close_amt, price=price_str, execution="market"
             )
-            client.close_position(
-                pos_id, amount=str(close_amt), price=price_str, execution="market"
-            )
+            close_order_id = close_order.get("id")
+            self._log_event("info", f"Close order #{close_order_id} submitted for position {pos_id}")
+
+            if close_order_id:
+                outcome, _ = await self._poll_order_until_filled(client, close_order_id)
+                if outcome != "done":
+                    self._log_event(
+                        "warning",
+                        f"Close order #{close_order_id} didn't fill ({outcome}) — will retry next sync",
+                    )
+                    return False  # leave _exchange_position_id set; next sync retries
+
             self._exchange_position_id = None
-            self._log_event("position_closed", f"Position {pos_id} close order submitted")
+            self._log_event("position_closed", f"Position {pos_id} closed")
             return True
+        except asyncio.CancelledError:
+            raise  # bot is stopping; don't reset state
         except Exception as exc:
             self.error = f"Close position {pos_id} failed: {exc}"
             self._log_event("warning", self.error)
@@ -492,15 +552,29 @@ class Bot:
 
         try:
             if signal == self._real_state:
-                self._real_positions = self._normalize_positions(client.positions("active"))
-                return
+                active = client.positions("active")
+                self._real_positions = self._normalize_positions(active)
+                if self._exchange_position_id is not None:
+                    tracked = next((p for p in active if p.get("id") == self._exchange_position_id), None)
+                    if tracked is None or tracked.get("status") != "Open":
+                        self._log_event(
+                            "warning",
+                            f"Tracked position {self._exchange_position_id} is no longer Open — resetting state",
+                        )
+                        self._exchange_position_id = None
+                        self._real_state = "none"
+                        # Fall through: _real_state != signal now, so the open/adopt path below runs.
+                    else:
+                        return  # position confirmed open; nothing to do
+                else:
+                    return  # no tracked position; nothing to verify
 
             src, dst = self._parse_symbol()
             price_str = f"{self.current_price:.2f}"
 
             # ── Close the existing position before switching direction ──────────
             if self._real_state != "none" and self._exchange_position_id is not None:
-                if not self._close_exchange_position(client, price_str):
+                if not await self._close_exchange_position(client, price_str):
                     # State was reset; let the next loop recover cleanly.
                     self._real_positions = self._normalize_positions(client.positions("active"))
                     return

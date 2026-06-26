@@ -55,16 +55,16 @@ from strategy import AdvRsiParams, StochRsiExtremeParams, TrendMomentumParams, P
 # param_name -> (low, high). Bounds are inclusive integer ranges.
 PARAM_BOUNDS: dict[str, dict[str, tuple[int, int]]] = {
     "AdvRSI": {
-        "rsi_length": (2, 100),
-        "stoch_length": (2, 100),
-        "k_smooth": (1, 30),
-        "d_smooth": (1, 30),
-        "rsi_fast_length": (2, 50),
-        "rsi_ma_length": (2, 50),
-        "oversold": (1, 50),
-        "overbought": (50, 99),
-        "exit_oversold": (1, 50),
-        "exit_overbought": (50, 99),
+        "rsi_length": (6, 50),
+        "stoch_length": (6, 50),
+        "k_smooth": (4, 20),
+        "d_smooth": (4, 20),
+        "rsi_fast_length": (6, 50),
+        "rsi_ma_length": (2, 25),
+        "oversold": (1, 35),
+        "overbought": (65, 99),
+        "exit_oversold": (1, 40),
+        "exit_overbought": (60, 99),
         "entry_wait_candles": (0, 20),
     },
     "ExtremeReversal": {

@@ -151,8 +151,6 @@ class OptimizerRunRequest(BaseModel):
 # ── Margin Markets ─────────────────────────────────────────────────────────────
 @app.get("/api/margin-markets")
 async def get_margin_markets():
-    import requests as _req
-
     def _parse(markets_raw: dict) -> list[dict]:
         result = [
             {
@@ -171,24 +169,7 @@ async def get_margin_markets():
         result.sort(key=lambda x: x["symbol"])
         return result
 
-    # Try unauthenticated — /margin/markets/list is a public endpoint
-    try:
-        session = _req.Session()
-        session.trust_env = False
-        session.headers["User-Agent"] = "TraderBot/NobitexBot"
-        resp = await asyncio.to_thread(
-            lambda: session.get(
-                "https://apiv2.nobitex.ir/margin/markets/list", timeout=10
-            )
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        if data.get("status") in ("ok", "success") and data.get("markets"):
-            return {"ok": True, "markets": _parse(data["markets"]), "source": "live"}
-    except Exception:
-        pass
-
-    # Try authenticated if credentials are available
+    # Try authenticated (margin/markets/list requires a token)
     try:
         from nobitex_client import NobitexClient
         testnet = os.getenv("NOBITEX_TESTNET", "false").lower() == "true"

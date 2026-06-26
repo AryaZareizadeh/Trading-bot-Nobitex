@@ -81,18 +81,25 @@ def _summarize(trades_df: pd.DataFrame, open_count: int, candle_count: int) -> d
     indicators lack warmup data at the very start of the window.
     """
     if trades_df.empty:
-        return {"profitable": None, "total_pnl": 0.0, "trade_count": 0, "win_rate": 0.0, "candle_count": candle_count}
+        return {"profitable": None, "total_pnl": 0.0, "trade_count": 0, "win_rate": 0.0, "candle_count": candle_count, "price_changes": []}
 
     closed_count = max(0, len(trades_df) - open_count)
     records = trades_df.to_dict("records")
     valid_records = records[1:closed_count]  # skip the first (no indicator warmup)
     if not valid_records:
-        return {"profitable": None, "total_pnl": 0.0, "trade_count": 0, "win_rate": 0.0, "candle_count": candle_count}
+        return {"profitable": None, "total_pnl": 0.0, "trade_count": 0, "win_rate": 0.0, "candle_count": candle_count, "price_changes": []}
 
     closed_pnls = [float(str(r.get("P&L ($)", 0))) for r in valid_records]
     total_pnl = sum(closed_pnls)
     wins = sum(1 for p in closed_pnls if p > 0)
     win_rate = round(wins / len(closed_pnls) * 100, 1) if closed_pnls else 0.0
+
+    price_changes = []
+    for r in valid_records:
+        try:
+            price_changes.append(float(str(r.get("Price Change", "0%")).replace("%", "").replace("+", "")))
+        except ValueError:
+            price_changes.append(0.0)
 
     return {
         "profitable": total_pnl > 0,
@@ -100,6 +107,7 @@ def _summarize(trades_df: pd.DataFrame, open_count: int, candle_count: int) -> d
         "trade_count": len(valid_records),
         "win_rate": win_rate,
         "candle_count": candle_count,
+        "price_changes": price_changes,
     }
 
 

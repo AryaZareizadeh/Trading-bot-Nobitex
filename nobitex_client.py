@@ -90,9 +90,11 @@ class NobitexClient:
     def _call(self, method: str, path: str, **kwargs) -> dict:
         raw_body = ""
         if method.upper() in ("POST", "PUT", "PATCH") and "json" in kwargs:
-            raw_body = json.dumps(kwargs["json"], separators=(",", ":"))
-            kwargs.setdefault("headers", {})["Content-Type"] = "application/json"
+            raw_body = json.dumps(kwargs.pop("json"), separators=(",", ":"))
+            kwargs["data"] = raw_body
         headers = self._auth_headers(method, path, raw_body)
+        if raw_body:
+            headers["Content-Type"] = "application/json"
         resp = self._session.request(
             method, self._base + path, headers=headers, timeout=15, **kwargs
         )
@@ -185,7 +187,15 @@ class NobitexClient:
     # ── Positions ──────────────────────────────────────────────────────────────
 
     def positions(self, status: Literal["active", "past"] = "active") -> list[dict]:
-        return self._call("GET", f"/positions/list?status={status}")["positions"]
+        result: list[dict] = []
+        page = 1
+        while True:
+            data = self._call("GET", f"/positions/list?status={status}&page={page}")
+            result.extend(data["positions"])
+            if not data.get("hasNext"):
+                break
+            page += 1
+        return result
 
     def position(self, position_id: int) -> dict:
         return self._call("GET", f"/positions/{position_id}/status")["position"]
@@ -208,4 +218,4 @@ class NobitexClient:
             "POST",
             f"/positions/{position_id}/close",
             json={"amount": amount, "price": price, "execution": execution},
-        )
+        )["order"]

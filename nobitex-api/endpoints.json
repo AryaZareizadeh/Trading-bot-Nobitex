@@ -1,0 +1,499 @@
+[
+  {
+    "file": "01-getting-started.md",
+    "title": "Create an API Key",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/apikeys/create"
+  },
+  {
+    "file": "01-getting-started.md",
+    "title": "List API Keys",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/apikeys/list"
+  },
+  {
+    "file": "01-getting-started.md",
+    "title": "Delete an API Key",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/apikeys/delete/<public_key>"
+  },
+  {
+    "file": "01-getting-started.md",
+    "title": "Update an API Key",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/apikeys/update/<public_key>"
+  },
+  {
+    "file": "01-getting-started.md",
+    "title": "Login — Get Token",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/auth/login/"
+  },
+  {
+    "file": "01-getting-started.md",
+    "title": "Logout — Revoke Token",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/auth/logout/"
+  },
+  {
+    "file": "02-market-data.md",
+    "title": "Order Book (v3)",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/v3/orderbook/SYMBOL"
+  },
+  {
+    "file": "02-market-data.md",
+    "title": "Depth Chart (Beta)",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/v2/depth/SYMBOL"
+  },
+  {
+    "file": "02-market-data.md",
+    "title": "Trades List",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/v2/trades/SYMBOL"
+  },
+  {
+    "file": "02-market-data.md",
+    "title": "Nobitex Market Stats",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/market/stats"
+  },
+  {
+    "file": "02-market-data.md",
+    "title": "Nobitex OHLC Stats",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/market/udf/history"
+  },
+  {
+    "file": "03-user-data.md",
+    "title": "Profile",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/users/profile"
+  },
+  {
+    "file": "03-user-data.md",
+    "title": "Generate Blockchain Deposit Address",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/users/wallets/generate-address"
+  },
+  {
+    "file": "03-user-data.md",
+    "title": "Add Bank Card",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/users/cards-add"
+  },
+  {
+    "file": "03-user-data.md",
+    "title": "Add Bank Account",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/users/accounts-add"
+  },
+  {
+    "file": "03-user-data.md",
+    "title": "User Limitations",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/users/limitations"
+  },
+  {
+    "file": "03-user-data.md",
+    "title": "Wallets — List",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/users/wallets/list"
+  },
+  {
+    "file": "03-user-data.md",
+    "title": "Wallets — List (Selective)",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/v2/wallets"
+  },
+  {
+    "file": "03-user-data.md",
+    "title": "Balance",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/users/wallets/balance"
+  },
+  {
+    "file": "03-user-data.md",
+    "title": "Wallet Transactions — List",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/users/wallets/transactions/list"
+  },
+  {
+    "file": "03-user-data.md",
+    "title": "Transaction History (Selective)",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/users/transactions-history"
+  },
+  {
+    "file": "03-user-data.md",
+    "title": "Deposits — List",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/users/wallets/deposits/list"
+  },
+  {
+    "file": "03-user-data.md",
+    "title": "Favorite Markets - Get",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/users/markets/favorite"
+  },
+  {
+    "file": "03-user-data.md",
+    "title": "Favorite Markets - Add",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/users/markets/favorite"
+  },
+  {
+    "file": "03-user-data.md",
+    "title": "Favorite Markets - Remove",
+    "type": "endpoint",
+    "method": "DELETE",
+    "path": "/users/markets/favorite"
+  },
+  {
+    "file": "04-spot-trading.md",
+    "title": "Place a New Order",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/market/orders/add"
+  },
+  {
+    "file": "04-spot-trading.md",
+    "title": "Order Status",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/market/orders/status"
+  },
+  {
+    "file": "04-spot-trading.md",
+    "title": "List Your Orders",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/market/orders/list"
+  },
+  {
+    "file": "04-spot-trading.md",
+    "title": "Update Order Status",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/market/orders/update-status"
+  },
+  {
+    "file": "04-spot-trading.md",
+    "title": "Bulk-Cancel Orders",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/market/orders/cancel-old"
+  },
+  {
+    "file": "04-spot-trading.md",
+    "title": "List Your Trades",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/market/trades/list"
+  },
+  {
+    "file": "05-margin-trading.md",
+    "title": "List Margin Markets",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/margin/markets/list"
+  },
+  {
+    "file": "05-margin-trading.md",
+    "title": "List Active Liquidity Pools",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/liquidity-pools/list"
+  },
+  {
+    "file": "05-margin-trading.md",
+    "title": "Transfer Funds to/from the Margin Wallet",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/wallets/transfer"
+  },
+  {
+    "file": "05-margin-trading.md",
+    "title": "Get Margin Delegation Limits",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/margin/v2/delegation-limit"
+  },
+  {
+    "file": "05-margin-trading.md",
+    "title": "Place a Margin Order",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/margin/orders/add"
+  },
+  {
+    "file": "05-margin-trading.md",
+    "title": "List Positions",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/positions/list"
+  },
+  {
+    "file": "05-margin-trading.md",
+    "title": "Get a Single Position",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/positions/:positionId:/status"
+  },
+  {
+    "file": "05-margin-trading.md",
+    "title": "Close a Position",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/positions/:positionId:/close"
+  },
+  {
+    "file": "05-margin-trading.md",
+    "title": "Edit Collateral on an Open Position",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/positions/:positionId:/edit-collateral"
+  },
+  {
+    "file": "06-withdrawals.md",
+    "title": "Submit a Crypto Withdrawal Request",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/users/wallets/withdraw"
+  },
+  {
+    "file": "06-withdrawals.md",
+    "title": "Confirm a Crypto Withdrawal Request",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/users/wallets/withdraw-confirm"
+  },
+  {
+    "file": "06-withdrawals.md",
+    "title": "Get Crypto Withdrawal Details",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/withdraws/<WITHDRAW>"
+  },
+  {
+    "file": "06-withdrawals.md",
+    "title": "Submit a Rial Withdrawal Request",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/cobank/withdraw"
+  },
+  {
+    "file": "06-withdrawals.md",
+    "title": "Cancel a Rial Withdrawal Request",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/cobank/withdraw/<id>/cancel"
+  },
+  {
+    "file": "06-withdrawals.md",
+    "title": "Get Rial Withdrawal Details",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/cobank/withdraw/<id>"
+  },
+  {
+    "file": "06-withdrawals.md",
+    "title": "List All Withdrawals",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/users/wallets/withdraws/list"
+  },
+  {
+    "file": "07-websocket.md",
+    "title": "Get a WebSocket Token",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/auth/ws/token"
+  },
+  {
+    "file": "07-websocket.md",
+    "title": "Order Book Channel",
+    "type": "channel",
+    "channel_pattern": "public:orderbook-*"
+  },
+  {
+    "file": "07-websocket.md",
+    "title": "OHLC/Candle Channel",
+    "type": "channel",
+    "channel_pattern": "public:candle-{marketSymbol}-{resolution}"
+  },
+  {
+    "file": "07-websocket.md",
+    "title": "Public Trades Channel",
+    "type": "channel",
+    "channel_pattern": "public:trades-{marketSymbol}"
+  },
+  {
+    "file": "07-websocket.md",
+    "title": "Market Stats Channel",
+    "type": "channel",
+    "channel_pattern": "public:market-stats-{marketSymbol}"
+  },
+  {
+    "file": "07-websocket.md",
+    "title": "Market Stats Channel",
+    "type": "channel",
+    "channel_pattern": "public:market-stats-all"
+  },
+  {
+    "file": "07-websocket.md",
+    "title": "Private Channel: Your Orders",
+    "type": "channel",
+    "channel_pattern": "private:orders#{websocketAuthParam}"
+  },
+  {
+    "file": "07-websocket.md",
+    "title": "Private Channel: Your Trades",
+    "type": "channel",
+    "channel_pattern": "private:trades#{websocketAuthParam}"
+  },
+  {
+    "file": "08-account-management.md",
+    "title": "List Address Book Entries",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/address_book"
+  },
+  {
+    "file": "08-account-management.md",
+    "title": "Add a New Address",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/address_book"
+  },
+  {
+    "file": "08-account-management.md",
+    "title": "Delete an Address",
+    "type": "endpoint",
+    "method": "DELETE",
+    "path": "/address_book/<address_id>/delete"
+  },
+  {
+    "file": "08-account-management.md",
+    "title": "Enable Secure Withdrawal (Whitelist Mode)",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/address_book/whitelist/activate"
+  },
+  {
+    "file": "08-account-management.md",
+    "title": "Disable Secure Withdrawal",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/address_book/whitelist/deactivate"
+  },
+  {
+    "file": "08-account-management.md",
+    "title": "Login History",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/users/login-attempts"
+  },
+  {
+    "file": "08-account-management.md",
+    "title": "Activate Emergency Withdrawal Cancellation",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/security/emergency-cancel/activate"
+  },
+  {
+    "file": "08-account-management.md",
+    "title": "Set Anti-Phishing Code",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/security/anti-phishing"
+  },
+  {
+    "file": "08-account-management.md",
+    "title": "Get Anti-Phishing Code",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/security/anti-phishing"
+  },
+  {
+    "file": "08-account-management.md",
+    "title": "List Invite Codes",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/users/referral/links-list"
+  },
+  {
+    "file": "08-account-management.md",
+    "title": "Create Invite Code",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/users/referral/links-add"
+  },
+  {
+    "file": "08-account-management.md",
+    "title": "Referral Status",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/users/referral/referral-status"
+  },
+  {
+    "file": "08-account-management.md",
+    "title": "Set Referrer",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/users/referral/set-referrer"
+  },
+  {
+    "file": "09-portfolio-and-other.md",
+    "title": "Daily P&L — Last Week",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/users/portfolio/last-week-daily-profit"
+  },
+  {
+    "file": "09-portfolio-and-other.md",
+    "title": "Cumulative Daily P&L — Last Week",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/users/portfolio/last-week-daily-total-profit"
+  },
+  {
+    "file": "09-portfolio-and-other.md",
+    "title": "Total P&L — Last Month",
+    "type": "endpoint",
+    "method": "POST",
+    "path": "/users/portfolio/last-month-total-profit"
+  },
+  {
+    "file": "09-portfolio-and-other.md",
+    "title": "System Options",
+    "type": "endpoint",
+    "method": "GET",
+    "path": "/v2/options"
+  }
+]

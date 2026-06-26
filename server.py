@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -10,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from bot import BotConfig
+from bot import BotConfig, BotStatus
 from bot_manager import bot_manager
 from backtester import tester_manager
 from optimizer import optimizer_manager
@@ -18,11 +19,78 @@ from optimizer import optimizer_manager
 # ── WebSocket client registry ──────────────────────────────────────────────────
 _clients: list[WebSocket] = []
 
+# ── Exchange-level position cache (refreshed every 30 s) ──────────────────────
+_exchange_state: dict = {
+    "positions": [],
+    "last_synced": None,
+    "error": None,
+}
+
+
+def _normalize_exchange_position(raw: dict) -> dict:
+    src = raw.get("srcCurrency", "")
+    dst = raw.get("dstCurrency", "")
+    return {
+        "exchange_id":         raw.get("id"),
+        "direction":           "Long" if raw.get("side") == "buy" else "Short",
+        "entry_time":          raw.get("openedAt", ""),
+        "entry_price":         float(raw.get("entryPrice") or 0),
+        "unrealized_pnl":      float(raw.get("unrealizedPNL") or 0),
+        "unrealized_pnl_pct":  float(raw.get("unrealizedPNLPercent") or 0),
+        "liquidation_price":   float(raw.get("liquidationPrice") or 0),
+        "mark_price":          float(raw.get("markPrice") or 0),
+        "margin_ratio":        float(raw.get("marginRatio") or 0),
+        "collateral":          float(raw.get("collateral") or 0),
+        "delegated_amount":    float(raw.get("delegatedAmount") or 0),
+        "src_currency":        src,
+        "dst_currency":        dst,
+        "symbol":              f"{src}{dst}".upper(),
+        "attributed_bot_id":   None,
+        "attributed_bot_name": None,
+    }
+
+
+def _attribute_positions(positions: list[dict]) -> None:
+    claimed: dict[int, tuple[str, str]] = {}
+    for bot in bot_manager.get_all():
+        if bot.cfg.mode == "real" and bot._exchange_position_id is not None:
+            claimed[bot._exchange_position_id] = (bot.id, bot.cfg.name or bot.id)
+    for pos in positions:
+        exc_id = pos.get("exchange_id")
+        if exc_id in claimed:
+            pos["attributed_bot_id"], pos["attributed_bot_name"] = claimed[exc_id]
+
+
+async def _exchange_sync_loop() -> None:
+    while True:
+        try:
+            from nobitex_client import NobitexClient
+            testnet = os.getenv("NOBITEX_TESTNET", "false").lower() == "true"
+            client = NobitexClient(testnet=testnet)
+            raw = await asyncio.to_thread(client.positions, "active")
+            normalized = [
+                _normalize_exchange_position(p)
+                for p in raw
+                if p.get("status") == "Open"
+            ]
+            _attribute_positions(normalized)
+            _exchange_state["positions"] = normalized
+            _exchange_state["last_synced"] = datetime.now(timezone.utc).isoformat()
+            _exchange_state["error"] = None
+        except ValueError:
+            _exchange_state["error"] = "no_credentials"
+        except Exception as exc:
+            _exchange_state["error"] = str(exc)
+        await asyncio.sleep(30)
+
 
 async def _broadcast_loop() -> None:
     while True:
         if _clients:
-            payload = json.dumps(bot_manager.get_all_states())
+            payload = json.dumps({
+                "bots": bot_manager.get_all_states(),
+                "exchange": _exchange_state,
+            })
             dead: list[WebSocket] = []
             for ws in list(_clients):
                 try:
@@ -37,9 +105,11 @@ async def _broadcast_loop() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     bot_manager.load()
-    task = asyncio.create_task(_broadcast_loop())
+    broadcast_task = asyncio.create_task(_broadcast_loop())
+    exchange_task  = asyncio.create_task(_exchange_sync_loop())
     yield
-    task.cancel()
+    broadcast_task.cancel()
+    exchange_task.cancel()
 
 
 # ── App ────────────────────────────────────────────────────────────────────────
@@ -56,7 +126,10 @@ async def ws_endpoint(websocket: WebSocket):
     await websocket.accept()
     _clients.append(websocket)
     try:
-        await websocket.send_text(json.dumps(bot_manager.get_all_states()))
+        await websocket.send_text(json.dumps({
+            "bots": bot_manager.get_all_states(),
+            "exchange": _exchange_state,
+        }))
     except Exception:
         pass
     try:
@@ -131,8 +204,9 @@ class OptimizerPrefsRequest(BaseModel):
     leverage: int = Field(default=5, ge=1, le=100)
     cores: int = Field(default=0, ge=0)   # 0 = Auto
     maxiter: int = Field(default=30, ge=5, le=500)
-    objective: str = "profit"             # profit | winrate | balanced
+    objective: str = "profit"             # profit | winrate | balanced | large_move
     custom_bounds: Optional[dict] = None  # param_name -> [low, high]
+    min_price_change: float = Field(default=5.0, gt=0, le=100)
 
 
 class OptimizerRunRequest(BaseModel):
@@ -144,15 +218,14 @@ class OptimizerRunRequest(BaseModel):
     leverage: int = Field(default=5, ge=1, le=100)
     cores: int = Field(default=0, ge=0)   # 0 = Auto
     maxiter: int = Field(default=30, ge=5, le=500)
-    objective: str = "profit"             # profit | winrate | balanced
+    objective: str = "profit"             # profit | winrate | balanced | large_move
     custom_bounds: Optional[dict] = None  # param_name -> [low, high]
+    min_price_change: float = Field(default=5.0, gt=0, le=100)
 
 
 # ── Margin Markets ─────────────────────────────────────────────────────────────
 @app.get("/api/margin-markets")
 async def get_margin_markets():
-    import requests as _req
-
     def _parse(markets_raw: dict) -> list[dict]:
         result = [
             {
@@ -171,24 +244,7 @@ async def get_margin_markets():
         result.sort(key=lambda x: x["symbol"])
         return result
 
-    # Try unauthenticated — /margin/markets/list is a public endpoint
-    try:
-        session = _req.Session()
-        session.trust_env = False
-        session.headers["User-Agent"] = "TraderBot/NobitexBot"
-        resp = await asyncio.to_thread(
-            lambda: session.get(
-                "https://apiv2.nobitex.ir/margin/markets/list", timeout=10
-            )
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        if data.get("status") in ("ok", "success") and data.get("markets"):
-            return {"ok": True, "markets": _parse(data["markets"]), "source": "live"}
-    except Exception:
-        pass
-
-    # Try authenticated if credentials are available
+    # Try authenticated (margin/markets/list requires a token)
     try:
         from nobitex_client import NobitexClient
         testnet = os.getenv("NOBITEX_TESTNET", "false").lower() == "true"
@@ -218,6 +274,58 @@ async def get_margin_markets():
 
 
 # ── Wallet ─────────────────────────────────────────────────────────────────────
+# ── Live-bot margin USDT budgeting ───────────────────────────────────────────
+def _margin_usdt_from(margin: dict) -> float:
+    """Free USDT in a margin-wallet dict: balance - blocked."""
+    usdt = margin.get("USDT") or margin.get("usdt") or {}
+    try:
+        return float(usdt.get("balance") or 0) - float(usdt.get("blocked") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _margin_usdt_free() -> Optional[float]:
+    """Free margin (تعهدی) USDT, or None if it can't be read (no creds / API error)."""
+    try:
+        from nobitex_client import NobitexClient
+        testnet = os.getenv("NOBITEX_TESTNET", "false").lower() == "true"
+        client = NobitexClient(testnet=testnet)
+        return _margin_usdt_from(client.wallets("margin"))
+    except Exception:
+        return None
+
+
+def _committed_real_credit(exclude_id: Optional[str] = None) -> float:
+    """Sum of credit committed by real-mode bots that are currently running."""
+    total = 0.0
+    for b in bot_manager.get_all():
+        if b.id == exclude_id:
+            continue
+        if b.cfg.mode == "real" and b.status == BotStatus.RUNNING:
+            total += float(b.cfg.credit)
+    return total
+
+
+async def _budget_block_reason(bot) -> Optional[str]:
+    """Error message if starting `bot` would over-commit margin USDT, else None.
+
+    Skips simulation bots and the no-credentials case (can't read the wallet).
+    """
+    if bot.cfg.mode != "real":
+        return None
+    free = await asyncio.to_thread(_margin_usdt_free)
+    if free is None:
+        return None  # no credentials / API error — don't block on missing data
+    remaining = free - _committed_real_credit(exclude_id=bot.id)
+    if bot.cfg.credit > remaining + 1e-9:
+        return (
+            f"Insufficient margin USDT: bot needs {bot.cfg.credit:.2f}, "
+            f"only {remaining:.2f} available after running live bots "
+            f"(free {free:.2f})"
+        )
+    return None
+
+
 @app.get("/api/wallet")
 async def get_wallet():
     try:
@@ -226,7 +334,24 @@ async def get_wallet():
         client = NobitexClient(testnet=testnet)
         spot = await asyncio.to_thread(client.wallets, "spot")
         margin = await asyncio.to_thread(client.wallets, "margin")
-        return {"ok": True, "spot": spot, "margin": margin}
+        usdt_data = margin.get("USDT") or margin.get("usdt") or {}
+        balance_raw = float(usdt_data.get("balance", 0) or 0)
+        blocked_raw = float(usdt_data.get("blocked", 0) or 0)
+        available = balance_raw - blocked_raw
+        committed = _committed_real_credit()
+        budget = {
+            "available": round(available, 2),
+            "committed": round(committed, 2),
+            "remaining": round(available - committed, 2),
+        }
+        return {
+            "ok": True,
+            "spot": spot,
+            "margin": margin,
+            "usdt_budget": budget,
+            "usdt_available": round(available, 2),
+            "usdt_locked_in": round(blocked_raw, 2),
+        }
     except ValueError:
         return {"ok": False, "error": "no_credentials"}
     except Exception as e:
@@ -357,7 +482,7 @@ async def optimizer_config():
 async def optimizer_save_prefs(req: OptimizerPrefsRequest):
     optimizer_manager.save_prefs(
         req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
-        req.cores, req.maxiter, req.objective, req.custom_bounds,
+        req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change,
     )
     return {"ok": True}
 
@@ -383,11 +508,11 @@ async def optimizer_run(req: OptimizerRunRequest):
     # Persist the selection so the tab reopens where the user left off.
     optimizer_manager.save_prefs(
         req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
-        req.cores, req.maxiter, req.objective, req.custom_bounds,
+        req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change,
     )
     job = optimizer_manager.start_job(
         req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
-        req.cores, req.maxiter, req.objective, req.custom_bounds,
+        req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change,
     )
     return {"job_id": job.id}
 
@@ -412,8 +537,31 @@ async def optimizer_run_cancel(job_id: str):
 # ── Bulk bot actions (must be registered before {bot_id} routes) ───────────────
 @app.post("/api/bots/actions/start-all")
 async def start_all_bots():
-    await asyncio.gather(*[bot.start() for bot in bot_manager.get_all()])
-    return {"ok": True}
+    # Simulation bots start in parallel (no budget constraint).
+    sims = [b for b in bot_manager.get_all() if b.cfg.mode != "real"]
+    await asyncio.gather(*[b.start() for b in sims])
+
+    # Real bots start sequentially so the committed total stays accurate as each
+    # one begins running; skip (don't abort the batch) any that over-commit.
+    free = await asyncio.to_thread(_margin_usdt_free)
+    blocked: list[dict] = []
+    reals = [
+        b for b in bot_manager.get_all()
+        if b.cfg.mode == "real" and b.status != BotStatus.RUNNING
+    ]
+    for b in reals:
+        if free is not None:
+            remaining = free - _committed_real_credit(exclude_id=b.id)
+            if b.cfg.credit > remaining + 1e-9:
+                blocked.append({
+                    "id": b.id,
+                    "name": b.cfg.name or b.id,
+                    "credit": round(float(b.cfg.credit), 2),
+                    "remaining": round(remaining, 2),
+                })
+                continue
+        await b.start()
+    return {"ok": True, "blocked": blocked}
 
 
 @app.post("/api/bots/actions/stop-all")
@@ -520,6 +668,9 @@ async def start_bot(bot_id: str):
     bot = bot_manager.get_bot(bot_id)
     if bot is None:
         return JSONResponse(status_code=404, content={"error": "Bot not found"})
+    reason = await _budget_block_reason(bot)
+    if reason:
+        return JSONResponse(status_code=400, content={"error": reason})
     await bot.start()
     return bot.to_state_dict()
 

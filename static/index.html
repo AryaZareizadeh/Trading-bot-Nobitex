@@ -384,9 +384,9 @@
 
   /* ── Optimizer objective selector ── */
   .opt-objective { display: flex; gap: 8px; flex-wrap: wrap; }
-  .opt-obj-option { position: relative; }
+  .opt-obj-option { position: relative; flex: 1; min-width: 100px; display: flex; flex-direction: column; }
   .opt-obj-option input[type="radio"] { position: absolute; opacity: 0; width: 0; height: 0; }
-  .opt-obj-option label { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 14px; border-radius: 8px; cursor: pointer; border: 1px solid var(--border); background: var(--surface2); font-size: 12px; color: var(--text); transition: border-color .15s, background .15s; }
+  .opt-obj-option label { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 8px 14px; border-radius: 8px; cursor: pointer; border: 1px solid var(--border); background: var(--surface2); font-size: 12px; color: var(--text); transition: border-color .15s, background .15s; width: 100%; box-sizing: border-box; }
   .opt-obj-option label .obj-sub { font-size: 9px; color: var(--muted); text-align: center; max-width: 90px; }
   .opt-obj-option input:checked + label { border-color: var(--accent); background: #0e1e30; color: var(--accent); }
   .opt-obj-option input:checked + label .obj-sub { color: var(--accent); opacity: .7; }
@@ -397,6 +397,20 @@
   .opt-history-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
   .opt-history-table tr:last-child td { border-bottom: none; }
   .opt-history-table .best-row td { background: rgba(56,189,248,.06); }
+
+  /* ── Three-box layout ── */
+  .three-box-layout { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; padding: 16px 24px; }
+  .tri-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; max-height: calc(100vh - 180px); min-height: 220px; }
+  .tri-box-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface2); border-radius: var(--radius) var(--radius) 0 0; flex-shrink: 0; }
+  .tri-box-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--accent); }
+  .tri-box-count { font-size: 11px; color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 1px 8px; }
+  .tri-box-body { flex: 1; overflow-y: auto; }
+  .tri-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  .tri-row:last-child { border-bottom: none; }
+  .tri-row:hover { background: rgba(255,255,255,.025); }
+  .bot-color-pill { width: 3px; border-radius: 3px; align-self: stretch; min-height: 20px; flex-shrink: 0; }
+  .tri-bot-tag { display: inline-block; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+  .wallet-locked { font-size: 11px; color: var(--yellow); }
 </style>
 </head>
 <body>
@@ -438,32 +452,39 @@
     <span class="summary-label">Running</span>
     <span class="summary-value" id="sumRunning" style="color:var(--green)">0 / 0</span>
   </div>
-  <div class="summary-item">
-    <span class="summary-label">Combined P&amp;L</span>
-    <span class="summary-value" id="sumPnl">$0.00</span>
-  </div>
-  <div class="summary-item">
-    <span class="summary-label">Total Balance</span>
-    <span class="summary-value neu" id="sumBalance">$0.00</span>
-  </div>
-  <div class="summary-item">
-    <span class="summary-label">Avg Win Rate</span>
-    <span class="summary-value" id="sumWinRate">—</span>
-  </div>
-  <div class="summary-item">
-    <span class="summary-label">Open Positions</span>
-    <span class="summary-value neu" id="sumPositions">0</span>
-  </div>
 </div>
 
 <!-- Wallet Bar -->
 <div class="wallet-bar hidden" id="walletBar"></div>
 
-<!-- Bot Table -->
-<div class="table-wrap" id="botGrid">
-  <div class="empty-state">
-    <span class="icon">🤖</span>
-    Create your first bot to get started.
+<!-- Three-box layout -->
+<div class="three-box-layout">
+  <div class="tri-box">
+    <div class="tri-box-header">
+      <span class="tri-box-title">Bots</span>
+      <span class="tri-box-count" id="boxBotsHeader">0</span>
+    </div>
+    <div class="tri-box-body" id="boxBotsBody">
+      <div class="empty-state"><span class="icon">🤖</span>Create your first bot to get started.</div>
+    </div>
+  </div>
+  <div class="tri-box">
+    <div class="tri-box-header">
+      <span class="tri-box-title">Orders</span>
+      <span class="tri-box-count" id="boxOrdersHeader">0</span>
+    </div>
+    <div class="tri-box-body" id="boxOrdersBody">
+      <div class="empty-state" style="padding:20px"><span style="color:var(--muted)">No pending orders.</span></div>
+    </div>
+  </div>
+  <div class="tri-box">
+    <div class="tri-box-header">
+      <span class="tri-box-title">Positions</span>
+      <span class="tri-box-count" id="boxPositionsHeader">0</span>
+    </div>
+    <div class="tri-box-body" id="boxPositionsBody">
+      <div class="empty-state" style="padding:20px"><span style="color:var(--muted)">No open positions.</span></div>
+    </div>
   </div>
 </div>
 
@@ -578,17 +599,26 @@
       <div class="hint">Choose what the optimizer should maximize. "Balanced" weights both metrics equally.</div>
       <div class="opt-objective">
         <div class="opt-obj-option">
-          <input type="radio" name="oObjective" id="oObjProfit" value="profit" checked onchange="saveOptimizerPrefs()">
+          <input type="radio" name="oObjective" id="oObjProfit" value="profit" checked onchange="saveOptimizerPrefs(); _onObjectiveChange()">
           <label for="oObjProfit">Highest Profit<span class="obj-sub">Maximize net P&amp;L</span></label>
         </div>
         <div class="opt-obj-option">
-          <input type="radio" name="oObjective" id="oObjWinrate" value="winrate" onchange="saveOptimizerPrefs()">
+          <input type="radio" name="oObjective" id="oObjWinrate" value="winrate" onchange="saveOptimizerPrefs(); _onObjectiveChange()">
           <label for="oObjWinrate">Highest Win Rate<span class="obj-sub">Maximize % of winning trades</span></label>
         </div>
         <div class="opt-obj-option">
-          <input type="radio" name="oObjective" id="oObjBalanced" value="balanced" onchange="saveOptimizerPrefs()">
+          <input type="radio" name="oObjective" id="oObjBalanced" value="balanced" onchange="saveOptimizerPrefs(); _onObjectiveChange()">
           <label for="oObjBalanced">Balanced<span class="obj-sub">Profit % + Win Rate weighted equally</span></label>
         </div>
+        <div class="opt-obj-option">
+          <input type="radio" name="oObjective" id="oObjLargeMove" value="large_move" onchange="saveOptimizerPrefs(); _onObjectiveChange()">
+          <label for="oObjLargeMove">Large Price Move<span class="obj-sub">Maximize big-move trade %</span></label>
+        </div>
+      </div>
+      <div id="oLargeMoveRow" style="display:none; margin-top:12px; align-items:center; gap:8px; flex-wrap:wrap;">
+        <label style="font-size:12px; color:var(--muted);">Min price change (%):</label>
+        <input type="number" id="oMinPriceChange" value="5" min="0.1" max="100" step="0.5"
+               style="width:70px;" onchange="saveOptimizerPrefs()">
       </div>
     </div>
 
@@ -640,11 +670,11 @@
         <label>Trading Mode</label>
         <div class="mode-toggle">
           <div class="mode-option">
-            <input type="radio" name="fMode" id="fModeSim" value="simulation" checked>
+            <input type="radio" name="fMode" id="fModeSim" value="simulation" checked onchange="refreshCreateBudget()">
             <label for="fModeSim"><span class="mode-title">Simulation</span><span class="mode-sub">Paper trading — no real orders</span></label>
           </div>
           <div class="mode-option">
-            <input type="radio" name="fMode" id="fModeReal" value="real">
+            <input type="radio" name="fMode" id="fModeReal" value="real" onchange="refreshCreateBudget()">
             <label for="fModeReal"><span class="mode-title">Real Trade</span><span class="mode-sub">API key required</span></label>
           </div>
         </div>
@@ -674,13 +704,14 @@
         <select id="fStrategy">
           <option value="AdvRSI">Advanced RSI Combined</option>
           <option value="TrendMomentum">Trend-Filtered Momentum</option>
-          <option value="ExtremeReversal">Extreme Reversal</option>
+          <option value="ExtremeReversal">Extreme Reversal (Beta)</option>
         </select>
       </div>
       <div class="form-row">
         <div class="form-group">
           <label>Credit (USDT)</label>
-          <input type="number" id="fCredit" value="100" min="1" step="1">
+          <input type="number" id="fCredit" value="100" min="1" step="1" oninput="validateCreateBudget()">
+          <div class="market-hint" id="fCreditHint"></div>
         </div>
         <div class="form-group">
           <label>Leverage</label>
@@ -741,7 +772,7 @@
         <select id="eStrategy">
           <option value="AdvRSI">Advanced RSI Combined</option>
           <option value="TrendMomentum">Trend-Filtered Momentum</option>
-          <option value="ExtremeReversal">Extreme Reversal</option>
+          <option value="ExtremeReversal">Extreme Reversal (Beta)</option>
         </select>
       </div>
       <div class="form-row">
@@ -847,10 +878,29 @@
   </div>
 </div>
 
+<!-- Candle Count Warning Modal -->
+<div class="modal-overlay" id="candleWarnModal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-header">
+      <h2>Fewer Candles Than Requested</h2>
+      <button class="modal-close" onclick="closeModal('candleWarnModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <p id="candleWarnMsg" style="margin:0 0 20px; line-height:1.6;"></p>
+      <div style="display:flex; gap:8px; justify-content:flex-end;">
+        <button class="btn btn-danger"   onclick="_candleWarnCancel()">Cancel</button>
+        <button class="btn btn-neutral"  onclick="_candleWarnRetry()">Retry</button>
+        <button class="btn btn-primary"  onclick="_candleWarnContinue()">Continue</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
 <script>
 // ── State ─────────────────────────────────────────────────────────────────────
 let bots = [];
+let exchangePositions = [];
 let ws = null;
 let wsRetryDelay = 1000;
 let editingBotId = null;
@@ -893,9 +943,11 @@ function connectWS() {
   ws = new WebSocket(url);
   ws.onopen  = () => { wsRetryDelay = 1000; setWsStatus('connected'); };
   ws.onmessage = (evt) => {
-    const newBots = JSON.parse(evt.data);
+    const data = JSON.parse(evt.data);
+    const newBots = data.bots || data;
     detectTradeNotifications(newBots);
     bots = newBots;
+    exchangePositions = (data.exchange && data.exchange.positions) || [];
     renderGrid();
     updateSummary();
   };
@@ -966,29 +1018,177 @@ function detectTradeNotifications(newBots) {
   });
 }
 
+// ── Bot color palette ─────────────────────────────────────────────────────────
+const BOT_COLORS = ['#38bdf8','#4ade80','#f87171','#fbbf24','#a78bfa','#fb923c','#34d399','#f472b6'];
+function getBotColor(botId) {
+  let h = 0;
+  for (let i = 0; i < botId.length; i++) h = (h * 31 + botId.charCodeAt(i)) & 0xffff;
+  return BOT_COLORS[h % BOT_COLORS.length];
+}
+
 // ── Rendering ─────────────────────────────────────────────────────────────────
 function renderGrid() {
-  const grid = document.getElementById('botGrid');
+  renderBotsBox();
+  renderOrdersBox();
+  renderPositionsBox();
+}
+
+function renderBotsBox() {
+  const body   = document.getElementById('boxBotsBody');
+  const header = document.getElementById('boxBotsHeader');
+  header.textContent = bots.length;
   if (!bots.length) {
-    grid.innerHTML = `<div class="empty-state"><span class="icon">🤖</span>Create your first bot to get started.</div>`;
+    body.innerHTML = `<div class="empty-state"><span class="icon">🤖</span>Create your first bot to get started.</div>`;
     return;
   }
-  grid.innerHTML = `<table class="bots-table">
-  <thead><tr>
-    <th>Bot</th>
-    <th>Config</th>
-    <th>Position</th>
-    <th>Price</th>
-    <th>P&amp;L</th>
-    <th>Balance</th>
-    <th>Trades / Candles</th>
-    <th>Metrics</th>
-    <th>Equity</th>
-    <th>Updated</th>
-    <th>Actions</th>
-  </tr></thead>
-  <tbody>${bots.map(renderRow).join('')}</tbody>
-</table>`;
+  body.innerHTML = bots.map(b => {
+    const isSim    = b.mode !== 'real';
+    const pnlCls   = b.total_pnl > 0 ? 'pos' : b.total_pnl < 0 ? 'neg' : 'neu';
+    const pnlSign  = b.total_pnl > 0 ? '+' : '';
+    const errorTip = b.error ? ` <span title="${escHtml(b.error)}" style="color:var(--red);cursor:help">⚠</span>` : '';
+    const startBtn = b.status !== 'running'
+      ? `<button class="btn btn-success btn-sm" onclick="startBot('${b.id}')">▶</button>` : '';
+    const stopBtn  = b.status === 'running'
+      ? `<button class="btn btn-danger btn-sm" onclick="stopBot('${b.id}')">■</button>` : '';
+    const color = getBotColor(b.id);
+    return `<div class="tri-row" id="card-${b.id}">
+  <div class="bot-color-pill" style="background:${color}"></div>
+  <div style="flex:1;min-width:0">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
+      <div class="status-dot ${b.status}"></div>
+      <span style="font-size:12px;font-weight:700">${escHtml(b.name)}${errorTip}</span>
+      <span class="bot-id">${b.id}</span>
+      <span class="badge ${isSim ? 'badge-sim' : 'badge-real'}" style="margin-left:auto">${isSim ? 'SIM' : 'LIVE'}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span style="font-size:12px;font-weight:700">${escHtml(b.symbol)}</span>
+      <span style="font-size:11px;color:var(--muted)">${escHtml(b.strategy)} · ${fmtTF(b.timeframe)} · ${b.leverage}×</span>
+      <span class="stat-value ${pnlCls}" style="font-size:12px;margin-left:auto">${pnlSign}$${b.total_pnl.toFixed(2)}</span>
+    </div>
+  </div>
+  <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
+    ${startBtn}${stopBtn}
+    <button class="btn btn-neutral btn-sm btn-icon" onclick="openEditModal('${b.id}')" title="Edit">✎</button>
+    <button class="btn btn-neutral btn-sm" onclick="showHistory('${b.id}')">Hist</button>
+    <button class="btn btn-danger btn-sm btn-icon" onclick="deleteBot('${b.id}')">✕</button>
+  </div>
+</div>`;
+  }).join('');
+}
+
+function renderOrdersBox() {
+  const body   = document.getElementById('boxOrdersBody');
+  const header = document.getElementById('boxOrdersHeader');
+  const orders = bots.filter(b => b.pending_order != null).map(b => ({ bot: b, order: b.pending_order }));
+  header.textContent = orders.length;
+  if (!orders.length) {
+    body.innerHTML = `<div class="empty-state" style="padding:20px"><span style="color:var(--muted)">No pending orders.</span></div>`;
+    return;
+  }
+  body.innerHTML = orders.map(({ bot: b, order: o }) => {
+    const color     = getBotColor(b.id);
+    const side      = o.side === 'buy' ? 'LONG' : 'SHORT';
+    const sideColor = o.side === 'buy' ? 'var(--green)' : 'var(--red)';
+    const pct       = o.matched_pct ?? 0;
+    const age       = o.placed_at ? timeAgo(o.placed_at) : '—';
+    const barColor  = pct > 50 ? 'var(--green)' : pct > 0 ? 'var(--yellow)' : 'var(--muted)';
+    return `<div class="tri-row">
+  <div class="bot-color-pill" style="background:${color}"></div>
+  <div style="flex:1;min-width:0">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
+      <span class="tri-bot-tag" style="background:${color}22;color:${color};border:1px solid ${color}55">${escHtml(b.name)}</span>
+      <span style="font-size:11px;font-weight:700;color:${sideColor}">${side}</span>
+      <span style="font-size:11px;font-weight:600">${escHtml(b.symbol)}</span>
+      <span style="font-size:10px;color:var(--muted);margin-left:auto">${age}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+      <span style="font-size:11px;color:var(--muted)">${o.amount.toFixed(4)} @ $${fmtNum(o.price)}</span>
+      <span style="font-size:11px;font-weight:700;color:${barColor};margin-left:auto">${pct.toFixed(0)}% filled</span>
+    </div>
+    <div style="height:4px;background:var(--surface2);border-radius:2px;overflow:hidden">
+      <div style="height:100%;width:${Math.min(pct,100)}%;background:${barColor};transition:width .5s"></div>
+    </div>
+  </div>
+</div>`;
+  }).join('');
+}
+
+function renderPositionsBox() {
+  const body   = document.getElementById('boxPositionsBody');
+  const header = document.getElementById('boxPositionsHeader');
+
+  const coveredIds = new Set(
+    exchangePositions.map(p => p.exchange_id).filter(id => id != null)
+  );
+
+  const exPos = exchangePositions.map(p => ({
+    source: 'exchange', pos: p,
+    botName: p.attributed_bot_name || null,
+    botId:   p.attributed_bot_id   || null,
+    symbol:  p.symbol || '',
+    color:   p.attributed_bot_id ? getBotColor(p.attributed_bot_id) : '#64748b',
+  }));
+
+  const simPos = bots
+    .filter(b => b.mode !== 'real')
+    .flatMap(b => (b.open_positions || []).map(p => ({
+      source: 'sim', pos: p,
+      botName: b.name, botId: b.id,
+      symbol: b.symbol || '', color: getBotColor(b.id),
+    })));
+
+  const realFallback = bots
+    .filter(b => b.mode === 'real')
+    .flatMap(b => (b.open_positions || [])
+      .filter(p => !coveredIds.has(p.exchange_id))
+      .map(p => ({
+        source: 'real', pos: p,
+        botName: b.name, botId: b.id,
+        symbol: b.symbol || '', color: getBotColor(b.id),
+      })));
+
+  const all = [...exPos, ...simPos, ...realFallback];
+  header.textContent = all.length;
+
+  if (!all.length) {
+    body.innerHTML = `<div class="empty-state" style="padding:20px"><span style="color:var(--muted)">No open positions.</span></div>`;
+    return;
+  }
+
+  body.innerHTML = all.map(({ source, pos: p, botName, botId, color, symbol }) => {
+    const isLong      = p.direction === 'Long';
+    const dirColor    = isLong ? 'var(--green)' : 'var(--red)';
+    const arrow       = isLong ? '↑' : '↓';
+    let unreal = p.unrealized_pnl != null ? p.unrealized_pnl : null;
+    if (unreal == null && source === 'sim') {
+      const bot = bots.find(b => b.id === botId);
+      if (bot && bot.current_price != null && p.entry_price) {
+        const pct = (bot.current_price - p.entry_price) / p.entry_price;
+        unreal = (bot.leverage || 1) * (bot.credit || 0) * (isLong ? 1 : -1) * pct;
+      }
+    }
+    const unrealColor = unreal == null ? 'var(--muted)' : unreal >= 0 ? 'var(--green)' : 'var(--red)';
+    const unrealStr   = unreal != null ? `${unreal >= 0 ? '+' : ''}$${Math.abs(unreal).toFixed(2)}` : '—';
+    const tagHtml = botName
+      ? `<span class="tri-bot-tag" style="background:${color}22;color:${color};border:1px solid ${color}55">${escHtml(botName)}</span>`
+      : `<span class="tri-bot-tag" style="background:#64748b22;color:#94a3b8;border:1px solid #64748b55">External</span>`;
+    return `<div class="tri-row">
+  <div class="bot-color-pill" style="background:${color}"></div>
+  <div style="flex:1;min-width:0">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+      ${tagHtml}
+      <span style="font-size:12px;font-weight:700;color:${dirColor}">${arrow} ${p.direction.toUpperCase()}</span>
+      <span style="font-size:11px;font-weight:600">${escHtml(symbol)}</span>
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap">
+      <div><div style="font-size:10px;color:var(--muted)">Entry</div><div style="font-size:12px;font-weight:700">$${fmtNum(p.entry_price)}</div></div>
+      ${p.mark_price ? `<div><div style="font-size:10px;color:var(--muted)">Mark</div><div style="font-size:12px">$${fmtNum(p.mark_price)}</div></div>` : ''}
+      <div><div style="font-size:10px;color:var(--muted)">Unrealized</div><div style="font-size:12px;font-weight:700;color:${unrealColor}">${unrealStr}</div></div>
+      ${p.liquidation_price ? `<div><div style="font-size:10px;color:var(--muted)">Liq</div><div style="font-size:12px;color:var(--yellow)">$${fmtNum(p.liquidation_price)}</div></div>` : ''}
+    </div>
+  </div>
+</div>`;
+  }).join('');
 }
 
 function renderRow(b) {
@@ -1116,22 +1316,7 @@ function renderSparkline(history, credit) {
 // ── Summary bar ───────────────────────────────────────────────────────────────
 function updateSummary() {
   const running = bots.filter(b => b.status === 'running').length;
-  const totalPnl = bots.reduce((s, b) => s + b.total_pnl, 0);
-  const totalBal = bots.reduce((s, b) => s + b.balance, 0);
-  const botsWithTrades = bots.filter(b => b.trade_count > 0);
-  const avgWr = botsWithTrades.length
-    ? botsWithTrades.reduce((s, b) => s + b.win_rate, 0) / botsWithTrades.length
-    : null;
-  const openPos = bots.reduce((s, b) => s + (b.open_positions ? b.open_positions.length : 0), 0);
-
-  const pnlEl = document.getElementById('sumPnl');
-  pnlEl.textContent = (totalPnl >= 0 ? '+$' : '-$') + Math.abs(totalPnl).toFixed(2);
-  pnlEl.style.color = totalPnl > 0 ? 'var(--green)' : totalPnl < 0 ? 'var(--red)' : 'var(--text)';
-
   document.getElementById('sumRunning').textContent = `${running} / ${bots.length}`;
-  document.getElementById('sumBalance').textContent = '$' + totalBal.toFixed(2);
-  document.getElementById('sumWinRate').textContent = avgWr != null ? avgWr.toFixed(1) + '%' : '—';
-  document.getElementById('sumPositions').textContent = openPos;
 }
 
 // ── Wallet ─────────────────────────────────────────────────────────────────────
@@ -1158,13 +1343,28 @@ async function fetchWallet() {
       return;
     }
 
-    const margin = data.margin || {};
-    const spot   = data.spot   || {};
-    const now    = new Date().toLocaleTimeString();
+    const margin     = data.margin || {};
+    const spot       = data.spot   || {};
+    const now        = new Date().toLocaleTimeString();
+    const usdtAvail  = data.usdt_available ?? null;
+    const usdtLocked = data.usdt_locked_in ?? null;
 
-    // Margin (تعهدی) section — show currencies with non-zero balance
+    // Margin (تعهدی) USDT section — use explicit available/locked_in from server
+    let usdtSection = '';
+    if (usdtAvail !== null) {
+      usdtSection = `
+<div class="wallet-section">
+  <span class="wallet-tag margin">تعهدی</span>
+  <span class="wallet-currency">USDT</span>
+  <span class="wallet-avail" style="font-size:13px;font-weight:700">✓ ${fmtWallet(usdtAvail)}</span>
+  <span style="font-size:10px;color:var(--muted)">Available</span>
+  ${usdtLocked > 0 ? `<span class="wallet-locked">🔒 ${fmtWallet(usdtLocked)}</span><span style="font-size:10px;color:var(--muted)">Locked In</span>` : ''}
+</div>`;
+    }
+
+    // Other margin currencies (non-USDT) with non-zero balance
     const mItems = Object.entries(margin)
-      .filter(([, w]) => parseFloat(w.balance || 0) > 0)
+      .filter(([cur, w]) => cur.toUpperCase() !== 'USDT' && parseFloat(w.balance || 0) > 0)
       .map(([cur, w]) => {
         const bal    = parseFloat(w.balance || 0);
         const frozen = parseFloat(w.frozen  || 0);
@@ -1188,7 +1388,8 @@ async function fetchWallet() {
       }).join('');
 
     bar.innerHTML = `
-      ${mItems || '<div class="wallet-error" style="color:var(--muted)">No margin (تعهدی) balance</div>'}
+      ${usdtSection || '<div class="wallet-error" style="color:var(--muted)">No margin (تعهدی) balance</div>'}
+      ${mItems}
       <div class="wallet-section">
         <span class="wallet-tag spot">Spot</span>
         ${sItems || '<span class="wallet-currency" style="color:var(--muted)">Empty</span>'}
@@ -1286,11 +1487,64 @@ function openCreateModal() {
   _pendingOptParams = null;   // clear any stale optimizer params
   populateSymbolSelect('f', 'zecusdt');
   document.getElementById('createModal').classList.add('open');
+  refreshCreateBudget();
+}
+
+// Margin USDT budget for a new live bot ({available, committed, remaining}), or
+// null when no budget applies (simulation, or wallet unreadable).
+let _createBudget = null;
+
+async function refreshCreateBudget() {
+  const hint = document.getElementById('fCreditHint');
+  const credit = document.getElementById('fCredit');
+  const isReal = document.getElementById('fModeReal')?.checked;
+  _createBudget = null;
+  hint.style.color = '';
+  credit.removeAttribute('max');
+  if (!isReal) { hint.textContent = ''; return; }
+  hint.textContent = 'Checking available margin USDT…';
+  try {
+    const res = await fetch('/api/wallet');
+    const data = await res.json();
+    if (!data.ok) {
+      hint.textContent = data.error === 'no_credentials'
+        ? 'No exchange credentials — connect to enforce a budget.'
+        : 'Wallet unavailable — budget not enforced.';
+      return;
+    }
+    const b = data.usdt_budget;
+    if (!b || b.remaining == null) { hint.textContent = 'Budget unavailable.'; return; }
+    _createBudget = b;
+    credit.setAttribute('max', String(Math.max(0, b.remaining)));
+    validateCreateBudget();
+  } catch (e) {
+    hint.textContent = 'Wallet check failed — budget not enforced.';
+  }
+}
+
+// Render the credit hint and return true if the credit is within budget
+// (or no budget applies).
+function validateCreateBudget() {
+  const hint = document.getElementById('fCreditHint');
+  const isReal = document.getElementById('fModeReal')?.checked;
+  if (!isReal || !_createBudget) { hint.style.color = ''; return true; }
+  const b = _createBudget;
+  const credit = parseFloat(document.getElementById('fCredit').value) || 0;
+  const over = credit > b.remaining + 1e-9;
+  hint.style.color = over ? 'var(--danger, #f87171)' : '';
+  hint.textContent = over
+    ? `Credit ${fmtWallet(credit)} exceeds available ${fmtWallet(b.remaining)} USDT.`
+    : `Available: ${fmtWallet(b.remaining)} USDT (free ${fmtWallet(b.available)} − ${fmtWallet(b.committed)} committed to running live bots).`;
+  return !over;
 }
 
 // ── Create Bot ────────────────────────────────────────────────────────────────
 async function submitCreate() {
   const modeEl = document.querySelector('input[name="fMode"]:checked');
+  if (modeEl && modeEl.value === 'real' && !validateCreateBudget()) {
+    showToast(`Credit exceeds available margin USDT (${fmtWallet(_createBudget && _createBudget.remaining)} remaining)`, 'error');
+    return;
+  }
   const payload = {
     name:          document.getElementById('fName').value.trim(),
     symbol:        document.getElementById('fSymbol').value.trim() || 'btcusdt',
@@ -1359,6 +1613,18 @@ async function submitEdit() {
 // ── Bot Controls ──────────────────────────────────────────────────────────────
 let _pendingStartBotId = null;
 
+// POST a start request, surfacing a budget/other rejection as a toast.
+async function postStart(id) {
+  const res = await fetch(`/api/bots/${id}/start`, { method: 'POST' });
+  if (!res.ok) {
+    let msg = 'Start failed';
+    try { msg = (await res.json()).error || msg; } catch (_) {}
+    showToast(msg, 'error');
+    return false;
+  }
+  return true;
+}
+
 async function startBot(id) {
   showToast('Running 500-candle backtest…', 'info');
   try {
@@ -1366,14 +1632,12 @@ async function startBot(id) {
     const data = await res.json();
 
     if (!res.ok || !data.ok) {
-      await fetch(`/api/bots/${id}/start`, { method: 'POST' });
-      showToast('Backtest unavailable — bot started', 'info');
+      if (await postStart(id)) showToast('Backtest unavailable — bot started', 'info');
       return;
     }
 
     if (data.trade_count === 0) {
-      await fetch(`/api/bots/${id}/start`, { method: 'POST' });
-      showToast(`No trades found in ${data.candle_count} candles — bot started`, 'info');
+      if (await postStart(id)) showToast(`No trades found in ${data.candle_count} candles — bot started`, 'info');
       return;
     }
 
@@ -1381,7 +1645,7 @@ async function startBot(id) {
     _showBacktestModal(data);
 
   } catch (e) {
-    await fetch(`/api/bots/${id}/start`, { method: 'POST' });
+    await postStart(id);
   }
 }
 
@@ -1464,8 +1728,7 @@ async function confirmStartBot() {
   _pendingStartBotId = null;
   document.getElementById('backtestModal').classList.remove('open');
   if (!id) return;
-  await fetch(`/api/bots/${id}/start`, { method: 'POST' });
-  showToast('Bot started', 'success');
+  if (await postStart(id)) showToast('Bot started', 'success');
 }
 
 function cancelBacktest() {
@@ -1493,8 +1756,14 @@ async function duplicateBot(id) {
 }
 
 async function startAll() {
-  await fetch('/api/bots/actions/start-all', { method: 'POST' });
-  showToast('Starting all bots…', 'info');
+  const res = await fetch('/api/bots/actions/start-all', { method: 'POST' });
+  let blocked = [];
+  try { blocked = (await res.json()).blocked || []; } catch (_) {}
+  if (blocked.length) {
+    showToast(`${blocked.length} live bot(s) blocked — over margin USDT budget`, 'error');
+  } else {
+    showToast('Starting all bots…', 'info');
+  }
 }
 async function stopAll() {
   await fetch('/api/bots/actions/stop-all', { method: 'POST' });
@@ -2015,6 +2284,7 @@ let _optimizerConfigLoaded = false;
 let optimizerJobId = null;
 let optimizerPollTimer = null;
 let _optimizerPrefsTimer = null;
+let _candleWarnShown = false;
 let _optCharts = []; // lightweight-charts instances; destroyed on each new run
 
 async function initOptimizerTab() {
@@ -2061,6 +2331,8 @@ function populateOptimizerControls() {
   const savedObj = optimizerConfig.objective || 'profit';
   const objEl = document.querySelector(`input[name="oObjective"][value="${savedObj}"]`);
   if (objEl) objEl.checked = true;
+  if (optimizerConfig.min_price_change != null) document.getElementById('oMinPriceChange').value = optimizerConfig.min_price_change;
+  _onObjectiveChange();
 
   // CPU-cores select: "Auto" (0) plus 1..max_cores. Auto shows what it resolves to.
   const coresSel = document.getElementById('oCores');
@@ -2149,18 +2421,25 @@ function saveOptimizerPrefs() {
   }, 600);
 }
 
+function _onObjectiveChange() {
+  const isLargeMove = document.querySelector('input[name="oObjective"]:checked')?.value === 'large_move';
+  const row = document.getElementById('oLargeMoveRow');
+  if (row) row.style.display = isLargeMove ? 'flex' : 'none';
+}
+
 function _optimizerPayload() {
   return {
-    symbol:        document.getElementById('oSymbol').value || '',
-    strategy:      document.getElementById('oStrategy').value || '',
-    timeframe:     document.getElementById('oTimeframe').value || '240',
-    candles:       parseInt(document.getElementById('oCandles').value) || 1000,
-    credit:        parseFloat(document.getElementById('oCredit').value) || 100,
-    leverage:      parseInt(document.getElementById('oLeverage').value) || 5,
-    cores:         parseInt(document.getElementById('oCores').value) || 0,
-    maxiter:       parseInt(document.getElementById('oMaxiter')?.value) || 30,
-    objective:     document.querySelector('input[name="oObjective"]:checked')?.value || 'profit',
-    custom_bounds: _getCustomBounds(),
+    symbol:           document.getElementById('oSymbol').value || '',
+    strategy:         document.getElementById('oStrategy').value || '',
+    timeframe:        document.getElementById('oTimeframe').value || '240',
+    candles:          parseInt(document.getElementById('oCandles').value) || 1000,
+    credit:           parseFloat(document.getElementById('oCredit').value) || 100,
+    leverage:         parseInt(document.getElementById('oLeverage').value) || 5,
+    cores:            parseInt(document.getElementById('oCores').value) || 0,
+    maxiter:          parseInt(document.getElementById('oMaxiter')?.value) || 30,
+    objective:        document.querySelector('input[name="oObjective"]:checked')?.value || 'profit',
+    min_price_change: parseFloat(document.getElementById('oMinPriceChange')?.value) || 5,
+    custom_bounds:    _getCustomBounds(),
   };
 }
 
@@ -2185,6 +2464,7 @@ async function runOptimizer() {
       return;
     }
     optimizerJobId = data.job_id;
+    _candleWarnShown = false;
     document.getElementById('oResults').innerHTML = '';
     destroyOptCharts();
     _setOptimizerRunning(true);
@@ -2240,6 +2520,13 @@ async function pollOptimizer() {
       else if (job.status === 'cancelled') showToast('Optimization cancelled', 'info');
       else                                 showToast('Run error: ' + (job.error || 'unknown'), 'error');
     } else {
+      if (!_candleWarnShown && job.candle_count > 0 && job.candle_count < job.candles - 1) {
+        _candleWarnShown = true;
+        document.getElementById('candleWarnMsg').textContent =
+          `The API returned ${job.candle_count} candles instead of the ${job.candles} you requested. ` +
+          `The optimizer is running with fewer data points, which may reduce result quality.`;
+        document.getElementById('candleWarnModal').classList.add('open');
+      }
       optimizerPollTimer = setTimeout(pollOptimizer, 1000);
     }
   } catch (e) {
@@ -2250,6 +2537,21 @@ async function pollOptimizer() {
 function stopOptimizerPolling() {
   clearTimeout(optimizerPollTimer);
   optimizerPollTimer = null;
+}
+
+function _candleWarnContinue() {
+  closeModal('candleWarnModal');
+}
+
+async function _candleWarnRetry() {
+  closeModal('candleWarnModal');
+  await cancelOptimizer();
+  await runOptimizer();
+}
+
+async function _candleWarnCancel() {
+  closeModal('candleWarnModal');
+  await cancelOptimizer();
 }
 
 
@@ -2353,7 +2655,9 @@ function renderOptimizerResults(job) {
 function destroyOptCharts() {
   _optCharts.forEach(c => { try { c.remove(); } catch (_) {} });
   _optCharts = [];
-  document.getElementById('oChart').innerHTML = '';
+  const oChart = document.getElementById('oChart');
+  oChart.innerHTML = '';
+  oChart.dataset.sig = '';
 }
 
 function renderOptChart(job) {
@@ -2387,8 +2691,18 @@ function renderOptChart(job) {
     grid:     { vertLines: { color: '#1e2029' }, horzLines: { color: '#1e2029' } },
     timeScale:{ timeVisible: true, secondsVisible: false, borderColor: '#2a3447' },
     crosshair:{ mode: 0 },
-    rightPriceScale: { borderColor: '#2a3447' },
+    // Pin an equal price-scale width on every pane so the plot areas line up
+    // horizontally — otherwise differing label widths ($411.15 vs 80 vs 0.012)
+    // give each chart a different drawing width and the x-axes drift apart.
+    rightPriceScale: { borderColor: '#2a3447', minimumWidth: 64 },
   };
+
+  // Map an indicator array to chart points spanning the FULL candle domain.
+  // Null (warmup) values become lightweight-charts "whitespace" points ({time}
+  // with no value) instead of being filtered out — keeping every series on the
+  // same time axis so the cross-pane logical-range sync below stays aligned.
+  const toSeries = (arr) => candles.map((c, i) =>
+    (arr && arr[i] != null) ? { time: c.time, value: arr[i] } : { time: c.time });
 
   // ── Price chart ──────────────────────────────────────────────────────────
   const priceDiv = document.getElementById('oChartPrice');
@@ -2404,7 +2718,7 @@ function renderOptChart(job) {
 
   if (ind.ema) {
     const emaSeries = priceChart.addLineSeries({ color: '#fbbf24', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'EMA' });
-    emaSeries.setData(candles.map((c, i) => ind.ema[i] != null ? { time: c.time, value: ind.ema[i] } : null).filter(Boolean));
+    emaSeries.setData(toSeries(ind.ema));
   }
 
   // Trade entry/exit markers
@@ -2436,9 +2750,9 @@ function renderOptChart(job) {
 
   if (ind.stoch_k) {
     const kSeries = stochChart.addLineSeries({ color: '#38bdf8', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'K' });
-    kSeries.setData(candles.map((c, i) => ind.stoch_k[i] != null ? { time: c.time, value: ind.stoch_k[i] } : null).filter(Boolean));
+    kSeries.setData(toSeries(ind.stoch_k));
     const dSeries = stochChart.addLineSeries({ color: '#f97316', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'D' });
-    dSeries.setData(candles.map((c, i) => ind.stoch_d[i] != null ? { time: c.time, value: ind.stoch_d[i] } : null).filter(Boolean));
+    dSeries.setData(toSeries(ind.stoch_d));
     if (ind.oversold  != null) kSeries.createPriceLine({ price: ind.oversold,   color: '#4ade8055', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'OS' });
     if (ind.overbought != null) kSeries.createPriceLine({ price: ind.overbought, color: '#f8717155', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'OB' });
   }
@@ -2452,14 +2766,14 @@ function renderOptChart(job) {
     const macdSeries = ind2Chart.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false, title: 'MACD' });
     macdSeries.setData(candles.map((c, i) => {
       const v = ind.macd_hist[i];
-      return v != null ? { time: c.time, value: v, color: v >= 0 ? '#4ade8088' : '#f8717188' } : null;
-    }).filter(Boolean));
+      return v != null ? { time: c.time, value: v, color: v >= 0 ? '#4ade8088' : '#f8717188' } : { time: c.time };
+    }));
   } else if (ind.rsi) {
     const rsiSeries = ind2Chart.addLineSeries({ color: '#a78bfa', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'RSI' });
-    rsiSeries.setData(candles.map((c, i) => ind.rsi[i] != null ? { time: c.time, value: ind.rsi[i] } : null).filter(Boolean));
+    rsiSeries.setData(toSeries(ind.rsi));
     if (ind.rsi_ma) {
       const rsiMaSeries = ind2Chart.addLineSeries({ color: '#f97316', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'MA' });
-      rsiMaSeries.setData(candles.map((c, i) => ind.rsi_ma[i] != null ? { time: c.time, value: ind.rsi_ma[i] } : null).filter(Boolean));
+      rsiMaSeries.setData(toSeries(ind.rsi_ma));
     }
     rsiSeries.createPriceLine({ price: 50, color: '#ffffff22', lineWidth: 1, lineStyle: 1 });
   }

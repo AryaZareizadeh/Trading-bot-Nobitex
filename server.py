@@ -19,9 +19,10 @@ from optimizer import optimizer_manager
 # ── WebSocket client registry ──────────────────────────────────────────────────
 _clients: list[WebSocket] = []
 
-# ── Exchange-level position cache (refreshed every 30 s) ──────────────────────
+# ── Exchange-level position/order cache (refreshed every 30 s) ────────────────
 _exchange_state: dict = {
     "positions": [],
+    "orders": [],
     "last_synced": None,
     "error": None,
 }
@@ -50,6 +51,49 @@ def _normalize_exchange_position(raw: dict) -> dict:
     }
 
 
+_CURRENCY_FULL_TO_CODE: dict[str, str] = {
+    "bitcoin": "btc", "tether": "usdt", "ethereum": "eth",
+    "litecoin": "ltc", "ripple": "xrp", "bitcoin cash": "bch",
+    "zcash": "zec", "dogecoin": "doge", "solana": "sol",
+    "chainlink": "link", "uniswap": "uni", "binance coin": "bnb",
+}
+
+
+def _currency_code(name: str) -> str:
+    return _CURRENCY_FULL_TO_CODE.get(name.lower(), name.lower())
+
+
+def _normalize_exchange_order(raw: dict) -> dict:
+    amount  = float(raw.get("amount") or 0)
+    matched = float(raw.get("matchedAmount") or 0)
+    matched_pct = round(matched / amount * 100, 1) if amount > 0 else 0.0
+    src = _currency_code(raw.get("srcCurrency", ""))
+    dst = _currency_code(raw.get("dstCurrency", ""))
+    return {
+        "order_id":            raw.get("id"),
+        "side":                raw.get("type"),
+        "amount":              amount,
+        "price":               float(raw.get("price") or 0),
+        "matched_pct":         matched_pct,
+        "placed_at":           raw.get("created_at", ""),
+        "symbol":              f"{src}{dst}".upper(),
+        "attributed_bot_id":   None,
+        "attributed_bot_name": None,
+    }
+
+
+def _attribute_orders(orders: list[dict]) -> None:
+    claimed: dict[int, tuple[str, str]] = {}
+    for bot in bot_manager.get_all():
+        po = bot._pending_order
+        if po is not None and po.get("order_id") is not None:
+            claimed[po["order_id"]] = (bot.id, bot.cfg.name or bot.id)
+    for order in orders:
+        oid = order.get("order_id")
+        if oid in claimed:
+            order["attributed_bot_id"], order["attributed_bot_name"] = claimed[oid]
+
+
 def _attribute_positions(positions: list[dict]) -> None:
     claimed: dict[int, tuple[str, str]] = {}
     for bot in bot_manager.get_all():
@@ -75,6 +119,12 @@ async def _exchange_sync_loop() -> None:
             ]
             _attribute_positions(normalized)
             _exchange_state["positions"] = normalized
+
+            raw_orders = await asyncio.to_thread(client.active_orders)
+            norm_orders = [_normalize_exchange_order(o) for o in raw_orders]
+            _attribute_orders(norm_orders)
+            _exchange_state["orders"] = norm_orders
+
             _exchange_state["last_synced"] = datetime.now(timezone.utc).isoformat()
             _exchange_state["error"] = None
         except ValueError:
@@ -223,6 +273,10 @@ class OptimizerRunRequest(BaseModel):
     min_price_change: float = Field(default=5.0, gt=0, le=100)
 
 
+class OptimizerTesterRunRequest(OptimizerRunRequest):
+    train_pct: float = Field(default=70.0, ge=50.0, le=90.0)  # % of candles for training
+
+
 # ── Margin Markets ─────────────────────────────────────────────────────────────
 @app.get("/api/margin-markets")
 async def get_margin_markets():
@@ -305,25 +359,6 @@ def _committed_real_credit(exclude_id: Optional[str] = None) -> float:
             total += float(b.cfg.credit)
     return total
 
-
-async def _budget_block_reason(bot) -> Optional[str]:
-    """Error message if starting `bot` would over-commit margin USDT, else None.
-
-    Skips simulation bots and the no-credentials case (can't read the wallet).
-    """
-    if bot.cfg.mode != "real":
-        return None
-    free = await asyncio.to_thread(_margin_usdt_free)
-    if free is None:
-        return None  # no credentials / API error — don't block on missing data
-    remaining = free - _committed_real_credit(exclude_id=bot.id)
-    if bot.cfg.credit > remaining + 1e-9:
-        return (
-            f"Insufficient margin USDT: bot needs {bot.cfg.credit:.2f}, "
-            f"only {remaining:.2f} available after running live bots "
-            f"(free {free:.2f})"
-        )
-    return None
 
 
 @app.get("/api/wallet")
@@ -534,6 +569,50 @@ async def optimizer_run_cancel(job_id: str):
     return {"ok": True}
 
 
+# ── Optimizer Tester ───────────────────────────────────────────────────────────
+@app.post("/api/optimizer/tester/run")
+async def optimizer_tester_run(req: OptimizerTesterRunRequest):
+    from bot import STRATEGY_MAP
+    from optimizer import PARAM_BOUNDS
+    if req.strategy not in STRATEGY_MAP or req.strategy not in PARAM_BOUNDS:
+        return JSONResponse(status_code=400, content={"error": "Unknown strategy."})
+    if not req.symbol.strip():
+        return JSONResponse(status_code=400, content={"error": "Select a symbol."})
+    if req.custom_bounds:
+        for name, val in req.custom_bounds.items():
+            if not isinstance(val, (list, tuple)) or len(val) != 2:
+                return JSONResponse(status_code=400, content={"error": f"Bad bounds for '{name}': expected [min, max]."})
+            try:
+                lo, hi = int(val[0]), int(val[1])
+            except (TypeError, ValueError):
+                return JSONResponse(status_code=400, content={"error": f"Bad bounds for '{name}': values must be integers."})
+            if lo >= hi:
+                return JSONResponse(status_code=400, content={"error": f"Parameter '{name}': min ({lo}) must be less than max ({hi})."})
+    job = optimizer_manager.start_job(
+        req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
+        req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change,
+        train_pct=req.train_pct,
+    )
+    return {"job_id": job.id}
+
+
+@app.get("/api/optimizer/tester/run/{job_id}")
+async def optimizer_tester_run_status(job_id: str):
+    job = optimizer_manager.get_job(job_id)
+    if job is None:
+        return JSONResponse(status_code=404, content={"error": "Job not found"})
+    return job.to_dict()
+
+
+@app.post("/api/optimizer/tester/run/{job_id}/cancel")
+async def optimizer_tester_run_cancel(job_id: str):
+    job = optimizer_manager.get_job(job_id)
+    if job is None:
+        return JSONResponse(status_code=404, content={"error": "Job not found"})
+    job.cancel()
+    return {"ok": True}
+
+
 # ── Bulk bot actions (must be registered before {bot_id} routes) ───────────────
 @app.post("/api/bots/actions/start-all")
 async def start_all_bots():
@@ -541,27 +620,10 @@ async def start_all_bots():
     sims = [b for b in bot_manager.get_all() if b.cfg.mode != "real"]
     await asyncio.gather(*[b.start() for b in sims])
 
-    # Real bots start sequentially so the committed total stays accurate as each
-    # one begins running; skip (don't abort the batch) any that over-commit.
-    free = await asyncio.to_thread(_margin_usdt_free)
-    blocked: list[dict] = []
-    reals = [
-        b for b in bot_manager.get_all()
-        if b.cfg.mode == "real" and b.status != BotStatus.RUNNING
-    ]
+    reals = [b for b in bot_manager.get_all() if b.cfg.mode == "real" and b.status != BotStatus.RUNNING]
     for b in reals:
-        if free is not None:
-            remaining = free - _committed_real_credit(exclude_id=b.id)
-            if b.cfg.credit > remaining + 1e-9:
-                blocked.append({
-                    "id": b.id,
-                    "name": b.cfg.name or b.id,
-                    "credit": round(float(b.cfg.credit), 2),
-                    "remaining": round(remaining, 2),
-                })
-                continue
         await b.start()
-    return {"ok": True, "blocked": blocked}
+    return {"ok": True, "blocked": []}
 
 
 @app.post("/api/bots/actions/stop-all")
@@ -668,9 +730,6 @@ async def start_bot(bot_id: str):
     bot = bot_manager.get_bot(bot_id)
     if bot is None:
         return JSONResponse(status_code=404, content={"error": "Bot not found"})
-    reason = await _budget_block_reason(bot)
-    if reason:
-        return JSONResponse(status_code=400, content={"error": reason})
     await bot.start()
     return bot.to_state_dict()
 

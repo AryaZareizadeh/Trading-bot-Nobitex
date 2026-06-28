@@ -252,6 +252,7 @@
   .ev-reconfigured    { color: var(--purple); }
   .ev-data_loaded     { color: var(--muted); }
   .ev-initialized     { color: var(--muted); }
+  .ev-missed_signal   { color: var(--red); opacity: .8; }
 
   /* ── Empty state ── */
   .empty-state { text-align: center; padding: 40px; color: var(--muted); font-size: 13px; }
@@ -488,6 +489,22 @@
   </div>
 </div>
 
+<!-- Activity Feed Bar -->
+<div class="activity-feed-bar" style="padding: 0 24px 16px;">
+  <div class="tri-box" style="max-height: 400px;">
+    <div class="tri-box-header">
+      <span class="tri-box-title">Activity Feed</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="tri-box-count" id="feedCount">0</span>
+        <button class="btn btn-neutral btn-sm" style="font-size:10px;padding:1px 8px;line-height:1.6" onclick="clearActivityFeed()" title="Clear feed">✕ Clear</button>
+      </div>
+    </div>
+    <div class="tri-box-body" id="activityFeedBody">
+      <div class="empty-state" style="padding:20px"><span style="color:var(--muted)">No activity yet.</span></div>
+    </div>
+  </div>
+</div>
+
 </div><!-- /viewBots -->
 
 <!-- ═══════════════════ TESTER VIEW ═══════════════════ -->
@@ -551,6 +568,15 @@
 <div id="viewOptimizer" class="view-pane">
   <div class="tester-wrap">
 
+    <!-- Sub-tab navigation -->
+    <div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:0;gap:0;margin-left:-2px">
+      <button id="subTabOptimizer" onclick="switchOptimizerSubTab('optimizer')"
+        style="background:transparent;border:none;border-bottom:2px solid var(--accent);padding:8px 20px;cursor:pointer;color:var(--fg);font-size:0.95em;font-weight:500;margin-bottom:-1px">Optimizer</button>
+      <button id="subTabTester" onclick="switchOptimizerSubTab('tester')"
+        style="background:transparent;border:none;border-bottom:2px solid transparent;padding:8px 20px;cursor:pointer;color:var(--muted);font-size:0.95em;margin-bottom:-1px">Optimizer Tester</button>
+    </div>
+
+    <div id="optimizerPane">
     <div class="tester-section">
       <h3>Optimization Target</h3>
       <div class="hint">
@@ -649,6 +675,120 @@
 
     <div id="oResults"></div>
     <div id="oChart"></div>
+
+    </div><!-- /optimizerPane -->
+
+    <!-- ═══ OPTIMIZER TESTER PANE ═══ -->
+    <div id="optimizerTesterPane" style="display:none">
+
+      <div class="tester-section">
+        <h3>Optimization Target</h3>
+        <div class="hint">
+          The candle history is split chronologically: the <strong>training</strong> window is given to
+          Differential Evolution to find the best parameters; the <strong>test</strong> window is held out
+          and used only to evaluate how those parameters generalize to unseen data.
+        </div>
+        <div class="opt-form">
+          <div class="form-group">
+            <label>Symbol</label>
+            <select id="otSymbol"></select>
+          </div>
+          <div class="form-group">
+            <label>Strategy</label>
+            <select id="otStrategy" onchange="onOptimizerTesterStrategyChange()"></select>
+          </div>
+          <div class="form-group">
+            <label>Timeframe</label>
+            <select id="otTimeframe"></select>
+          </div>
+          <div class="form-group">
+            <label>Total candles</label>
+            <input type="number" id="otCandles" value="1000" min="200" max="5000" step="100">
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label>Train / Test Split</label>
+            <div style="display:flex;align-items:center;gap:14px;margin-top:6px">
+              <input type="range" id="otTrainPct" min="50" max="90" step="5" value="70"
+                     oninput="_updateTrainPctLabel()" style="flex:1;max-width:240px">
+              <span id="otTrainPctLabel" style="font-size:0.88em;color:var(--muted);white-space:nowrap">Train 70% · Test 30%</span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Credit (USDT)</label>
+            <input type="number" id="otCredit" value="100" min="1" step="1">
+          </div>
+          <div class="form-group">
+            <label>Leverage</label>
+            <input type="number" id="otLeverage" value="5" min="1" max="100" step="1">
+          </div>
+          <div class="form-group">
+            <label>CPU cores</label>
+            <select id="otCores"></select>
+          </div>
+          <div class="form-group">
+            <label>Generations</label>
+            <input type="number" id="otMaxiter" value="30" min="5" max="500" step="5">
+          </div>
+        </div>
+      </div>
+
+      <div class="tester-section">
+        <h3>Optimization Goal</h3>
+        <div class="hint">What the DE search maximizes over the training window.</div>
+        <div class="opt-objective">
+          <div class="opt-obj-option">
+            <input type="radio" name="otObjective" id="otObjProfit" value="profit" checked onchange="_otObjectiveChange()">
+            <label for="otObjProfit">Highest Profit<span class="obj-sub">Maximize net P&amp;L</span></label>
+          </div>
+          <div class="opt-obj-option">
+            <input type="radio" name="otObjective" id="otObjWinrate" value="winrate" onchange="_otObjectiveChange()">
+            <label for="otObjWinrate">Highest Win Rate<span class="obj-sub">Maximize % of winning trades</span></label>
+          </div>
+          <div class="opt-obj-option">
+            <input type="radio" name="otObjective" id="otObjBalanced" value="balanced" onchange="_otObjectiveChange()">
+            <label for="otObjBalanced">Balanced<span class="obj-sub">Profit % + Win Rate weighted equally</span></label>
+          </div>
+          <div class="opt-obj-option">
+            <input type="radio" name="otObjective" id="otObjLargeMove" value="large_move" onchange="_otObjectiveChange()">
+            <label for="otObjLargeMove">Large Price Move<span class="obj-sub">Maximize big-move trade %</span></label>
+          </div>
+        </div>
+        <div id="otLargeMoveRow" style="display:none;margin-top:12px;align-items:center;gap:8px;flex-wrap:wrap;">
+          <label style="font-size:12px;color:var(--muted);">Min price change (%):</label>
+          <input type="number" id="otMinPriceChange" value="5" min="0.1" max="100" step="0.5" style="width:70px;">
+        </div>
+      </div>
+
+      <div class="tester-section" id="otParamSection" style="display:none">
+        <div class="opt-param-section-header">
+          <h3>Parameter Search Ranges</h3>
+          <button class="btn btn-neutral btn-sm" onclick="resetOptimizerTesterBounds()" title="Reset all bounds to their defaults">↺ Reset to Defaults</button>
+        </div>
+        <div class="hint">Searched over the training candles only. Edit bounds to focus the search.</div>
+        <div id="otParamSpace" class="opt-param-grid"></div>
+      </div>
+
+      <div class="tester-section">
+        <h3>Run</h3>
+        <div class="tester-run-bar">
+          <button class="btn btn-primary" id="otRunBtn" onclick="runOptimizerTester()" style="padding:9px 20px">▶ Optimize &amp; Test</button>
+          <button class="btn btn-danger btn-sm" id="otCancelBtn" onclick="cancelOptimizerTester()" style="display:none">■ Cancel</button>
+          <span class="tester-run-note" id="otRunNote"></span>
+        </div>
+        <div class="progress-wrap" id="otProgressWrap" style="display:none">
+          <div class="progress-track"><div class="progress-fill" id="otProgressFill"></div></div>
+          <div class="progress-meta">
+            <span class="progress-current" id="otProgressCurrent"></span>
+            <span id="otProgressCount"></span>
+          </div>
+        </div>
+      </div>
+
+      <div id="otResults"></div>
+      <div id="otTrainChart"></div>
+      <div id="otTestChart"></div>
+
+    </div><!-- /optimizerTesterPane -->
 
   </div>
 </div><!-- /viewOptimizer -->
@@ -901,6 +1041,7 @@
 // ── State ─────────────────────────────────────────────────────────────────────
 let bots = [];
 let exchangePositions = [];
+let exchangeOrders = [];
 let ws = null;
 let wsRetryDelay = 1000;
 let editingBotId = null;
@@ -948,6 +1089,7 @@ function connectWS() {
     detectTradeNotifications(newBots);
     bots = newBots;
     exchangePositions = (data.exchange && data.exchange.positions) || [];
+    exchangeOrders = (data.exchange && data.exchange.orders) || [];
     renderGrid();
     updateSummary();
   };
@@ -1031,6 +1173,52 @@ function renderGrid() {
   renderBotsBox();
   renderOrdersBox();
   renderPositionsBox();
+  renderActivityFeed();
+}
+
+let _feedClearedBefore = null;
+
+function clearActivityFeed() {
+  _feedClearedBefore = new Date().toISOString();
+  renderActivityFeed();
+}
+
+function renderActivityFeed() {
+  const body    = document.getElementById('activityFeedBody');
+  const counter = document.getElementById('feedCount');
+  if (!body) return;
+
+  const allEntries = [];
+  for (const b of bots) {
+    const color = getBotColor(b.id);
+    for (const item of (b.activity_log || [])) {
+      if (_feedClearedBefore && item.time <= _feedClearedBefore) continue;
+      allEntries.push({ ...item, _botName: b.name, _color: color });
+    }
+  }
+
+  if (!allEntries.length) {
+    counter.textContent = 0;
+    body.innerHTML = `<div class="empty-state" style="padding:20px"><span style="color:var(--muted)">No activity yet.</span></div>`;
+    return;
+  }
+
+  allEntries.sort((a, b) => b.time.localeCompare(a.time));
+  const entries = allEntries.slice(0, 50);
+  counter.textContent = entries.length;
+
+  body.innerHTML = `<ul class="activity-list">${entries.map(item => {
+    const color   = item._color;
+    const t       = new Date(item.time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const evLabel = item.event.replace(/_/g, ' ');
+    const tagHtml = `<span class="tri-bot-tag" style="background:${color}22;color:${color};border:1px solid ${color}55">${escHtml(item._botName)}</span>`;
+    return `<li class="activity-item">
+  <span class="activity-time">${t}</span>
+  ${tagHtml}
+  <span class="activity-event ev-${item.event}">${evLabel}</span>
+  <span class="activity-detail">${escHtml(item.detail)}</span>
+</li>`;
+  }).join('')}</ul>`;
 }
 
 function renderBotsBox() {
@@ -1063,6 +1251,7 @@ function renderBotsBox() {
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
       <span style="font-size:12px;font-weight:700">${escHtml(b.symbol)}</span>
       <span style="font-size:11px;color:var(--muted)">${escHtml(b.strategy)} · ${fmtTF(b.timeframe)} · ${b.leverage}×</span>
+      <span style="font-size:11px;color:var(--muted);background:rgba(255,255,255,.07);border:1px solid var(--border);border-radius:4px;padding:1px 5px">$${b.credit}</span>
       <span class="stat-value ${pnlCls}" style="font-size:12px;margin-left:auto">${pnlSign}$${b.total_pnl.toFixed(2)}</span>
     </div>
   </div>
@@ -1079,26 +1268,51 @@ function renderBotsBox() {
 function renderOrdersBox() {
   const body   = document.getElementById('boxOrdersBody');
   const header = document.getElementById('boxOrdersHeader');
-  const orders = bots.filter(b => b.pending_order != null).map(b => ({ bot: b, order: b.pending_order }));
-  header.textContent = orders.length;
-  if (!orders.length) {
+
+  const botOrders = bots
+    .filter(b => b.pending_order != null)
+    .map(b => ({ type: 'bot', bot: b, order: b.pending_order }));
+
+  const trackedIds = new Set(
+    botOrders.map(e => e.order.order_id).filter(id => id != null)
+  );
+  const externalOrders = exchangeOrders
+    .filter(o => o.attributed_bot_id == null && !trackedIds.has(o.order_id))
+    .map(o => ({ type: 'external', order: o }));
+
+  const all = [...botOrders, ...externalOrders];
+  header.textContent = all.length;
+
+  if (!all.length) {
     body.innerHTML = `<div class="empty-state" style="padding:20px"><span style="color:var(--muted)">No pending orders.</span></div>`;
     return;
   }
-  body.innerHTML = orders.map(({ bot: b, order: o }) => {
-    const color     = getBotColor(b.id);
+
+  body.innerHTML = all.map(entry => {
+    const o         = entry.order;
     const side      = o.side === 'buy' ? 'LONG' : 'SHORT';
     const sideColor = o.side === 'buy' ? 'var(--green)' : 'var(--red)';
     const pct       = o.matched_pct ?? 0;
     const age       = o.placed_at ? timeAgo(o.placed_at) : '—';
     const barColor  = pct > 50 ? 'var(--green)' : pct > 0 ? 'var(--yellow)' : 'var(--muted)';
+
+    let tagHtml, symLabel;
+    if (entry.type === 'bot') {
+      const color = getBotColor(entry.bot.id);
+      tagHtml  = `<span class="tri-bot-tag" style="background:${color}22;color:${color};border:1px solid ${color}55">${escHtml(entry.bot.name)}</span>`;
+      symLabel = `<span style="font-size:11px;font-weight:600">${escHtml(entry.bot.symbol)}</span>`;
+    } else {
+      const sym = escHtml(o.symbol || '');
+      tagHtml  = `<span class="tri-bot-tag">${sym ? sym + ' · ' : ''}External</span>`;
+      symLabel = '';
+    }
+
     return `<div class="tri-row">
-  <div class="bot-color-pill" style="background:${color}"></div>
   <div style="flex:1;min-width:0">
     <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
-      <span class="tri-bot-tag" style="background:${color}22;color:${color};border:1px solid ${color}55">${escHtml(b.name)}</span>
+      ${tagHtml}
       <span style="font-size:11px;font-weight:700;color:${sideColor}">${side}</span>
-      <span style="font-size:11px;font-weight:600">${escHtml(b.symbol)}</span>
+      ${symLabel}
       <span style="font-size:10px;color:var(--muted);margin-left:auto">${age}</span>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
@@ -2286,6 +2500,7 @@ let optimizerPollTimer = null;
 let _optimizerPrefsTimer = null;
 let _candleWarnShown = false;
 let _optCharts = []; // lightweight-charts instances; destroyed on each new run
+let _candleWarnContext = 'optimizer'; // 'optimizer' | 'tester' — routes modal buttons
 
 async function initOptimizerTab() {
   if (!marginMarkets.length) { try { await loadMarginMarkets(); } catch (_) {} }
@@ -2522,6 +2737,7 @@ async function pollOptimizer() {
     } else {
       if (!_candleWarnShown && job.candle_count > 0 && job.candle_count < job.candles - 1) {
         _candleWarnShown = true;
+        _candleWarnContext = 'optimizer';
         document.getElementById('candleWarnMsg').textContent =
           `The API returned ${job.candle_count} candles instead of the ${job.candles} you requested. ` +
           `The optimizer is running with fewer data points, which may reduce result quality.`;
@@ -2545,13 +2761,22 @@ function _candleWarnContinue() {
 
 async function _candleWarnRetry() {
   closeModal('candleWarnModal');
-  await cancelOptimizer();
-  await runOptimizer();
+  if (_candleWarnContext === 'tester') {
+    await cancelOptimizerTester();
+    await runOptimizerTester();
+  } else {
+    await cancelOptimizer();
+    await runOptimizer();
+  }
 }
 
 async function _candleWarnCancel() {
   closeModal('candleWarnModal');
-  await cancelOptimizer();
+  if (_candleWarnContext === 'tester') {
+    await cancelOptimizerTester();
+  } else {
+    await cancelOptimizer();
+  }
 }
 
 
@@ -2660,30 +2885,25 @@ function destroyOptCharts() {
   oChart.dataset.sig = '';
 }
 
-function renderOptChart(job) {
-  const container = document.getElementById('oChart');
-  if (!job?.chart_data?.candles?.length) { destroyOptCharts(); return; }
+// ── Shared 3-panel chart builder ─────────────────────────────────────────────
+// Renders a price + StochRSI + RSI/MACD chart into `outerEl`.
+// `idSuffix` must be unique per chart instance (prevents duplicate DOM IDs).
+// `chartsArr` receives the 3 LightweightCharts instances for later cleanup.
+function _buildOptChart(outerEl, chartData, trades, title, chartsArr, idSuffix) {
+  const ind     = chartData.indicators || {};
+  const candles = chartData.candles;
+  const priceId = `_ocp_${idSuffix}`;
+  const stochId = `_ocs_${idSuffix}`;
+  const ind2Id  = `_oci_${idSuffix}`;
 
-  const cd   = job.chart_data;
-  const ind  = cd.indicators || {};
-  const candles = cd.candles;
-  const trades  = job.best_trades || [];
-
-  // Only rebuild if chart_data changed (compare first/last candle time)
-  const sig = candles[0]?.time + ':' + candles[candles.length - 1]?.time + ':' + cd.strategy;
-  if (container.dataset.sig === sig) return;
-  container.dataset.sig = sig;
-
-  destroyOptCharts();
-
-  container.innerHTML = `
+  outerEl.innerHTML = `
     <div class="tester-section" style="margin-top:16px;padding-bottom:8px">
-      <h3 style="margin-bottom:8px">BEST BACKTEST CHART</h3>
-      <div id="oChartPrice" style="height:340px;border-radius:4px;overflow:hidden"></div>
+      <h3 style="margin-bottom:8px">${escHtml(title)}</h3>
+      <div id="${priceId}" style="height:340px;border-radius:4px;overflow:hidden"></div>
       <div style="color:var(--muted);font-size:0.75em;margin:4px 0 2px 4px">STOCH RSI</div>
-      <div id="oChartStoch" style="height:150px;border-radius:4px;overflow:hidden"></div>
+      <div id="${stochId}" style="height:150px;border-radius:4px;overflow:hidden"></div>
       <div style="color:var(--muted);font-size:0.75em;margin:4px 0 2px 4px">${ind.macd_hist ? 'MACD HISTOGRAM' : 'RSI'}</div>
-      <div id="oChartInd2"  style="height:120px;border-radius:4px;overflow:hidden"></div>
+      <div id="${ind2Id}"  style="height:120px;border-radius:4px;overflow:hidden"></div>
     </div>`;
 
   const theme = {
@@ -2691,23 +2911,16 @@ function renderOptChart(job) {
     grid:     { vertLines: { color: '#1e2029' }, horzLines: { color: '#1e2029' } },
     timeScale:{ timeVisible: true, secondsVisible: false, borderColor: '#2a3447' },
     crosshair:{ mode: 0 },
-    // Pin an equal price-scale width on every pane so the plot areas line up
-    // horizontally — otherwise differing label widths ($411.15 vs 80 vs 0.012)
-    // give each chart a different drawing width and the x-axes drift apart.
     rightPriceScale: { borderColor: '#2a3447', minimumWidth: 64 },
   };
 
-  // Map an indicator array to chart points spanning the FULL candle domain.
-  // Null (warmup) values become lightweight-charts "whitespace" points ({time}
-  // with no value) instead of being filtered out — keeping every series on the
-  // same time axis so the cross-pane logical-range sync below stays aligned.
   const toSeries = (arr) => candles.map((c, i) =>
     (arr && arr[i] != null) ? { time: c.time, value: arr[i] } : { time: c.time });
 
-  // ── Price chart ──────────────────────────────────────────────────────────
-  const priceDiv = document.getElementById('oChartPrice');
+  // Price chart
+  const priceDiv  = document.getElementById(priceId);
   const priceChart = LightweightCharts.createChart(priceDiv, { ...theme, autoSize: true, height: 340 });
-  _optCharts.push(priceChart);
+  chartsArr.push(priceChart);
 
   const candleSeries = priceChart.addCandlestickSeries({
     upColor: '#4ade80', downColor: '#f87171',
@@ -2721,46 +2934,33 @@ function renderOptChart(job) {
     emaSeries.setData(toSeries(ind.ema));
   }
 
-  // Trade entry/exit markers
   const markers = [];
   trades.forEach(t => {
     const isLong = t.Position === 'Long';
-    if (t._start_ts) markers.push({
-      time: t._start_ts,
-      position: isLong ? 'belowBar' : 'aboveBar',
-      color: isLong ? '#4ade80' : '#f87171',
-      shape: isLong ? 'arrowUp' : 'arrowDown',
-      size: 1,
-    });
-    if (t._end_ts) markers.push({
-      time: t._end_ts,
-      position: isLong ? 'aboveBar' : 'belowBar',
-      color: t.Liquidated ? '#f97316' : (isLong ? '#86efac' : '#fca5a5'),
-      shape: t.Liquidated ? 'square' : 'circle',
-      size: 1,
-    });
+    if (t._start_ts) markers.push({ time: t._start_ts, position: isLong ? 'belowBar' : 'aboveBar', color: isLong ? '#4ade80' : '#f87171', shape: isLong ? 'arrowUp' : 'arrowDown', size: 1 });
+    if (t._end_ts)   markers.push({ time: t._end_ts,   position: isLong ? 'aboveBar' : 'belowBar', color: t.Liquidated ? '#f97316' : (isLong ? '#86efac' : '#fca5a5'), shape: t.Liquidated ? 'square' : 'circle', size: 1 });
   });
   markers.sort((a, b) => a.time - b.time);
   candleSeries.setMarkers(markers);
 
-  // ── StochRSI panel ───────────────────────────────────────────────────────
-  const stochDiv = document.getElementById('oChartStoch');
+  // StochRSI panel
+  const stochDiv  = document.getElementById(stochId);
   const stochChart = LightweightCharts.createChart(stochDiv, { ...theme, autoSize: true, height: 150 });
-  _optCharts.push(stochChart);
+  chartsArr.push(stochChart);
 
   if (ind.stoch_k) {
     const kSeries = stochChart.addLineSeries({ color: '#38bdf8', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'K' });
     kSeries.setData(toSeries(ind.stoch_k));
     const dSeries = stochChart.addLineSeries({ color: '#f97316', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'D' });
     dSeries.setData(toSeries(ind.stoch_d));
-    if (ind.oversold  != null) kSeries.createPriceLine({ price: ind.oversold,   color: '#4ade8055', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'OS' });
+    if (ind.oversold   != null) kSeries.createPriceLine({ price: ind.oversold,   color: '#4ade8055', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'OS' });
     if (ind.overbought != null) kSeries.createPriceLine({ price: ind.overbought, color: '#f8717155', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'OB' });
   }
 
-  // ── RSI or MACD panel ────────────────────────────────────────────────────
-  const ind2Div = document.getElementById('oChartInd2');
+  // RSI or MACD panel
+  const ind2Div  = document.getElementById(ind2Id);
   const ind2Chart = LightweightCharts.createChart(ind2Div, { ...theme, autoSize: true, height: 120 });
-  _optCharts.push(ind2Chart);
+  chartsArr.push(ind2Chart);
 
   if (ind.macd_hist) {
     const macdSeries = ind2Chart.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false, title: 'MACD' });
@@ -2778,7 +2978,7 @@ function renderOptChart(job) {
     rsiSeries.createPriceLine({ price: 50, color: '#ffffff22', lineWidth: 1, lineStyle: 1 });
   }
 
-  // ── Sync time-scale scrolling across all panels ──────────────────────────
+  // Sync time-scale across all three panels
   const panels = [priceChart, stochChart, ind2Chart];
   panels.forEach((src, si) => {
     src.timeScale().subscribeVisibleLogicalRangeChange(range => {
@@ -2788,6 +2988,17 @@ function renderOptChart(job) {
   });
 
   priceChart.timeScale().fitContent();
+}
+
+function renderOptChart(job) {
+  const container = document.getElementById('oChart');
+  if (!job?.chart_data?.candles?.length) { destroyOptCharts(); return; }
+  const cd  = job.chart_data;
+  const sig = cd.candles[0]?.time + ':' + cd.candles[cd.candles.length - 1]?.time + ':' + cd.strategy;
+  if (container.dataset.sig === sig) return;
+  destroyOptCharts();
+  container.dataset.sig = sig;
+  _buildOptChart(container, cd, job.best_trades || [], 'BEST BACKTEST CHART', _optCharts, 'main');
 }
 
 function applyOptimizerToBot() {
@@ -2814,6 +3025,425 @@ function applyOptimizerToBot() {
     document.getElementById('fName').value = `${job.symbol?.toUpperCase() || ''} ${job.strategy || ''} (Optimized)`;
     document.getElementById('createModal').classList.add('open');
   }, 50);
+}
+
+// ═══════════════════ OPTIMIZER TESTER TAB ═══════════════════
+let optimizerTesterJobId = null;
+let optimizerTesterPollTimer = null;
+let _candleWarnTesterShown = false;
+let _optTesterCharts = [];
+let _testerControlsInitialized = false; // prevent form reset on every tab switch
+
+function switchOptimizerSubTab(name) {
+  const isOpt = name === 'optimizer';
+  document.getElementById('optimizerPane').style.display      = isOpt ? '' : 'none';
+  document.getElementById('optimizerTesterPane').style.display = isOpt ? 'none' : '';
+  const optBtn = document.getElementById('subTabOptimizer');
+  const tstBtn = document.getElementById('subTabTester');
+  optBtn.style.borderBottomColor = isOpt ? 'var(--accent)' : 'transparent';
+  optBtn.style.color             = isOpt ? 'var(--fg)' : 'var(--muted)';
+  optBtn.style.fontWeight        = isOpt ? '500' : 'normal';
+  tstBtn.style.borderBottomColor = isOpt ? 'transparent' : 'var(--accent)';
+  tstBtn.style.color             = isOpt ? 'var(--muted)' : 'var(--fg)';
+  tstBtn.style.fontWeight        = isOpt ? 'normal' : '500';
+  if (!isOpt) {
+    initOptimizerTesterTab();
+    // Re-fit charts in case they were rendered while this tab was hidden.
+    _optTesterCharts.forEach(c => { try { c.timeScale().fitContent(); } catch (_) {} });
+  }
+}
+
+async function initOptimizerTesterTab() {
+  if (!marginMarkets.length) { try { await loadMarginMarkets(); } catch (_) {} }
+  if (!_optimizerConfigLoaded) {
+    try {
+      const res = await fetch('/api/optimizer/config');
+      optimizerConfig = await res.json();
+      _optimizerConfigLoaded = true;
+    } catch (_) { return; }
+  }
+  // Only populate on first visit — prevents form values from resetting when the user
+  // switches away and back (unlike the regular optimizer, the tester has no server-side
+  // prefs endpoint to persist its settings between tab switches).
+  if (!_testerControlsInitialized) {
+    populateOptimizerTesterControls();
+    onOptimizerTesterStrategyChange();
+    _testerControlsInitialized = true;
+  }
+}
+
+function populateOptimizerTesterControls() {
+  const symSel = document.getElementById('otSymbol');
+  const savedSym = (optimizerConfig.symbol || '').toLowerCase();
+  symSel.innerHTML = marginMarkets.map(m => {
+    const sym = m.symbol.toLowerCase();
+    return `<option value="${sym}" ${sym === savedSym ? 'selected' : ''}>${escHtml(m.symbol)}</option>`;
+  }).join('') || '<option value="">No markets available</option>';
+
+  const stratSel = document.getElementById('otStrategy');
+  stratSel.innerHTML = (optimizerConfig.available_strategies || []).map(s =>
+    `<option value="${s.value}" ${s.value === optimizerConfig.strategy ? 'selected' : ''}>${escHtml(s.label)}</option>`
+  ).join('');
+
+  const tfSel = document.getElementById('otTimeframe');
+  tfSel.innerHTML = (optimizerConfig.available_timeframes || []).map(t =>
+    `<option value="${t.value}" ${t.value === optimizerConfig.timeframe ? 'selected' : ''}>${escHtml(t.label)}</option>`
+  ).join('');
+
+  if (optimizerConfig.candles  != null) document.getElementById('otCandles').value  = optimizerConfig.candles;
+  if (optimizerConfig.credit   != null) document.getElementById('otCredit').value   = optimizerConfig.credit;
+  if (optimizerConfig.leverage != null) document.getElementById('otLeverage').value = optimizerConfig.leverage;
+  if (optimizerConfig.maxiter  != null) document.getElementById('otMaxiter').value  = optimizerConfig.maxiter;
+
+  const coresSel = document.getElementById('otCores');
+  const maxCores  = optimizerConfig.max_cores   || 1;
+  const autoCores = optimizerConfig.default_cores || maxCores;
+  let opts = `<option value="0">Auto (${autoCores})</option>`;
+  for (let n = 1; n <= maxCores; n++) {
+    opts += `<option value="${n}">${n === maxCores ? n + ' (all)' : n}</option>`;
+  }
+  coresSel.innerHTML = opts;
+
+  _updateTrainPctLabel();
+}
+
+function _optimizerTesterStrategySpec() {
+  const v = document.getElementById('otStrategy').value;
+  return (optimizerConfig.available_strategies || []).find(s => s.value === v);
+}
+
+function onOptimizerTesterStrategyChange() {
+  const spec    = _optimizerTesterStrategySpec();
+  const section = document.getElementById('otParamSection');
+  const grid    = document.getElementById('otParamSpace');
+  if (!spec || !spec.params) { section.style.display = 'none'; return; }
+  grid.innerHTML = spec.params.map(p =>
+    `<div class="opt-param-row">
+      <span class="pname">${escHtml(p.name)}</span>
+      <span class="pcontrols">
+        <input type="number" class="opt-range-input" id="otp-lo-${p.name}" value="${p.low}" min="1" max="9999">
+        <span>–</span>
+        <input type="number" class="opt-range-input" id="otp-hi-${p.name}" value="${p.high}" min="1" max="9999">
+        <span class="pdef">· def ${p.default}</span>
+      </span>
+    </div>`
+  ).join('');
+  section.style.display = '';
+  _updateTesterRunNote();
+}
+
+function _getOptimizerTesterCustomBounds() {
+  const spec = _optimizerTesterStrategySpec();
+  if (!spec || !spec.params) return null;
+  const bounds = {};
+  spec.params.forEach(p => {
+    const lo = parseInt(document.getElementById(`otp-lo-${p.name}`)?.value);
+    const hi = parseInt(document.getElementById(`otp-hi-${p.name}`)?.value);
+    bounds[p.name] = [Number.isNaN(lo) ? p.low : lo, Number.isNaN(hi) ? p.high : hi];
+  });
+  return bounds;
+}
+
+function resetOptimizerTesterBounds() {
+  const spec = _optimizerTesterStrategySpec();
+  if (!spec || !spec.params) return;
+  spec.params.forEach(p => {
+    const loEl = document.getElementById(`otp-lo-${p.name}`);
+    const hiEl = document.getElementById(`otp-hi-${p.name}`);
+    if (loEl) loEl.value = p.low;
+    if (hiEl) hiEl.value = p.high;
+  });
+  showToast('Bounds reset to defaults', 'info');
+}
+
+function _updateTrainPctLabel() {
+  const pct = parseInt(document.getElementById('otTrainPct')?.value) || 70;
+  const el  = document.getElementById('otTrainPctLabel');
+  if (el) el.textContent = `Train ${pct}% · Test ${100 - pct}%`;
+}
+
+function _otObjectiveChange() {
+  const isLargeMove = document.querySelector('input[name="otObjective"]:checked')?.value === 'large_move';
+  const row = document.getElementById('otLargeMoveRow');
+  if (row) row.style.display = isLargeMove ? 'flex' : 'none';
+}
+
+function _updateTesterRunNote() {
+  const note = document.getElementById('otRunNote');
+  if (!note) return;
+  const spec = _optimizerTesterStrategySpec();
+  const n = spec && spec.params ? spec.params.length : 0;
+  if (!n) { note.textContent = ''; return; }
+  note.innerHTML = `Optimizes <strong>${n}</strong> inputs on the training window, then evaluates on the held-out test window.`;
+}
+
+function _optimizerTesterPayload() {
+  return {
+    symbol:           document.getElementById('otSymbol').value || '',
+    strategy:         document.getElementById('otStrategy').value || '',
+    timeframe:        document.getElementById('otTimeframe').value || '240',
+    candles:          parseInt(document.getElementById('otCandles').value) || 1000,
+    train_pct:        parseInt(document.getElementById('otTrainPct')?.value) || 70,
+    credit:           parseFloat(document.getElementById('otCredit').value) || 100,
+    leverage:         parseInt(document.getElementById('otLeverage').value) || 5,
+    cores:            parseInt(document.getElementById('otCores').value) || 0,
+    maxiter:          parseInt(document.getElementById('otMaxiter')?.value) || 30,
+    objective:        document.querySelector('input[name="otObjective"]:checked')?.value || 'profit',
+    min_price_change: parseFloat(document.getElementById('otMinPriceChange')?.value) || 5,
+    custom_bounds:    _getOptimizerTesterCustomBounds(),
+  };
+}
+
+async function runOptimizerTester() {
+  const payload = _optimizerTesterPayload();
+  if (!payload.symbol)   { showToast('Select a symbol', 'error'); return; }
+  if (!payload.strategy) { showToast('Select a strategy', 'error'); return; }
+  if (payload.custom_bounds) {
+    for (const [name, [lo, hi]] of Object.entries(payload.custom_bounds)) {
+      if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo >= hi) {
+        showToast(`"${name}": min (${lo}) must be less than max (${hi})`, 'error');
+        return;
+      }
+    }
+  }
+  try {
+    const res  = await fetch('/api/optimizer/tester/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (!res.ok) {
+      const msg = data.error || (Array.isArray(data.detail) ? data.detail.map(d => d.msg).join('; ') : data.detail) || 'run failed';
+      showToast('Error: ' + msg, 'error');
+      return;
+    }
+    optimizerTesterJobId = data.job_id;
+    _candleWarnTesterShown = false;
+    document.getElementById('otResults').innerHTML = '';
+    destroyOptTesterCharts();
+    _setOptimizerTesterRunning(true);
+    pollOptimizerTester();
+  } catch (e) { showToast('Network error: ' + e, 'error'); }
+}
+
+function _setOptimizerTesterRunning(running) {
+  document.getElementById('otRunBtn').style.display    = running ? 'none' : '';
+  document.getElementById('otCancelBtn').style.display = running ? '' : 'none';
+  if (running) document.getElementById('otProgressWrap').style.display = '';
+}
+
+function renderOptimizerTesterProgress(job) {
+  const wrap = document.getElementById('otProgressWrap');
+  if (!wrap) return;
+  wrap.style.display = '';
+  const pct  = job.maxiter ? Math.min(100, Math.round(job.iteration / job.maxiter * 100)) : 0;
+  const fill = document.getElementById('otProgressFill');
+  fill.style.width      = (job.status === 'done' ? 100 : pct) + '%';
+  fill.style.background = job.status === 'error' ? 'var(--red)' : job.status === 'done' ? 'var(--green)' : 'var(--accent)';
+  const trainPct = job.train_pct || 70;
+  let bestInfo = '';
+  if (job.best_pnl != null) bestInfo += ` · P&L $${job.best_pnl.toFixed(2)}`;
+  if (job.best_summary?.win_rate != null) bestInfo += ` · WR ${job.best_summary.win_rate.toFixed(1)}%`;
+  const cur = job.status === 'running' ? `Optimizing training window…${bestInfo}`
+            : job.status === 'pending' ? 'Starting…'
+            : job.status === 'done'    ? '✓ Complete — train & test results ready'
+            : job.status === 'cancelled' ? 'Cancelled'
+            : 'Error';
+  document.getElementById('otProgressCurrent').textContent = cur;
+  const cores = job.workers > 1 ? ` · ${job.workers} cores` : '';
+  const split = `${trainPct}/${100 - trainPct} split`;
+  document.getElementById('otProgressCount').textContent =
+    `${job.evaluations} backtests · gen ${job.iteration}/${job.maxiter}${cores} · ${split} · ${job.train_candle_count || 0} train / ${job.test_candle_count || 0} test candles`;
+}
+
+async function cancelOptimizerTester() {
+  if (!optimizerTesterJobId) return;
+  try { await fetch(`/api/optimizer/tester/run/${optimizerTesterJobId}/cancel`, { method: 'POST' }); } catch (_) {}
+  showToast('Cancelling…', 'info');
+}
+
+async function pollOptimizerTester() {
+  if (!optimizerTesterJobId) return;
+  try {
+    const res = await fetch(`/api/optimizer/tester/run/${optimizerTesterJobId}`);
+    if (!res.ok) { stopOptimizerTesterPolling(); _setOptimizerTesterRunning(false); return; }
+    const job = await res.json();
+    renderOptimizerTesterProgress(job);
+    renderOptimizerTesterResults(job);
+    if (['done', 'cancelled', 'error'].includes(job.status)) {
+      stopOptimizerTesterPolling();
+      _setOptimizerTesterRunning(false);
+      if (job.status === 'done')           showToast('Optimizer Tester complete', 'success');
+      else if (job.status === 'cancelled') showToast('Optimizer Tester cancelled', 'info');
+      else                                 showToast('Run error: ' + (job.error || 'unknown'), 'error');
+    } else {
+      if (!_candleWarnTesterShown && job.candle_count > 0 && job.candle_count < job.candles - 1) {
+        _candleWarnTesterShown = true;
+        _candleWarnContext = 'tester';
+        const trainN = job.train_candle_count || Math.round(job.candle_count * (job.train_pct || 70) / 100);
+        const testN  = job.test_candle_count  || (job.candle_count - trainN);
+        document.getElementById('candleWarnMsg').textContent =
+          `The API returned ${job.candle_count} candles instead of the ${job.candles} you requested. ` +
+          `With a ${job.train_pct || 70}/${100 - (job.train_pct || 70)} split this gives ${trainN} train / ${testN} test candles, ` +
+          `which may reduce result quality.`;
+        document.getElementById('candleWarnModal').classList.add('open');
+      }
+      optimizerTesterPollTimer = setTimeout(pollOptimizerTester, 1000);
+    }
+  } catch (e) {
+    optimizerTesterPollTimer = setTimeout(pollOptimizerTester, 1500);
+  }
+}
+
+function stopOptimizerTesterPolling() {
+  clearTimeout(optimizerTesterPollTimer);
+  optimizerTesterPollTimer = null;
+}
+
+function _tradeTableHtml(trades) {
+  if (!trades || !trades.length) return '';
+  const rows = trades.map(t => {
+    const pnl    = parseFloat(t['P&L ($)'] || 0);
+    const pnlCls = pnl > 0 ? 'pnl-pos' : pnl < 0 ? 'pnl-neg' : '';
+    const pnlStr = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
+    const posColor = t['Position'] === 'Long' ? 'var(--green)' : 'var(--red)';
+    const liqMark  = t['Liquidated'] ? ' <span style="color:var(--red);font-size:0.75em">LIQ</span>' : '';
+    return `<tr class="${t['Liquidated'] ? 'liq-row' : ''}">
+      <td style="color:var(--muted)">#${t['Trade #']}</td>
+      <td style="color:${posColor}">${escHtml(t['Position'] || '')}</td>
+      <td style="color:var(--muted);font-size:0.82em">${escHtml(String(t['Start Time'] || ''))}</td>
+      <td style="color:var(--muted);font-size:0.82em">${escHtml(String(t['End Time'] || ''))}</td>
+      <td class="${pnlCls}">${pnlStr}${liqMark}</td>
+      <td style="color:var(--muted)">${escHtml(String(t['Balance ($)'] || ''))}</td>
+    </tr>`;
+  }).join('');
+  return `<div style="overflow-x:auto;max-height:260px;overflow-y:auto">
+    <table class="opt-history-table">
+      <thead><tr><th>#</th><th>Side</th><th>Entry Time</th><th>Exit Time</th><th>P&amp;L</th><th>Balance</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+function renderOptimizerTesterResults(job) {
+  const wrap = document.getElementById('otResults');
+  if (!wrap) return;
+
+  if (job.status === 'error') {
+    wrap.innerHTML = `<div class="tester-section"><div class="err-cell" style="color:var(--yellow)">${escHtml(job.error || 'error')}</div></div>`;
+    return;
+  }
+  if (!job.best_summary) { wrap.innerHTML = ''; return; }
+
+  // ── Train trades ──────────────────────────────────────────────────────────
+  const trainTradesHtml = job.best_trades?.length
+    ? `<div class="tester-section">
+        <h3>Training Trades</h3>
+        <div class="hint">Trades from the optimized parameters over the <strong>training</strong> window (${job.train_candle_count || 0} candles).</div>
+        ${_tradeTableHtml(job.best_trades)}
+      </div>`
+    : '';
+
+  // ── Best inputs summary ───────────────────────────────────────────────────
+  const s       = job.best_summary;
+  const base    = job.baseline || {};
+  const bestPnl = job.best_pnl != null ? job.best_pnl : (s.total_pnl || 0);
+  const basePnl = base.total_pnl != null ? base.total_pnl : 0;
+  const delta   = bestPnl - basePnl;
+  const pnlCls  = bestPnl > 0 ? 'pnl-pos' : bestPnl < 0 ? 'pnl-neg' : '';
+  const wrColor = (s.win_rate || 0) >= 60 ? 'var(--green)' : (s.win_rate || 0) >= 45 ? 'var(--yellow)' : 'var(--red)';
+
+  const paramRows = (job.params || []).map(p => {
+    const changed = String(p.value) !== String(p.default);
+    return `<tr class="${changed ? 'changed' : ''}">
+      <td>${escHtml(p.name)}</td><td class="tuned-val">${p.value}</td>
+      <td style="color:var(--muted)">${p.default}</td>
+      <td style="color:var(--muted)">${p.low}–${p.high}</td>
+    </tr>`;
+  }).join('');
+
+  const trainSummaryHtml = `
+    <div class="tester-section">
+      <h3>Best Inputs Found · Training Window</h3>
+      <div class="hint">${escHtml(job.symbol)} · ${escHtml(job.strategy_label || job.strategy)} · ${escHtml(fmtTF(job.timeframe))} · ${job.train_candle_count || job.candle_count} training candles · goal: ${escHtml({profit:'highest profit',winrate:'highest win rate',balanced:'balanced',large_move:'large move'}[job.objective] || job.objective)}</div>
+      <div class="opt-summary">
+        <div class="opt-stat"><div class="lbl">P&amp;L (train)</div><div class="val ${pnlCls}">${bestPnl >= 0 ? '+' : ''}$${bestPnl.toFixed(2)}</div></div>
+        <div class="opt-stat"><div class="lbl">vs. Defaults</div><div class="val" style="color:${delta >= 0 ? 'var(--green)' : 'var(--red)'}">${(delta >= 0 ? '+' : '') + '$' + delta.toFixed(2)}</div></div>
+        <div class="opt-stat"><div class="lbl">Win Rate (train)</div><div class="val" style="color:${wrColor}">${(s.win_rate || 0).toFixed(1)}%</div></div>
+        <div class="opt-stat"><div class="lbl">Trades (train)</div><div class="val">${s.trade_count || 0}</div></div>
+        <div class="opt-stat"><div class="lbl">Backtests Run</div><div class="val">${job.evaluations}</div></div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="opt-result-table">
+          <thead><tr><th>Input</th><th>Tuned</th><th>Default</th><th>Range</th></tr></thead>
+          <tbody>${paramRows}</tbody>
+        </table>
+      </div>
+      <div class="hint" style="margin-top:10px">Baseline (defaults on train): P&amp;L $${basePnl.toFixed(2)} · ${(base.win_rate || 0).toFixed(1)}% win · ${base.trade_count || 0} trades. Highlighted rows changed from default.</div>
+    </div>`;
+
+  // ── Test results ──────────────────────────────────────────────────────────
+  let testHtml = '';
+  if (job.test_summary) {
+    const ts = job.test_summary;
+    const tb = job.test_baseline || {};
+    const testPnl     = ts.total_pnl || 0;
+    const testBasePnl = tb.total_pnl || 0;
+    const testPnlCls  = testPnl     > 0 ? 'pnl-pos' : testPnl     < 0 ? 'pnl-neg' : '';
+    const tbPnlCls    = testBasePnl > 0 ? 'pnl-pos' : testBasePnl < 0 ? 'pnl-neg' : '';
+    const testWrColor = (ts.win_rate || 0) >= 60 ? 'var(--green)' : (ts.win_rate || 0) >= 45 ? 'var(--yellow)' : 'var(--red)';
+
+    let cautionHtml = '';
+    if (job.status === 'done' && bestPnl > 0 && testPnl < bestPnl * 0.3) {
+      cautionHtml = `<div style="color:var(--yellow);font-size:0.88em;margin-top:10px;padding:6px 10px;background:rgba(251,191,36,0.08);border-radius:4px;border-left:3px solid var(--yellow)">⚠ Large gap between training P&amp;L ($${bestPnl.toFixed(2)}) and test P&amp;L ($${testPnl.toFixed(2)}) — the parameters may be overfitted to the training window.</div>`;
+    }
+
+    const testTradesHtml = job.test_trades?.length
+      ? `<div style="margin-top:14px"><div class="hint" style="margin-bottom:6px">Test trades (${job.test_trades.length}):</div>${_tradeTableHtml(job.test_trades)}</div>`
+      : (job.status === 'done' ? '<div class="hint" style="margin-top:10px">No closed trades in the test window.</div>' : '');
+
+    testHtml = `
+      <div class="tester-section">
+        <h3>Out-of-Sample Performance · Test Window</h3>
+        <div class="hint">How the optimized parameters perform on the <strong>${job.test_candle_count || 0} unseen test candles</strong> — data the optimizer never saw.</div>
+        <div class="opt-summary">
+          <div class="opt-stat"><div class="lbl">P&amp;L · optimized</div><div class="val ${testPnlCls}">${testPnl >= 0 ? '+' : ''}$${testPnl.toFixed(2)}</div></div>
+          <div class="opt-stat"><div class="lbl">P&amp;L · defaults</div><div class="val ${tbPnlCls}">${testBasePnl >= 0 ? '+' : ''}$${testBasePnl.toFixed(2)}</div></div>
+          <div class="opt-stat"><div class="lbl">Win Rate · optimized</div><div class="val" style="color:${testWrColor}">${(ts.win_rate || 0).toFixed(1)}%</div></div>
+          <div class="opt-stat"><div class="lbl">Win Rate · defaults</div><div class="val">${(tb.win_rate || 0).toFixed(1)}%</div></div>
+          <div class="opt-stat"><div class="lbl">Trades · optimized</div><div class="val">${ts.trade_count || 0}</div></div>
+          <div class="opt-stat"><div class="lbl">Trades · defaults</div><div class="val">${tb.trade_count || 0}</div></div>
+        </div>
+        ${cautionHtml}
+        ${testTradesHtml}
+      </div>`;
+  }
+
+  wrap.innerHTML = trainTradesHtml + trainSummaryHtml + testHtml;
+
+  if (job.chart_data || job.test_chart_data) renderOptTesterCharts(job);
+}
+
+function destroyOptTesterCharts() {
+  _optTesterCharts.forEach(c => { try { c.remove(); } catch (_) {} });
+  _optTesterCharts = [];
+  ['otTrainChart', 'otTestChart'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.innerHTML = ''; el.dataset.sig = ''; }
+  });
+}
+
+function renderOptTesterCharts(job) {
+  const trainEl = document.getElementById('otTrainChart');
+  const testEl  = document.getElementById('otTestChart');
+  const trainCd = job.chart_data;
+  const testCd  = job.test_chart_data;
+  const trainSig = trainCd?.candles?.length ? `${trainCd.candles[0]?.time}:${trainCd.candles[trainCd.candles.length - 1]?.time}:train` : '';
+  const testSig  = testCd?.candles?.length  ? `${testCd.candles[0]?.time}:${testCd.candles[testCd.candles.length - 1]?.time}:test`   : '';
+  const combined = trainSig + '|' + testSig;
+  if (!trainEl || !testEl || !combined.replace('|', '')) return;
+  if (trainEl.dataset.sig === combined) return;
+  destroyOptTesterCharts();
+  trainEl.dataset.sig = combined;
+  if (trainCd?.candles?.length) _buildOptChart(trainEl, trainCd, job.best_trades  || [], 'TRAINING PERIOD CHART',     _optTesterCharts, 'train');
+  if (testCd?.candles?.length)  _buildOptChart(testEl,  testCd,  job.test_trades  || [], 'OUT-OF-SAMPLE TEST CHART',  _optTesterCharts, 'test');
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────

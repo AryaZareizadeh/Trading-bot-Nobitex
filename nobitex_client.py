@@ -184,6 +184,11 @@ class NobitexClient:
             "status": "canceled",
         })
 
+    def active_orders(self) -> list[dict]:
+        """Fetch all active (open/pending) margin orders."""
+        data = self._call("GET", "/market/orders/list?status=open&tradeType=margin")
+        return data.get("orders", [])
+
     # ── Positions ──────────────────────────────────────────────────────────────
 
     def positions(self, status: Literal["active", "past"] = "active") -> list[dict]:

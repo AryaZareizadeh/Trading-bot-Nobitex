@@ -20,6 +20,11 @@ try:
 except ImportError:
     pass
 
+try:
+    from notifier import notify_if_relevant as _notify
+except ImportError:
+    def _notify(*_args, **_kwargs): pass
+
 RESOLUTION_SECONDS: dict[str, int] = {
     "1": 60, "5": 300, "15": 900, "30": 1800,
     "60": 3600, "180": 10800, "240": 14400,
@@ -38,6 +43,11 @@ _ORDER_TIMEOUT_BY_TF: dict[str, int] = {
     "60": 1800, "180": 1800, "240": 1800,         # 30 min
     "D": 5400,                                     # 90 min
 }
+_CLOSE_ORDER_TIMEOUT_BY_TF: dict[str, int] = {
+    "1": 120, "5": 120, "15": 120, "30": 120,   # 2 min
+    "60": 300, "180": 300, "240": 300,            # 5 min
+    "D": 600,                                     # 10 min
+}
 _FILL_POLL_INTERVAL = 5       # seconds between fill-status checks
 _POSITION_LOOKUP_RETRIES = 3  # retries when position not visible immediately after fill
 _POSITION_LOOKUP_DELAY = 2    # seconds between each position lookup retry
@@ -50,6 +60,16 @@ _FATAL_ORDER_ERRORS = frozenset({
     "MarketClosed", "UnsupportedMarginSrc", "MarginClosed",
     "ExceedDlegationLimit",  # bot already capped to limit; immediate retry is futile (API typo: missing 'e')
 })
+
+
+def _format_price(price: float) -> str:
+    """Format price with enough decimal places to never round sub-cent coins to zero."""
+    if price >= 0.01:
+        return f"{price:.2f}"
+    elif price >= 0.000001:
+        return f"{price:.8f}"
+    else:
+        return f"{price:.12f}"
 
 
 class BotStatus(str, Enum):
@@ -117,6 +137,7 @@ class Bot:
         })
         if len(self.activity_log) > 200:
             self.activity_log = self.activity_log[-200:]
+        _notify(self.cfg.mode, event, self.cfg.name or self.id, detail)
 
     # ── Reconfiguration ───────────────────────────────────────────────────────
 
@@ -157,7 +178,8 @@ class Bot:
             return None
         try:
             return PARAMS_CLASS[self.cfg.strategy_name](**self.cfg.custom_params)
-        except Exception:
+        except Exception as exc:
+            self._log_event("warning", f"custom_params failed to load ({exc}); using strategy defaults")
             return None
 
     # ── Real-trading helpers ───────────────────────────────────────────────────
@@ -298,6 +320,7 @@ class Bot:
 
         price = float(self.df["Close"].iloc[-1])
         amount_str = self._compute_order_amount(src, side, leverage, price, limit_val)
+        self._log_event("order_placed", f"Placing {side} {src}{dst} @ ${_format_price(price)}")
 
         # ── Place the order (placement retries only) ───────────────────────────
         order_id = None
@@ -308,13 +331,13 @@ class Bot:
                     dst_currency=dst,
                     side=side,
                     amount=amount_str,
-                    price=f"{price:.2f}",
+                    price=_format_price(price),
                     leverage=leverage,
                     execution="market",
                 )
                 order_id = order.get("id")
                 if order_id is not None:
-                    self._log_event("info", f"Order #{order_id} placed @ ${price:.2f} (last candle close)")
+                    self._log_event("info", f"Order #{order_id} placed @ ${_format_price(price)} (last candle close)")
                     break
                 self._log_event("warning", f"Placement attempt {attempt}/{_ORDER_MAX_ATTEMPTS}: no order id in response")
             except NobitexAPIError as exc:
@@ -420,7 +443,7 @@ class Bot:
 
         if pos is not None:
             self._exchange_position_id = pos["id"]
-            self._log_event("order_filled", f"Position {pos['id']} confirmed @ ${price:.2f}")
+            self._log_event("order_filled", f"Position {pos['id']} confirmed @ ${_format_price(price)}")
         else:
             self._log_event("warning", "Order filled but position not found after lookups")
 
@@ -439,6 +462,55 @@ class Bot:
         except Exception as exc:
             self.error = f"Exchange client init failed: {exc}"
             return False
+
+    async def _poll_order_until_filled(
+        self, client, order_id: int, order_timeout: int
+    ) -> tuple[str, float]:
+        """Poll a close order until Done/Canceled/timeout. Returns (outcome, matched_amount).
+        outcome ∈ {"done", "canceled", "timeout"}
+        On CancelledError: re-raises WITHOUT canceling the order (leave close on exchange).
+        On timeout: cancels the unfilled order so next sync can recompute remaining cleanly.
+        """
+        started_at = time.monotonic()
+        matched = 0.0
+
+        while True:
+            await asyncio.sleep(_FILL_POLL_INTERVAL)
+            elapsed = time.monotonic() - started_at
+
+            try:
+                info = client.order_status(order_id)
+            except asyncio.CancelledError:
+                raise  # bot stopping — do NOT cancel the close order
+            except Exception as exc:
+                self._log_event("warning", f"Close order #{order_id} status check failed: {exc}")
+                if elapsed >= order_timeout:
+                    break  # fall through to timeout/cancel path
+                continue
+
+            matched = float(info.get("matchedAmount") or 0)
+            status = info.get("status", "Active")
+
+            if status == "Done":
+                self._log_event("order_filled", f"Close order #{order_id} fully filled")
+                return "done", matched
+
+            if status == "Canceled":
+                self._log_event("warning", f"Close order #{order_id} cancelled by exchange (matched={matched})")
+                return "canceled", matched
+
+            if elapsed >= order_timeout:
+                break
+
+        # Timeout — cancel the unfilled remainder so liabilityInOrder drops to 0
+        try:
+            client.cancel_order(order_id)
+            self._log_event("warning", f"Close order #{order_id} timed out — cancelled for clean retry")
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self._log_event("warning", f"Cancel of timed-out close order #{order_id} failed: {exc}")
+        return "timeout", matched
 
     async def _close_exchange_position(self, client, price_str: str) -> bool:
         """Submit and confirm a market close for the tracked position. Returns True on success.
@@ -467,6 +539,17 @@ class Bot:
                 self._log_event("info", f"Position {pos_id}: close already pending — skipping duplicate")
                 return True
 
+            # Fetch a live price to use as the slippage cap; fall back to the last
+            # candle close (price_str) if the live fetch fails.
+            src, dst = self._parse_symbol()
+            symbol = f"{src}{dst}".upper()
+            try:
+                live = client.live_price(symbol)
+                price_str = _format_price(live)
+                self._log_event("info", f"Using live price {price_str} for close order")
+            except Exception as exc:
+                self._log_event("warning", f"live_price fetch failed ({exc}); using last candle price {price_str}")
+
             fallback  = f"{round(self.cfg.credit * self.cfg.leverage / float(price_str), 6):.6f}"
             close_amt = str(remaining) if liability > 0 else fallback
 
@@ -474,16 +557,21 @@ class Bot:
                 pos_id, amount=close_amt, price=price_str, execution="market"
             )
             close_order_id = close_order.get("id")
+
+            if close_order_id is None:
+                self._log_event("warning", f"Close order for position {pos_id} returned no order id — will retry next sync")
+                return False
+
             self._log_event("info", f"Close order #{close_order_id} submitted for position {pos_id}")
 
-            if close_order_id:
-                outcome, _ = await self._poll_order_until_filled(client, close_order_id)
-                if outcome != "done":
-                    self._log_event(
-                        "warning",
-                        f"Close order #{close_order_id} didn't fill ({outcome}) — will retry next sync",
-                    )
-                    return False  # leave _exchange_position_id set; next sync retries
+            order_timeout = _CLOSE_ORDER_TIMEOUT_BY_TF.get(self.cfg.timeframe, 120)
+            outcome, matched = await self._poll_order_until_filled(client, close_order_id, order_timeout)
+            if outcome != "done":
+                self._log_event(
+                    "warning",
+                    f"Close order #{close_order_id} didn't fill ({outcome}, matched={matched}) — will retry next sync",
+                )
+                return False  # leave _exchange_position_id set; next sync retries
 
             self._exchange_position_id = None
             self._log_event("position_closed", f"Position {pos_id} closed")
@@ -529,7 +617,42 @@ class Bot:
                     else:
                         return  # position confirmed open; nothing to do
                 else:
-                    return  # no tracked position; nothing to verify
+                    # No tracked position. Scan for an open exchange position this bot
+                    # may have owned before the restart (not persisted across restarts).
+                    src, dst = self._parse_symbol()
+                    matching = [
+                        p for p in active
+                        if p.get("srcCurrency") == src
+                        and p.get("dstCurrency") == dst
+                        and p.get("status") == "Open"
+                    ]
+                    if not matching:
+                        return
+                    reconnect_pos = matching[0]
+                    pos_side = reconnect_pos.get("side", "")
+                    direction = "Long" if pos_side == "buy" else "Short"
+                    state_val = "long" if pos_side == "buy" else "short"
+                    # Back-date _live_from_ts so the matching warmup strategy position
+                    # becomes a live signal — keeps the position open on the next tick.
+                    strategy_entries = [p for p in self.open_positions if p.get("direction") == direction]
+                    if strategy_entries:
+                        self._live_from_ts = min(pd.Timestamp(p["entry_time"]) for p in strategy_entries)
+                    else:
+                        # Fallback: position older than 500 candles or strategy diverged.
+                        # Synthetic live entry holds the signal for one candle;
+                        # _run_strategy() replaces it on the next close.
+                        self.open_positions = [{
+                            "direction": direction,
+                            "entry_price": float(reconnect_pos.get("entryPrice") or 0),
+                            "entry_time": str(self._live_from_ts),
+                        }]
+                    self._exchange_position_id = reconnect_pos["id"]
+                    self._real_state = state_val
+                    self._log_event(
+                        "reconnected",
+                        f"Reconnected to existing {direction} position {reconnect_pos['id']} after restart",
+                    )
+                    return
 
             src, dst = self._parse_symbol()
             price_str = f"{self.current_price:.2f}"
@@ -561,7 +684,7 @@ class Bot:
                         free_margin = bal - blocked
                         if free_margin < self.cfg.credit:
                             self._log_event(
-                                "warning",
+                                "missed_signal",
                                 f"Insufficient margin: {free_margin:.2f} USDT free < {self.cfg.credit:.2f} credit — skipping trade",
                             )
                             self._real_positions = self._normalize_positions(client.positions("active"))
@@ -782,6 +905,10 @@ class Bot:
             self._log_event("data_loaded", f"Loaded {len(self.df)} warmup candles. Live trading starts at next candle close.")
 
             if self.cfg.mode == "real":
+                try:
+                    self._run_strategy()
+                except Exception as exc:
+                    self._log_event("warning", f"Startup strategy run failed: {exc}")
                 await self._sync_exchange()
 
             while not self._stop_event.is_set():
@@ -892,6 +1019,7 @@ class Bot:
             d["exchange_state"] = self._real_state
             d["exchange_position_id"] = self._exchange_position_id
         d["pending_order"] = self._pending_order
+        d["activity_log"] = list(reversed(self.activity_log[-20:]))
         return d
 
     def to_detail_dict(self) -> dict:

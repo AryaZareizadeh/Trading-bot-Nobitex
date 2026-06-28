@@ -167,16 +167,36 @@ def _compute_score(summary: dict, objective: str, credit: float, min_price_chang
     return -pnl
 
 
-def evaluate(df: pd.DataFrame, strategy_name: str, params, credit: float, leverage: int) -> dict:
-    """Backtest one parameter set over a pre-fetched DataFrame; return its summary."""
+def evaluate(
+    df: pd.DataFrame,
+    strategy_name: str,
+    params,
+    credit: float,
+    leverage: int,
+    warmup_df: pd.DataFrame | None = None,
+) -> dict:
+    """Backtest one parameter set over a pre-fetched DataFrame; return its summary.
+
+    If *warmup_df* is supplied (e.g. the training split), it is prepended to *df*
+    so that indicators have a full history at the first evaluation candle.  Only
+    trades that start within *df* are counted; candle_count reflects len(df) only.
+    """
     cfg = Config()
     cfg.leverage = leverage
     cfg.trade_size = credit
     cfg.initial_capital = credit
 
-    indicators = Indicators(df)
+    if warmup_df is not None:
+        combined_df = pd.concat([warmup_df, df]).reset_index(drop=True)
+        indicators = Indicators(combined_df)
+        start_idx = len(warmup_df)
+    else:
+        combined_df = df
+        indicators = Indicators(df)
+        start_idx = 0
+
     strategy = STRATEGY_MAP[strategy_name](cfg, params)
-    trades_df = strategy.run(df, indicators, live_start_idx=0)
+    trades_df = strategy.run(combined_df, indicators, live_start_idx=start_idx)
     return _summarize(trades_df, len(strategy.open_positions), len(df))
 
 
@@ -304,7 +324,8 @@ class OptimizerJob:
                  maxiter: int = _DE_MAXITER,
                  custom_bounds: dict | None = None,
                  objective: str = "profit",
-                 min_price_change: float = 5.0):
+                 min_price_change: float = 5.0,
+                 train_pct: float | None = None):
         self.id = uuid.uuid4().hex[:8]
         self.symbol = symbol
         self.strategy = strategy
@@ -333,6 +354,15 @@ class OptimizerJob:
         self.history: list[dict] = []    # per-generation best snapshots
         self.best_trades: list[dict] | None = None  # trade log from the best run
         self.chart_data: dict | None = None          # OHLCV + indicator series for the chart
+
+        # Tester-mode fields (only populated when train_pct is set)
+        self.train_pct = train_pct
+        self.train_candle_count = 0
+        self.test_candle_count = 0
+        self.test_summary: dict | None = None
+        self.test_baseline: dict | None = None
+        self.test_trades: list[dict] | None = None
+        self.test_chart_data: dict | None = None
 
         self._cancel = False
         self._task: asyncio.Task | None = None
@@ -525,16 +555,43 @@ class OptimizerJob:
                 return
             self.candle_count = len(df)
 
+            # In tester mode, split df into train (for DE) and test (for evaluation).
+            train_df = df
+            test_df: pd.DataFrame | None = None
+            if self.train_pct is not None:
+                train_n = max(1, int(len(df) * self.train_pct / 100))
+                if train_n < _MIN_CANDLES:
+                    self.status = "error"
+                    self.error = (
+                        f"Training set too small ({train_n} candles < {_MIN_CANDLES} minimum). "
+                        "Increase candle count or lower the train %."
+                    )
+                    return
+                test_n = len(df) - train_n
+                if test_n < 50:
+                    self.status = "error"
+                    self.error = (
+                        f"Test set too small ({test_n} candles). "
+                        "Reduce train % or increase candle count."
+                    )
+                    return
+                train_df = df.iloc[:train_n].copy()
+                test_df = df.iloc[train_n:].copy()
+                self.train_candle_count = len(train_df)
+                self.test_candle_count = len(test_df)
+
             # Baseline: the strategy's shipped default inputs, for comparison.
             self.baseline = await asyncio.to_thread(
-                evaluate, df, self.strategy, PARAMS_CLASS[self.strategy](),
+                evaluate, train_df, self.strategy, PARAMS_CLASS[self.strategy](),
                 self.credit, self.leverage,
             )
 
-            await asyncio.to_thread(self._run_de, df)
+            await asyncio.to_thread(self._run_de, train_df)
 
             if not self._cancel and self.best_params:
-                await asyncio.to_thread(self._compute_best_trades, df)
+                await asyncio.to_thread(self._compute_best_trades, train_df)
+                if test_df is not None:
+                    await asyncio.to_thread(self._compute_test_results, df, train_n)
 
             if self._cancel:
                 self.status = "cancelled"
@@ -560,16 +617,18 @@ class OptimizerJob:
         strategy = STRATEGY_MAP[self.strategy](cfg, params)
         trades_df = strategy.run(df, indicators, live_start_idx=0)
         records = trades_df.to_dict("records")
-        if len(records) > 1:
+        open_count = len(strategy.open_positions)
+        closed_count = max(0, len(records) - open_count)
+        if closed_count > 1:
             offset = float(records[0]["Balance ($)"])
             adjusted = []
-            for r in records[1:]:
+            for r in records[1:closed_count]:
                 r = dict(r)
                 r["Balance ($)"] = f"{float(r['Balance ($)']) - offset:.2f}"
                 adjusted.append(r)
             self.best_trades = adjusted
         else:
-            self.best_trades = records
+            self.best_trades = []
 
         # ── Chart data ───────────────────────────────────────────────────────
         _tehran = ZoneInfo("Asia/Tehran")
@@ -634,6 +693,111 @@ class OptimizerJob:
 
         self.chart_data = {"candles": candles, "indicators": ind, "strategy": self.strategy}
 
+    def _compute_test_results(self, full_df: pd.DataFrame, train_n: int) -> None:
+        """Evaluate best and default params on the held-out test set.
+
+        The training candles (full_df[:train_n]) are used as indicator warmup so
+        that RSI/StochRSI/EMA values are properly initialised at the first test
+        candle.  Only trades that start at or after index train_n are counted.
+        """
+        if not self.best_params:
+            return
+        train_df = full_df.iloc[:train_n]
+        test_df  = full_df.iloc[train_n:].copy()
+
+        best_params_obj = PARAMS_CLASS[self.strategy](**self.best_params)
+
+        # Summary metrics — each evaluate() call prepends train_df for warmup
+        self.test_summary  = evaluate(test_df, self.strategy, best_params_obj,
+                                      self.credit, self.leverage, warmup_df=train_df)
+        self.test_baseline = evaluate(test_df, self.strategy, PARAMS_CLASS[self.strategy](),
+                                      self.credit, self.leverage, warmup_df=train_df)
+
+        # Trade log — run strategy over full_df so indicators have warmup history
+        cfg = Config()
+        cfg.leverage = self.leverage
+        cfg.trade_size = self.credit
+        cfg.initial_capital = self.credit
+        indicators = Indicators(full_df)
+        strategy = STRATEGY_MAP[self.strategy](cfg, best_params_obj)
+        trades_df = strategy.run(full_df, indicators, live_start_idx=train_n)
+        records = trades_df.to_dict("records")
+        open_count = len(strategy.open_positions)
+        closed_count = max(0, len(records) - open_count)
+        if closed_count > 1:
+            offset = float(records[0]["Balance ($)"])
+            adjusted = []
+            for r in records[1:closed_count]:
+                r = dict(r)
+                r["Balance ($)"] = f"{float(r['Balance ($)']) - offset:.2f}"
+                adjusted.append(r)
+            self.test_trades = adjusted
+        else:
+            self.test_trades = []
+
+        # Chart data for the test period (same structure as self.chart_data)
+        _tehran = ZoneInfo("Asia/Tehran")
+
+        def _to_series(s):
+            return [None if pd.isna(v) else round(float(v), 6) for v in s]
+
+        time_map: dict[str, int] = {}
+        candles: list[dict] = []
+        for ts, row in test_df.iterrows():
+            ts_utc = ts.tz_localize("UTC") if ts.tzinfo is None else ts
+            unix = int(ts_utc.timestamp())
+            fmt = ts_utc.tz_convert(_tehran).strftime("%Y-%m-%d %H:%M:%S")
+            candles.append({
+                "time": unix,
+                "open": float(row["Open"]),
+                "high": float(row["High"]),
+                "low": float(row["Low"]),
+                "close": float(row["Close"]),
+            })
+            time_map[fmt] = unix
+
+        for r in (self.test_trades or []):
+            r["_start_ts"] = time_map.get(r.get("Start Time", ""))
+            r["_end_ts"] = time_map.get(r.get("End Time", ""))
+
+        # Indicator series computed on full_df, sliced to the test window so the
+        # chart values also benefit from the training-set warmup history.
+        ind: dict = {}
+        if self.strategy in ("AdvRSI", "ExtremeReversal"):
+            srsi = indicators.stoch_rsi(
+                best_params_obj.rsi_length, best_params_obj.stoch_length,
+                best_params_obj.k_smooth, best_params_obj.d_smooth,
+            )
+            rsi, rsi_ma = indicators.rsi_with_ma(
+                best_params_obj.rsi_fast_length, best_params_obj.rsi_ma_length,
+            )
+            ind = {
+                "stoch_k":    _to_series(srsi.k.iloc[train_n:]),
+                "stoch_d":    _to_series(srsi.d.iloc[train_n:]),
+                "rsi":        _to_series(rsi.iloc[train_n:]),
+                "rsi_ma":     _to_series(rsi_ma.iloc[train_n:]),
+                "oversold":   best_params_obj.oversold,
+                "overbought": best_params_obj.overbought,
+            }
+        elif self.strategy == "TrendMomentum":
+            srsi = indicators.stoch_rsi(
+                best_params_obj.rsi_length, best_params_obj.stoch_length,
+                best_params_obj.k_smooth, best_params_obj.d_smooth,
+            )
+            ema = indicators.ema(best_params_obj.ema_trend_length)
+            macd = indicators.macd(best_params_obj.macd_fast, best_params_obj.macd_slow,
+                                   best_params_obj.macd_signal)
+            ind = {
+                "stoch_k":    _to_series(srsi.k.iloc[train_n:]),
+                "stoch_d":    _to_series(srsi.d.iloc[train_n:]),
+                "ema":        _to_series(ema.iloc[train_n:]),
+                "macd_hist":  _to_series(macd.hist.iloc[train_n:]),
+                "oversold":   best_params_obj.oversold,
+                "overbought": best_params_obj.overbought,
+            }
+
+        self.test_chart_data = {"candles": candles, "indicators": ind, "strategy": self.strategy}
+
     def _params_view(self) -> list[dict]:
         """Best params paired with their defaults and bounds, for display."""
         if not self.best_params:
@@ -677,6 +841,14 @@ class OptimizerJob:
             "params": self._params_view(),
             "baseline": self.baseline,
             "history": self.history[-60:],   # cap to last 60 generations
+            # Tester-mode fields
+            "train_pct": self.train_pct,
+            "train_candle_count": self.train_candle_count,
+            "test_candle_count": self.test_candle_count,
+            "test_summary": self.test_summary,
+            "test_baseline": self.test_baseline,
+            "test_trades": self.test_trades,
+            "test_chart_data": self.test_chart_data,
         }
 
 
@@ -757,13 +929,13 @@ class OptimizerManager:
     # ── Jobs ─────────────────────────────────────────────────────────────────
     def start_job(self, symbol, strategy, timeframe, candles, credit, leverage,
                   cores=0, maxiter=_DE_MAXITER, objective="profit",
-                  custom_bounds=None, min_price_change=5.0) -> OptimizerJob:
+                  custom_bounds=None, min_price_change=5.0, train_pct=None) -> OptimizerJob:
         self._prune()
         job = OptimizerJob(
             symbol.lower().replace("/", "").strip(), strategy, timeframe,
             _clamp_candles(candles), float(credit), int(leverage), _clamp_cores(cores),
             maxiter=maxiter, custom_bounds=custom_bounds, objective=objective,
-            min_price_change=min_price_change,
+            min_price_change=min_price_change, train_pct=train_pct,
         )
         self._jobs[job.id] = job
         job._task = asyncio.create_task(job.run())

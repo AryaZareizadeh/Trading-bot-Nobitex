@@ -350,32 +350,41 @@ class ExtremeReversalStrategy(_StochRsiSwingStrategy):
     params_class = StochRsiExtremeParams
 
     def _init_entry_state(self) -> None:
-        self._prev_long_cond = False
-        self._prev_short_cond = False
+        self._waiting_long_extreme = False
+        self._waiting_short_extreme = False
 
     def _entry_signal(self, i, k, d, rsi, rsi_ma, kd_diff) -> str | None:
         p = self.params
         ki, di = k.iloc[i], d.iloc[i]
         ri, ri_ma = rsi.iloc[i], rsi_ma.iloc[i]
+        prev_k = k.iloc[i - 1] if i > 0 else ki
+        prev_d = d.iloc[i - 1] if i > 0 else di
         rsi_ok = pd.notna(ri) and pd.notna(ri_ma)
 
-        long_cond = (
-            ki < p.long_kd_max and di < p.long_kd_max
-            and rsi_ok and ri < p.long_rsi_max and ri < ri_ma
-        )
-        short_cond = (
-            ki > p.short_kd_min and di > p.short_kd_min
-            and rsi_ok and ri > p.short_rsi_min and ri > ri_ma
-        )
+        long_cond  = ki < p.long_kd_max  and di < p.long_kd_max  and rsi_ok and ri < p.long_rsi_max
+        short_cond = ki > p.short_kd_min and di > p.short_kd_min and rsi_ok and ri > p.short_rsi_min
+
+        # Re-arm once price fully exits the extreme zone
+        if ki >= p.long_kd_max  and di >= p.long_kd_max:
+            self._waiting_long_extreme = False
+        if ki <= p.short_kd_min and di <= p.short_kd_min:
+            self._waiting_short_extreme = False
+
+        if long_cond:
+            self._waiting_long_extreme = True
+        if short_cond:
+            self._waiting_short_extreme = True
+
+        # Fire on the first KD crossover while still in the extreme zone
+        k_crossed_up   = prev_k <= prev_d and ki > di
+        k_crossed_down = prev_k >= prev_d and ki < di
 
         signal = None
-        if long_cond and not self._prev_long_cond:
+        if self._waiting_long_extreme  and long_cond  and k_crossed_up:
             signal = "long"
-        elif short_cond and not self._prev_short_cond:
+        elif self._waiting_short_extreme and short_cond and k_crossed_down:
             signal = "short"
 
-        self._prev_long_cond = long_cond
-        self._prev_short_cond = short_cond
         return signal
 
 

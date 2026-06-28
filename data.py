@@ -36,7 +36,11 @@ class DataFetcher:
         to_time = int(time.time())
         rows: list[tuple] = []
 
-        while len(rows) < total:
+        # Fetch one extra candle so that after the post-loop filter removes the
+        # still-open candle we are guaranteed to have exactly `total` closed candles.
+        # (Candle boundaries are Tehran-time-aligned, so a UTC floor trick would
+        # not reliably exclude the open candle from API responses.)
+        while len(rows) < total + 1:
             params = {
                 "symbol": self.config.symbol.lower(),
                 "resolution": resolution,

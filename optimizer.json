@@ -1,10 +1,10 @@
 {
   "symbol": "zecusdt",
-  "strategy": "AdvRSI",
-  "timeframe": "240",
-  "candles": 4000,
+  "strategy": "ExtremeReversal",
+  "timeframe": "5",
+  "candles": 1000,
   "credit": 100.0,
-  "leverage": 5,
+  "leverage": 2,
   "cores": 10,
   "maxiter": 100,
   "objective": "profit",
@@ -41,17 +41,21 @@
       65,
       99
     ],
-    "exit_oversold": [
+    "long_kd_max": [
       1,
-      40
+      50
     ],
-    "exit_overbought": [
-      60,
+    "long_rsi_max": [
+      5,
+      60
+    ],
+    "short_kd_min": [
+      50,
       99
     ],
-    "entry_wait_candles": [
-      0,
-      20
+    "short_rsi_min": [
+      40,
+      99
     ]
   },
   "min_price_change": 2.0

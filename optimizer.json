@@ -6,7 +6,7 @@
   "credit": 100.0,
   "leverage": 2,
   "cores": 10,
-  "maxiter": 100,
+  "maxiter": 5,
   "objective": "profit",
   "custom_bounds": {
     "rsi_length": [

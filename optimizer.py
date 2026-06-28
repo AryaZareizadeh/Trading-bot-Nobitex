@@ -187,7 +187,7 @@ def evaluate(
     cfg.initial_capital = credit
 
     if warmup_df is not None:
-        combined_df = pd.concat([warmup_df, df]).reset_index(drop=True)
+        combined_df = pd.concat([warmup_df, df])
         indicators = Indicators(combined_df)
         start_idx = len(warmup_df)
     else:

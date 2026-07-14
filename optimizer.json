@@ -1,62 +1,58 @@
 {
   "symbol": "zecusdt",
-  "strategy": "ExtremeReversal",
-  "timeframe": "5",
-  "candles": 1000,
-  "credit": 100.0,
-  "leverage": 2,
+  "strategy": "AdvRSI",
+  "timeframe": "60",
+  "candles": 6800,
+  "credit": 10.0,
+  "leverage": 3,
   "cores": 10,
-  "maxiter": 5,
-  "objective": "profit",
+  "maxiter": 120,
+  "objective": "balanced",
   "custom_bounds": {
     "rsi_length": [
       6,
-      50
+      100
     ],
     "stoch_length": [
       6,
-      50
+      100
     ],
     "k_smooth": [
       4,
-      20
+      30
     ],
     "d_smooth": [
       4,
-      20
+      30
     ],
     "rsi_fast_length": [
-      6,
+      2,
       50
     ],
     "rsi_ma_length": [
       2,
-      25
+      35
     ],
     "oversold": [
       1,
-      35
+      45
     ],
     "overbought": [
-      65,
+      55,
       99
     ],
-    "long_kd_max": [
+    "exit_oversold": [
       1,
-      50
+      45
     ],
-    "long_rsi_max": [
-      5,
-      60
-    ],
-    "short_kd_min": [
-      50,
+    "exit_overbought": [
+      55,
       99
     ],
-    "short_rsi_min": [
-      40,
-      99
+    "entry_wait_candles": [
+      0,
+      20
     ]
   },
-  "min_price_change": 2.0
+  "min_price_change": 3.0
 }

@@ -98,7 +98,7 @@ PARAM_BOUNDS: dict[str, dict[str, tuple[int, int]]] = {
 
 # Candle-count limits for the fetch.
 _MIN_CANDLES = 200
-_MAX_CANDLES = 5000
+_MAX_CANDLES = 15000
 _DEFAULT_CANDLES = 1000
 
 # Differential-Evolution budget. Total backtests ≈ popsize · n_params · (maxiter+1).

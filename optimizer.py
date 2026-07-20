@@ -48,6 +48,8 @@ from data import DataFetcher
 from indicators import Indicators
 from strategy import AdvRsiParams, StochRsiExtremeParams, TrendMomentumParams, PARAMS_CLASS
 
+exchange = "binance"  # default exchange for optimizer; can be overridden in Config
+
 # ── Search-space definition ──────────────────────────────────────────────────────
 # Each strategy's tunable indicator inputs and their integer search bounds
 # (inclusive). Every field of the strategy's params dataclass is optimized; the
@@ -98,7 +100,7 @@ PARAM_BOUNDS: dict[str, dict[str, tuple[int, int]]] = {
 
 # Candle-count limits for the fetch.
 _MIN_CANDLES = 200
-_MAX_CANDLES = 15000
+_MAX_CANDLES = 30000
 _DEFAULT_CANDLES = 1000
 
 # Differential-Evolution budget. Total backtests ≈ popsize · n_params · (maxiter+1).
@@ -109,7 +111,7 @@ _DE_SEED = 42
 
 # Cores used when the user leaves the selector on "Auto" (capped to the machine's
 # CPU count, and overridable with the OPTIMIZER_WORKERS env var).
-_DEFAULT_WORKERS = 8
+_DEFAULT_WORKERS = 14
 
 _PREFS_FILE = Path(__file__).parent / "optimizer.json"
 _MAX_JOBS_KEPT = 20
@@ -182,6 +184,7 @@ def evaluate(
     trades that start within *df* are counted; candle_count reflects len(df) only.
     """
     cfg = Config()
+    cfg.exchange = exchange
     cfg.leverage = leverage
     cfg.trade_size = credit
     cfg.initial_capital = credit
@@ -202,6 +205,7 @@ def evaluate(
 
 def _fetch_df(symbol: str, timeframe: str, candles: int) -> pd.DataFrame:
     cfg = Config()
+    cfg.exchange = exchange
     cfg.symbol = symbol
     cfg.interval = timeframe
     cfg.limit = candles
@@ -609,6 +613,7 @@ class OptimizerJob:
         if not self.best_params:
             return
         cfg = Config()
+        cfg.exchange = exchange
         cfg.leverage = self.leverage
         cfg.trade_size = self.credit
         cfg.initial_capital = self.credit
@@ -715,6 +720,7 @@ class OptimizerJob:
 
         # Trade log — run strategy over full_df so indicators have warmup history
         cfg = Config()
+        cfg.exchange = exchange
         cfg.leverage = self.leverage
         cfg.trade_size = self.credit
         cfg.initial_capital = self.credit

@@ -74,6 +74,33 @@ def _fetch_df(symbol: str, timeframe: str) -> pd.DataFrame:
     return DataFetcher(cfg).fetch()
 
 
+# Candidate column names for a trade's direction. "Position" (values "Long" /
+# "Short") is what the dashboard frontend actually reads (see index.html's
+# trade table), so it's checked first; the rest are kept as fallbacks in case
+# a different strategy module labels it differently.
+_DIRECTION_KEYS = ("Position", "Direction", "Side", "Type", "Trade Type")
+
+
+def _trade_direction(record: dict) -> str:
+    """Best-effort extraction of a trade's Long/Short label from a trade record."""
+    for key in _DIRECTION_KEYS:
+        val = record.get(key)
+        if val:
+            return str(val).strip().lower()
+    return ""
+
+
+_EMPTY_SUMMARY_EXTRA = {
+    "long_count": 0,
+    "short_count": 0,
+    "long_pct": 0.0,
+    "sum_profits": 0.0,
+    "sum_losses": 0.0,
+    "profit_efficiency": None,
+    "profit_share": None,
+}
+
+
 def _summarize(trades_df: pd.DataFrame, open_count: int, candle_count: int) -> dict:
     """Reduce a strategy's trade log to a profitability summary.
 
@@ -81,18 +108,49 @@ def _summarize(trades_df: pd.DataFrame, open_count: int, candle_count: int) -> d
     indicators lack warmup data at the very start of the window.
     """
     if trades_df.empty:
-        return {"profitable": None, "total_pnl": 0.0, "trade_count": 0, "win_rate": 0.0, "candle_count": candle_count, "price_changes": []}
+        return {"profitable": None, "total_pnl": 0.0, "trade_count": 0, "win_rate": 0.0,
+                "candle_count": candle_count, "price_changes": [], **_EMPTY_SUMMARY_EXTRA}
 
     closed_count = max(0, len(trades_df) - open_count)
     records = trades_df.to_dict("records")
     valid_records = records[1:closed_count]  # skip the first (no indicator warmup)
     if not valid_records:
-        return {"profitable": None, "total_pnl": 0.0, "trade_count": 0, "win_rate": 0.0, "candle_count": candle_count, "price_changes": []}
+        return {"profitable": None, "total_pnl": 0.0, "trade_count": 0, "win_rate": 0.0,
+                "candle_count": candle_count, "price_changes": [], **_EMPTY_SUMMARY_EXTRA}
 
     closed_pnls = [float(str(r.get("P&L ($)", 0))) for r in valid_records]
     total_pnl = sum(closed_pnls)
     wins = sum(1 for p in closed_pnls if p > 0)
     win_rate = round(wins / len(closed_pnls) * 100, 1) if closed_pnls else 0.0
+
+    # Sum of all winning trades and sum of all losing trades separately.
+    sum_profits = round(sum(p for p in closed_pnls if p > 0), 2)
+    sum_losses = round(sum(p for p in closed_pnls if p < 0), 2)  # negative (or 0 if none)
+
+    # Profit Efficiency: net profit as a % of total absolute P&L churned
+    # (profits + |losses|). 100% = every trade was a winner (no churn at all);
+    # lower % means losses ate up more of the gross P&L before netting out.
+    # Undefined (None) when there's no gross P&L to divide by (e.g. all
+    # trades broke exactly even).
+    gross_abs_pnl = sum_profits + abs(sum_losses)
+    profit_efficiency = round(total_pnl / gross_abs_pnl * 100, 1) if gross_abs_pnl != 0 else None
+
+    # Profit Share: gross winning P&L as a % of total absolute P&L churned
+    # (profits + |losses|). Unlike profit_efficiency this uses the gross
+    # winnings, not the net result, so it's never pulled down by losses —
+    # 100% = no losing trades at all. Undefined (None) with no gross P&L.
+    profit_share = round(sum_profits / gross_abs_pnl * 100, 1) if gross_abs_pnl != 0 else None
+
+    # Long/Short ratio, derived from whichever direction column is present.
+    long_count = 0
+    short_count = 0
+    for r in valid_records:
+        d = _trade_direction(r)
+        if "long" in d or d == "buy":
+            long_count += 1
+        elif "short" in d or d == "sell":
+            short_count += 1
+    long_pct = round(long_count / len(valid_records) * 100, 1) if valid_records else 0.0
 
     price_changes = []
     for r in valid_records:
@@ -108,6 +166,13 @@ def _summarize(trades_df: pd.DataFrame, open_count: int, candle_count: int) -> d
         "win_rate": win_rate,
         "candle_count": candle_count,
         "price_changes": price_changes,
+        "long_count": long_count,
+        "short_count": short_count,
+        "long_pct": long_pct,
+        "sum_profits": sum_profits,
+        "sum_losses": sum_losses,
+        "profit_efficiency": profit_efficiency,
+        "profit_share": profit_share,
     }
 
 
@@ -223,6 +288,7 @@ class TesterJob:
             "trade_count": 0,
             "win_rate": 0.0,
             "candle_count": 0,
+            **_EMPTY_SUMMARY_EXTRA,
         }
 
     def to_dict(self) -> dict:

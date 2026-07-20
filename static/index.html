@@ -945,13 +945,15 @@
       <button class="modal-close" onclick="closeModal('historyModal')">×</button>
     </div>
     <div class="tabs" id="historyTabs">
-      <button class="tab-btn active" onclick="switchTab('tabTrades')">Trades</button>
-      <button class="tab-btn" onclick="switchTab('tabChart')">P&amp;L Chart</button>
-      <button class="tab-btn" onclick="switchTab('tabActivity')">Activity Log</button>
+      <button class="tab-btn active" onclick="switchHistTab('tabTrades')">Trades</button>
+      <button class="tab-btn" onclick="switchHistTab('tabChart')">P&amp;L Chart</button>
+      <button class="tab-btn" onclick="switchHistTab('tabActivity')">Activity Log</button>
+      <button class="tab-btn" onclick="switchHistTab('tabPriceChart')">Price Chart</button>
     </div>
     <div id="tabTrades" class="tab-pane active" style="overflow-x:auto; min-height:200px;"></div>
     <div id="tabChart"  class="tab-pane" style="padding:16px; min-height:200px;"></div>
     <div id="tabActivity" class="tab-pane" style="min-height:200px;"></div>
+    <div id="tabPriceChart" class="tab-pane" style="min-height:200px;"></div>
     <div class="modal-footer">
       <button class="btn btn-neutral" onclick="closeModal('historyModal')">Close</button>
     </div>
@@ -1049,6 +1051,17 @@ let prevClosedTrades = {};    // bot_id → closed_trade_count
 let prevPositionKeys = {};    // bot_id → Set of entry_time strings for open positions
 let notifPermission = 'default';
 let _pendingOptParams = null; // optimized params to apply when creating a new bot
+
+// ── Derived metrics ───────────────────────────────────────────────────────────
+// Profit Share = gross winning P&L as a % of total absolute P&L churned.
+// Computed client-side from sum_profits/sum_losses so it works regardless of
+// whether the backend summary object includes a profit_share field.
+function computeProfitShare(sumProfits, sumLosses) {
+  const profits = sumProfits || 0;
+  const losses = Math.abs(sumLosses || 0);
+  const gross = profits + losses;
+  return gross === 0 ? null : (100 * profits / gross);
+}
 
 // ── Clock ─────────────────────────────────────────────────────────────────────
 function updateClock() {
@@ -1687,6 +1700,7 @@ setInterval(() => renderGrid(), 10000);
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
   if (id === 'createModal') _pendingOptParams = null;
+  if (id === 'historyModal') { destroyBotHistCharts(); _histBotId = null; }
 }
 
 // Close modals on backdrop click
@@ -1869,6 +1883,11 @@ function _showBacktestModal(data) {
   const pnlSign    = pnl >= 0 ? '+' : '';
   const pnlColor   = pnl >= 0 ? 'var(--green)' : 'var(--red)';
   const pnlStr     = `${pnlSign}$${Math.abs(pnl).toFixed(2)}`;
+  const profShare = computeProfitShare(data.sum_profits, data.sum_losses);
+  const profShareStr = profShare != null ? profShare.toFixed(1) + '%' : 'N/A';
+  const longPctStr = (data.long_pct || 0).toFixed(1) + '%';
+  const sumProfitsStr = '+$' + (data.sum_profits || 0).toFixed(2);
+  const sumLossesStr  = (data.sum_losses || 0) < 0 ? '-$' + Math.abs(data.sum_losses).toFixed(2) : '$0.00';
 
   // Header title + confirm button colour
   document.getElementById('backtestModalTitle').textContent = profitable
@@ -1886,16 +1905,32 @@ function _showBacktestModal(data) {
         <div style="font-size:20px;font-weight:700;color:${pnlColor}">${pnlSign}$${Math.abs(pnl).toFixed(2)}</div>
       </div>
       <div>
-        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Trades</div>
-        <div style="font-size:20px;font-weight:700">${data.trade_count}</div>
-      </div>
-      <div>
         <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Win Rate</div>
         <div style="font-size:20px;font-weight:700;color:${data.win_rate >= 50 ? 'var(--green)' : 'var(--red)'}">${data.win_rate.toFixed(1)}%</div>
       </div>
       <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Profit Share</div>
+        <div style="font-size:20px;font-weight:700">${profShareStr}</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Trades</div>
+        <div style="font-size:20px;font-weight:700">${data.trade_count}</div>
+      </div>
+      <div>
         <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Candles</div>
         <div style="font-size:20px;font-weight:700">${data.candle_count}</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">% Long Trades</div>
+        <div style="font-size:20px;font-weight:700">${longPctStr}</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Sum of Profits</div>
+        <div style="font-size:20px;font-weight:700;color:var(--green)">${sumProfitsStr}</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Sum of Losses</div>
+        <div style="font-size:20px;font-weight:700;color:var(--red)">${sumLossesStr}</div>
       </div>
       ${!profitable ? `<div style="background:#1a1000;border:1px solid #6b3a00;border-radius:6px;padding:8px 14px;font-size:12px;color:var(--yellow);margin-left:auto;">
         This bot would not have been profitable. Are you sure?
@@ -1989,8 +2024,41 @@ function switchTab(tabId) {
   document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById(tabId).classList.add('active');
-  const idx = ['tabTrades','tabChart','tabActivity'].indexOf(tabId);
+  const idx = ['tabTrades','tabChart','tabActivity','tabPriceChart'].indexOf(tabId);
   document.querySelectorAll('.tab-btn')[idx].classList.add('active');
+}
+
+// Wraps switchTab to lazy-load the Price Chart tab's contents only once it's
+// actually visible (lightweight-charts needs a laid-out container to size into).
+function switchHistTab(tabId) {
+  switchTab(tabId);
+  if (tabId === 'tabPriceChart') loadBotPriceChart();
+}
+
+let _histBotId = null;
+let _botHistCharts = []; // lightweight-charts instances for the history modal's Price Chart tab
+
+function destroyBotHistCharts() {
+  _botHistCharts.forEach(c => { try { c.remove(); } catch (_) {} });
+  _botHistCharts = [];
+}
+
+async function loadBotPriceChart() {
+  const pane = document.getElementById('tabPriceChart');
+  if (!_histBotId || !pane) return;
+  destroyBotHistCharts();
+  pane.innerHTML = `<div class="empty-state"><span class="icon">⏳</span>Loading chart…</div>`;
+  try {
+    const res  = await fetch(`/api/bots/${_histBotId}/chart`);
+    const data = await res.json();
+    if (!data.ok || !data.chart_data?.candles?.length) {
+      pane.innerHTML = `<div class="empty-state"><span class="icon">📈</span>${escHtml(data.error || 'No chart data available yet.')}</div>`;
+      return;
+    }
+    _buildOptChart(pane, data.chart_data, data.trades || [], 'LIVE STRATEGY CHART', _botHistCharts, 'bothist');
+  } catch (e) {
+    pane.innerHTML = `<div class="empty-state"><span class="icon">⚠️</span>Failed to load chart.</div>`;
+  }
 }
 
 async function showHistory(id) {
@@ -1998,6 +2066,7 @@ async function showHistory(id) {
   if (!res.ok) { showToast('Could not load bot', 'error'); return; }
   const bot = await res.json();
 
+  _histBotId = id;
   document.getElementById('historyTitle').textContent = `History — ${bot.name}`;
   switchTab('tabTrades');
 
@@ -2827,10 +2896,13 @@ function renderOptimizerResults(job) {
   const base = job.baseline || {};
   const bestPnl = job.best_pnl != null ? job.best_pnl : (s.total_pnl || 0);
   const basePnl = base.total_pnl != null ? base.total_pnl : 0;
-  const delta = bestPnl - basePnl;
   const pnlCls = bestPnl > 0 ? 'pnl-pos' : bestPnl < 0 ? 'pnl-neg' : '';
-  const deltaStr = (delta >= 0 ? '+' : '') + '$' + delta.toFixed(2);
   const wrColor = (s.win_rate || 0) >= 60 ? 'var(--green)' : (s.win_rate || 0) >= 45 ? 'var(--yellow)' : 'var(--red)';
+  const profShare = computeProfitShare(s.sum_profits, s.sum_losses);
+  const profShareStr = profShare != null ? profShare.toFixed(1) + '%' : 'N/A';
+  const longPctStr = (s.long_pct || 0).toFixed(1) + '%';
+  const sumProfitsStr = '+$' + (s.sum_profits || 0).toFixed(2);
+  const sumLossesStr = (s.sum_losses || 0) < 0 ? '-$' + Math.abs(s.sum_losses).toFixed(2) : '$0.00';
 
   const paramRows = job.params.map(p => {
     const changed = String(p.value) !== String(p.default);
@@ -2853,10 +2925,13 @@ function renderOptimizerResults(job) {
       <div class="hint">${escHtml(job.symbol)} · ${escHtml(job.strategy_label || job.strategy)} · ${escHtml(fmtTF(job.timeframe))} · ${job.candle_count} candles · goal: ${escHtml({profit:'highest profit',winrate:'highest win rate',balanced:'balanced'}[job.objective] || job.objective)}</div>
       <div class="opt-summary">
         <div class="opt-stat"><div class="lbl">Optimized P&amp;L</div><div class="val ${pnlCls}">${bestPnl >= 0 ? '+' : ''}$${bestPnl.toFixed(2)}</div></div>
-        <div class="opt-stat"><div class="lbl">vs. Defaults</div><div class="val" style="color:${delta >= 0 ? 'var(--green)' : 'var(--red)'}">${deltaStr}</div></div>
         <div class="opt-stat"><div class="lbl">Win Rate</div><div class="val" style="color:${wrColor}">${(s.win_rate || 0).toFixed(1)}%</div></div>
+        <div class="opt-stat"><div class="lbl">Profit Share</div><div class="val">${profShareStr}</div></div>
         <div class="opt-stat"><div class="lbl">Trades</div><div class="val">${s.trade_count || 0}</div></div>
         <div class="opt-stat"><div class="lbl">Backtests Run</div><div class="val">${job.evaluations}</div></div>
+        <div class="opt-stat"><div class="lbl">% Long Trades</div><div class="val">${longPctStr}</div></div>
+        <div class="opt-stat"><div class="lbl">Sum of Profits</div><div class="val" style="color:var(--green)">${sumProfitsStr}</div></div>
+        <div class="opt-stat"><div class="lbl">Sum of Losses</div><div class="val" style="color:var(--red)">${sumLossesStr}</div></div>
       </div>
       <div style="overflow-x:auto">
         <table class="opt-result-table">
@@ -3346,9 +3421,13 @@ function renderOptimizerTesterResults(job) {
   const base    = job.baseline || {};
   const bestPnl = job.best_pnl != null ? job.best_pnl : (s.total_pnl || 0);
   const basePnl = base.total_pnl != null ? base.total_pnl : 0;
-  const delta   = bestPnl - basePnl;
   const pnlCls  = bestPnl > 0 ? 'pnl-pos' : bestPnl < 0 ? 'pnl-neg' : '';
   const wrColor = (s.win_rate || 0) >= 60 ? 'var(--green)' : (s.win_rate || 0) >= 45 ? 'var(--yellow)' : 'var(--red)';
+  const profShare = computeProfitShare(s.sum_profits, s.sum_losses);
+  const profShareStr = profShare != null ? profShare.toFixed(1) + '%' : 'N/A';
+  const longPctStr = (s.long_pct || 0).toFixed(1) + '%';
+  const sumProfitsStr = '+$' + (s.sum_profits || 0).toFixed(2);
+  const sumLossesStr = (s.sum_losses || 0) < 0 ? '-$' + Math.abs(s.sum_losses).toFixed(2) : '$0.00';
 
   const paramRows = (job.params || []).map(p => {
     const changed = String(p.value) !== String(p.default);
@@ -3365,10 +3444,13 @@ function renderOptimizerTesterResults(job) {
       <div class="hint">${escHtml(job.symbol)} · ${escHtml(job.strategy_label || job.strategy)} · ${escHtml(fmtTF(job.timeframe))} · ${job.train_candle_count || job.candle_count} training candles · goal: ${escHtml({profit:'highest profit',winrate:'highest win rate',balanced:'balanced',large_move:'large move'}[job.objective] || job.objective)}</div>
       <div class="opt-summary">
         <div class="opt-stat"><div class="lbl">P&amp;L (train)</div><div class="val ${pnlCls}">${bestPnl >= 0 ? '+' : ''}$${bestPnl.toFixed(2)}</div></div>
-        <div class="opt-stat"><div class="lbl">vs. Defaults</div><div class="val" style="color:${delta >= 0 ? 'var(--green)' : 'var(--red)'}">${(delta >= 0 ? '+' : '') + '$' + delta.toFixed(2)}</div></div>
         <div class="opt-stat"><div class="lbl">Win Rate (train)</div><div class="val" style="color:${wrColor}">${(s.win_rate || 0).toFixed(1)}%</div></div>
+        <div class="opt-stat"><div class="lbl">Profit Share</div><div class="val">${profShareStr}</div></div>
         <div class="opt-stat"><div class="lbl">Trades (train)</div><div class="val">${s.trade_count || 0}</div></div>
         <div class="opt-stat"><div class="lbl">Backtests Run</div><div class="val">${job.evaluations}</div></div>
+        <div class="opt-stat"><div class="lbl">% Long Trades</div><div class="val">${longPctStr}</div></div>
+        <div class="opt-stat"><div class="lbl">Sum of Profits</div><div class="val" style="color:var(--green)">${sumProfitsStr}</div></div>
+        <div class="opt-stat"><div class="lbl">Sum of Losses</div><div class="val" style="color:var(--red)">${sumLossesStr}</div></div>
       </div>
       <div style="overflow-x:auto">
         <table class="opt-result-table">

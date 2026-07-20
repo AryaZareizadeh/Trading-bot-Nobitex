@@ -9,6 +9,12 @@ from indicators import Indicators
 
 _TEHRAN = ZoneInfo("Asia/Tehran")
 
+# Hard time-based exit: no position (long or short, any strategy) may stay open
+# longer than this many calendar days, regardless of what the strategy's own
+# exit signal says. Measured against the position's entry timestamp so it holds
+# across every timeframe (1-minute candles through daily candles) the same way.
+MAX_HOLD_DAYS = 14
+
 
 def _fmt_time(ts: pd.Timestamp) -> str:
     if ts.tzinfo is None:
@@ -122,6 +128,17 @@ class Strategy(ABC):
             return liq_p
         return None
 
+    def _max_hold_exceeded(self, entry_idx: int, current_idx: int, df: pd.DataFrame) -> bool:
+        """True once a position has been open for MAX_HOLD_DAYS calendar days or more.
+
+        Compares actual timestamps (df.index), not candle counts, so the same
+        30-day rule applies consistently whether the timeframe is 1-minute or
+        daily candles.
+        """
+        entry_ts = df.index[entry_idx]
+        current_ts = df.index[current_idx]
+        return (current_ts - entry_ts) >= pd.Timedelta(days=MAX_HOLD_DAYS)
+
     def _make_trade_record(
         self,
         trade_idx: int,
@@ -210,6 +227,11 @@ class _StochRsiSwingStrategy(Strategy):
                         balance += pnl
                         log.append(record)
                         trade_idx += 1
+                    elif self._max_hold_exceeded(entry_idx, i, df):
+                        record, pnl = self._make_trade_record(trade_idx, "Long", df, entry_idx, i, balance)
+                        balance += pnl
+                        log.append(record)
+                        trade_idx += 1
                     else:
                         surviving_longs.append(entry_idx)
                 open_longs = surviving_longs
@@ -232,6 +254,11 @@ class _StochRsiSwingStrategy(Strategy):
                     liq_p = self._check_liquidation("Short", entry_idx, i, df)
                     if liq_p is not None:
                         record, pnl = self._make_trade_record(trade_idx, "Short", df, entry_idx, i, balance, liquidated=True, exit_price=liq_p)
+                        balance += pnl
+                        log.append(record)
+                        trade_idx += 1
+                    elif self._max_hold_exceeded(entry_idx, i, df):
+                        record, pnl = self._make_trade_record(trade_idx, "Short", df, entry_idx, i, balance)
                         balance += pnl
                         log.append(record)
                         trade_idx += 1
@@ -438,6 +465,12 @@ class TrendFilteredMomentumStrategy(Strategy):
                     log.append(record)
                     trade_idx += 1
                     position, entry_idx, touched_extreme = 0, None, False
+                elif self._max_hold_exceeded(entry_idx, i, df):
+                    record, pnl = self._make_trade_record(trade_idx, "Long", df, entry_idx, i, balance)
+                    balance += pnl
+                    log.append(record)
+                    trade_idx += 1
+                    position, entry_idx, touched_extreme = 0, None, False
                 else:
                     if ki >= overbought:
                         touched_extreme = True
@@ -455,6 +488,12 @@ class TrendFilteredMomentumStrategy(Strategy):
                 liq_p = self._check_liquidation("Short", entry_idx, i, df)
                 if liq_p is not None:
                     record, pnl = self._make_trade_record(trade_idx, "Short", df, entry_idx, i, balance, liquidated=True, exit_price=liq_p)
+                    balance += pnl
+                    log.append(record)
+                    trade_idx += 1
+                    position, entry_idx, touched_extreme = 0, None, False
+                elif self._max_hold_exceeded(entry_idx, i, df):
+                    record, pnl = self._make_trade_record(trade_idx, "Short", df, entry_idx, i, balance)
                     balance += pnl
                     log.append(record)
                     trade_idx += 1

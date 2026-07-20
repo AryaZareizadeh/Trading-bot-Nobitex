@@ -56,6 +56,10 @@ _CURRENCY_FULL_TO_CODE: dict[str, str] = {
     "litecoin": "ltc", "ripple": "xrp", "bitcoin cash": "bch",
     "zcash": "zec", "dogecoin": "doge", "solana": "sol",
     "chainlink": "link", "uniswap": "uni", "binance coin": "bnb",
+    "shiba inu": "shib", "aave": "aave", "sonic": "s",
+    "cosmos": "atom", "near protocol": "near", "worldcoin": "wld",
+    "pepe": "pepe", "tether gold": "xaut", "gram": "gram",
+    "sui": "sui", "hyperliquid": "hype", "cardano": "ada",
 }
 
 
@@ -312,17 +316,29 @@ async def get_margin_markets():
 
     # Hardcoded fallback — known Nobitex margin symbols as of mid-2025
     fallback = [
-        {"symbol": "BTCUSDT",  "srcCurrency": "btc",  "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
-        {"symbol": "ETHUSDT",  "srcCurrency": "eth",  "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
-        {"symbol": "LTCUSDT",  "srcCurrency": "ltc",  "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
-        {"symbol": "BCHUSDT",  "srcCurrency": "bch",  "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
-        {"symbol": "XRPUSDT",  "srcCurrency": "xrp",  "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
-        {"symbol": "ZECUSDT",  "srcCurrency": "zec",  "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
-        {"symbol": "DOGEUSDT", "srcCurrency": "doge", "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
-        {"symbol": "SOLUSDT",  "srcCurrency": "sol",  "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
-        {"symbol": "LINKUSDT", "srcCurrency": "link", "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
-        {"symbol": "UNIUSDT",  "srcCurrency": "uni",  "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
-        {"symbol": "BNBUSDT",  "srcCurrency": "bnb",  "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": False, "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "BTCUSDT",     "srcCurrency": "btc",     "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "ETHUSDT",     "srcCurrency": "eth",     "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "LTCUSDT",     "srcCurrency": "ltc",     "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "BCHUSDT",     "srcCurrency": "bch",     "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "XRPUSDT",     "srcCurrency": "xrp",     "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "ZECUSDT",     "srcCurrency": "zec",     "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "DOGEUSDT",    "srcCurrency": "doge",    "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "SOLUSDT",     "srcCurrency": "sol",     "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "LINKUSDT",    "srcCurrency": "link",    "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "UNIUSDT",     "srcCurrency": "uni",     "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "BNBUSDT",     "srcCurrency": "bnb",     "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": False, "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "1KSHIBUSDT",  "srcCurrency": "1k_shib", "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "AAVEUSDT",    "srcCurrency": "aave",    "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "SUSDT",       "srcCurrency": "s",       "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "ATOMUSDT",    "srcCurrency": "atom",    "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "NEARUSDT",    "srcCurrency": "near",    "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "WLDUSDT",     "srcCurrency": "wld",     "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "1MPEPEUSDT",  "srcCurrency": "1m_pepe", "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "XAUTUSDT",    "srcCurrency": "xaut",    "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "GRAMUSDT",    "srcCurrency": "gram",    "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "SUIUSDT",     "srcCurrency": "sui",     "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "HYPEUSDT",    "srcCurrency": "hype",    "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
+        {"symbol": "ADAUSDT",     "srcCurrency": "ada",     "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
     ]
     return {"ok": True, "markets": fallback, "source": "fallback"}
 
@@ -711,6 +727,17 @@ async def duplicate_bot(bot_id: str):
     )
     bot = bot_manager.create_bot(cfg)
     return bot.to_state_dict()
+
+
+@app.get("/api/bots/{bot_id}/chart")
+async def bot_chart(bot_id: str):
+    bot = bot_manager.get_bot(bot_id)
+    if bot is None:
+        return JSONResponse(status_code=404, content={"error": "Bot not found"})
+    try:
+        return bot.get_chart_data()
+    except Exception as exc:
+        return JSONResponse(status_code=500, content={"ok": False, "error": str(exc)})
 
 
 @app.get("/api/bots/{bot_id}/backtest")

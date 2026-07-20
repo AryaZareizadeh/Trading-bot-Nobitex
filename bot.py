@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -52,6 +53,7 @@ _FILL_POLL_INTERVAL = 5       # seconds between fill-status checks
 _POSITION_LOOKUP_RETRIES = 3  # retries when position not visible immediately after fill
 _POSITION_LOOKUP_DELAY = 2    # seconds between each position lookup retry
 _DUPLICATE_ORDER_SLEEP = 12   # seconds to sleep after DuplicateOrder (past Nobitex's 10s dedup window)
+_WALLET_CACHE_SECONDS = 1800  # don't re-check the margin wallet more than once per 30 min
 
 # Errors where retrying the same order will never help
 _FATAL_ORDER_ERRORS = frozenset({
@@ -126,6 +128,8 @@ class Bot:
         self._exchange_position_id: Optional[int] = None
         self._real_positions: list[dict] = []
         self._pending_order: Optional[dict] = None
+        self._wallet_cache: Optional[dict] = None
+        self._wallet_cache_ts: float = 0.0
 
     # ── Logging ───────────────────────────────────────────────────────────────
 
@@ -162,6 +166,8 @@ class Bot:
         self._exchange_position_id = None
         self._real_positions = []
         self._pending_order = None
+        self._wallet_cache = None
+        self._wallet_cache_ts = 0.0
         self.status = BotStatus.IDLE
         self._log_event(
             "reconfigured",
@@ -512,6 +518,21 @@ class Bot:
             self._log_event("warning", f"Cancel of timed-out close order #{order_id} failed: {exc}")
         return "timeout", matched
 
+    def _get_margin_wallet(self, client) -> dict:
+        """Return the margin wallet, cached for _WALLET_CACHE_SECONDS.
+
+        The wallet only needs checking before placing a new order, and its
+        balance doesn't move quickly enough to justify hitting the API every
+        sync — so reuse the last result until it's more than 30 min old.
+        """
+        now = time.time()
+        if self._wallet_cache is not None and (now - self._wallet_cache_ts) < _WALLET_CACHE_SECONDS:
+            return self._wallet_cache
+        wallet = client.wallets("margin")
+        self._wallet_cache = wallet
+        self._wallet_cache_ts = now
+        return wallet
+
     async def _close_exchange_position(self, client, price_str: str) -> bool:
         """Submit and confirm a market close for the tracked position. Returns True on success.
 
@@ -632,26 +653,62 @@ class Bot:
                     pos_side = reconnect_pos.get("side", "")
                     direction = "Long" if pos_side == "buy" else "Short"
                     state_val = "long" if pos_side == "buy" else "short"
-                    # Back-date _live_from_ts so the matching warmup strategy position
-                    # becomes a live signal — keeps the position open on the next tick.
+                    # Prefer positions the current warmup backtest already knows about:
+                    # back-date _live_from_ts so the matching entry becomes a live signal.
                     strategy_entries = [p for p in self.open_positions if p.get("direction") == direction]
                     if strategy_entries:
                         self._live_from_ts = min(pd.Timestamp(p["entry_time"]) for p in strategy_entries)
-                    else:
-                        # Fallback: position older than 500 candles or strategy diverged.
-                        # Synthetic live entry holds the signal for one candle;
-                        # _run_strategy() replaces it on the next close.
+                        self._exchange_position_id = reconnect_pos["id"]
+                        self._real_state = state_val
+                        self._log_event(
+                            "reconnected",
+                            f"Reconnected to existing {direction} position {reconnect_pos['id']} after restart",
+                        )
+                        return
+
+                    # Not visible in the current window — either its entry predates our
+                    # fetched candles, or the strategy's own exit condition already fired
+                    # for it while the server was down. Replay from its real exchange
+                    # entry time forward (fetching more history if needed) to find out
+                    # which, instead of guessing — and only close it if it should be.
+                    resolved = await self._resolve_reconnected_position(reconnect_pos, direction)
+                    self._exchange_position_id = reconnect_pos["id"]
+                    self._real_state = state_val
+                    if resolved is None:
+                        # Couldn't verify (missing/unparseable entry time, or not enough
+                        # history available) — adopt as live rather than risk closing a
+                        # position we can't actually evaluate.
+                        self._live_from_ts = self.df.index[-1] + pd.Timedelta(
+                            seconds=RESOLUTION_SECONDS[self.cfg.timeframe]
+                        )
                         self.open_positions = [{
                             "direction": direction,
                             "entry_price": float(reconnect_pos.get("entryPrice") or 0),
                             "entry_time": str(self._live_from_ts),
                         }]
-                    self._exchange_position_id = reconnect_pos["id"]
-                    self._real_state = state_val
-                    self._log_event(
-                        "reconnected",
-                        f"Reconnected to existing {direction} position {reconnect_pos['id']} after restart",
-                    )
+                        self._log_event(
+                            "warning",
+                            f"Reconnected to {direction} position {reconnect_pos['id']} but couldn't verify "
+                            f"its exit history — adopting as live without a confirmed entry time.",
+                        )
+                        return
+
+                    still_open, entry_ts = resolved
+                    if still_open:
+                        self._live_from_ts = entry_ts
+                        self._log_event(
+                            "reconnected",
+                            f"Reconnected to {direction} position {reconnect_pos['id']} (opened {entry_ts}) — "
+                            f"no exit condition triggered while offline, resuming live tracking.",
+                        )
+                    else:
+                        self._log_event(
+                            "reconnected",
+                            f"Reconnected to {direction} position {reconnect_pos['id']} (opened {entry_ts}) — "
+                            f"exit conditions were met while offline; closing now.",
+                        )
+                        price_str = f"{self.current_price:.2f}"
+                        await self._close_exchange_position(client, price_str)
                     return
 
             src, dst = self._parse_symbol()
@@ -676,8 +733,9 @@ class Bot:
                     all_positions = client.positions("active")
                 else:
                     # Pre-order wallet check: ensure free margin covers the required credit.
+                    # (cached — see _get_margin_wallet — so this doesn't hit the API every sync)
                     try:
-                        w = client.wallets("margin")
+                        w = self._get_margin_wallet(client)
                         usdt_w = w.get("USDT") or w.get("usdt") or {}
                         bal = float(usdt_w.get("balance", 0) or 0)
                         blocked = float(usdt_w.get("blocked", 0) or 0)
@@ -711,7 +769,7 @@ class Bot:
         c = Config()
         c.symbol = self.cfg.symbol
         c.interval = self.cfg.timeframe
-        c.limit = 500
+        c.limit = 1000
         c.leverage = self.cfg.leverage
         c.trade_size = self.cfg.credit
         c.initial_capital = self.cfg.credit
@@ -839,8 +897,11 @@ class Bot:
         trades_df = strategy.run(df, indicators, live_start_idx=0)
 
         candle_count = len(df)
+        empty_extra = {"long_count": 0, "short_count": 0, "long_pct": 0.0, "sum_profits": 0.0,
+                       "sum_losses": 0.0, "profit_efficiency": None}
         if trades_df.empty:
-            return {"profitable": None, "total_pnl": 0.0, "trade_count": 0, "win_rate": 0.0, "candle_count": candle_count}
+            return {"profitable": None, "total_pnl": 0.0, "trade_count": 0, "win_rate": 0.0,
+                    "candle_count": candle_count, **empty_extra}
 
         open_count = len(strategy.open_positions)
         closed_count = max(0, len(trades_df) - open_count)
@@ -849,12 +910,22 @@ class Bot:
         # Skip the first closed trade — indicators lack warmup data at the very start
         valid_records = records[1:closed_count]
         if not valid_records:
-            return {"profitable": None, "total_pnl": 0.0, "trade_count": 0, "win_rate": 0.0, "candle_count": candle_count, "trades": []}
+            return {"profitable": None, "total_pnl": 0.0, "trade_count": 0, "win_rate": 0.0,
+                    "candle_count": candle_count, "trades": [], **empty_extra}
 
         closed_pnls = [float(str(r.get("P&L ($)", 0))) for r in valid_records]
         total_pnl = sum(closed_pnls)
         wins = sum(1 for p in closed_pnls if p > 0)
         win_rate = round(wins / len(closed_pnls) * 100, 1) if closed_pnls else 0.0
+
+        sum_profits = round(sum(p for p in closed_pnls if p > 0), 2)
+        sum_losses = round(sum(p for p in closed_pnls if p < 0), 2)  # negative (or 0 if none)
+        gross_abs_pnl = sum_profits + abs(sum_losses)
+        profit_efficiency = round(total_pnl / gross_abs_pnl * 100, 1) if gross_abs_pnl != 0 else None
+
+        long_count = sum(1 for r in valid_records if str(r.get("Position", "")).strip().lower() == "long")
+        short_count = sum(1 for r in valid_records if str(r.get("Position", "")).strip().lower() == "short")
+        long_pct = round(long_count / len(valid_records) * 100, 1) if valid_records else 0.0
 
         return {
             "profitable": total_pnl > 0,
@@ -863,6 +934,99 @@ class Bot:
             "win_rate": win_rate,
             "candle_count": candle_count,
             "trades": valid_records,
+            "long_count": long_count,
+            "short_count": short_count,
+            "long_pct": long_pct,
+            "sum_profits": sum_profits,
+            "sum_losses": sum_losses,
+            "profit_efficiency": profit_efficiency,
+        }
+
+    def get_chart_data(self) -> dict:
+        """Build the price + indicator chart for this bot's live strategy.
+
+        Same {candles, indicators, strategy} shape the optimizer's post-run chart
+        uses (see optimizer.py's _compute_best_trades), but computed from the
+        bot's own in-memory candles and whatever params (default or optimized)
+        it's actually trading with right now.
+        """
+        if self.df is None or len(self.df) < 2:
+            return {"ok": False, "error": "No chart data yet — bot hasn't loaded candles."}
+
+        _tehran = ZoneInfo("Asia/Tehran")
+        df = self.df
+
+        config = self._make_config()
+        indicators = Indicators(df)
+        strategy_cls = STRATEGY_MAP[self.cfg.strategy_name]
+        custom_p = self._build_custom_params()
+        strategy = strategy_cls(config, custom_p) if custom_p is not None else strategy_cls(config)
+        params = strategy.params
+
+        def _to_series(s):
+            return [None if pd.isna(v) else round(float(v), 6) for v in s]
+
+        # Build Tehran-time → Unix-UTC lookup so trade markers can be placed
+        time_map: dict[str, int] = {}
+        candles: list[dict] = []
+        for ts, row in df.iterrows():
+            ts_utc = ts.tz_localize("UTC") if ts.tzinfo is None else ts
+            unix = int(ts_utc.timestamp())
+            fmt = ts_utc.tz_convert(_tehran).strftime("%Y-%m-%d %H:%M:%S")
+            candles.append({
+                "time": unix,
+                "open": float(row["Open"]),
+                "high": float(row["High"]),
+                "low": float(row["Low"]),
+                "close": float(row["Close"]),
+            })
+            time_map[fmt] = unix
+
+        # Annotate each trade record (closed + trailing open-position entries)
+        # with unix timestamps for chart markers.
+        trades = [dict(t) for t in self.completed_trades]
+        for r in trades:
+            r["_start_ts"] = time_map.get(r.get("Start Time", ""))
+            r["_end_ts"] = time_map.get(r.get("End Time", ""))
+
+        # Per-strategy indicator series — mirrors optimizer.py's chart-data build
+        ind: dict = {}
+        if self.cfg.strategy_name in ("AdvRSI", "ExtremeReversal"):
+            srsi = indicators.stoch_rsi(
+                params.rsi_length, params.stoch_length,
+                params.k_smooth, params.d_smooth,
+            )
+            rsi, rsi_ma = indicators.rsi_with_ma(
+                params.rsi_fast_length, params.rsi_ma_length,
+            )
+            ind = {
+                "stoch_k":   _to_series(srsi.k),
+                "stoch_d":   _to_series(srsi.d),
+                "rsi":       _to_series(rsi),
+                "rsi_ma":    _to_series(rsi_ma),
+                "oversold":  params.oversold,
+                "overbought": params.overbought,
+            }
+        elif self.cfg.strategy_name == "TrendMomentum":
+            srsi = indicators.stoch_rsi(
+                params.rsi_length, params.stoch_length,
+                params.k_smooth, params.d_smooth,
+            )
+            ema  = indicators.ema(params.ema_trend_length)
+            macd = indicators.macd(params.macd_fast, params.macd_slow, params.macd_signal)
+            ind = {
+                "stoch_k":    _to_series(srsi.k),
+                "stoch_d":    _to_series(srsi.d),
+                "ema":        _to_series(ema),
+                "macd_hist":  _to_series(macd.hist),
+                "oversold":   params.oversold,
+                "overbought": params.overbought,
+            }
+
+        return {
+            "ok": True,
+            "chart_data": {"candles": candles, "indicators": ind, "strategy": self.cfg.strategy_name},
+            "trades": trades,
         }
 
     async def start(self) -> None:

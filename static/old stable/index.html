@@ -1,0 +1,3461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trading Bot Dashboard</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0b0f1a;
+    --surface:  #141927;
+    --surface2: #1c2333;
+    --border:   #2a3447;
+    --accent:   #38bdf8;
+    --green:    #4ade80;
+    --red:      #f87171;
+    --yellow:   #fbbf24;
+    --purple:   #a78bfa;
+    --text:     #e2e8f0;
+    --muted:    #64748b;
+    --radius:   10px;
+  }
+
+  body { background: var(--bg); color: var(--text); font-family: 'Consolas','Menlo',monospace; font-size: 13px; min-height: 100vh; }
+
+  /* ── Top bar ── */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 24px; background: var(--surface);
+    border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100;
+  }
+  .topbar-left  { display: flex; align-items: center; gap: 14px; }
+  .topbar-right { display: flex; align-items: center; gap: 8px; }
+  .topbar h1 { font-size: 15px; letter-spacing: 1px; color: var(--accent); font-weight: 700; }
+  .ws-indicator { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
+  .ws-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); transition: background .3s; }
+  .ws-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .ws-dot.error     { background: var(--red); }
+
+  .btn { border: none; cursor: pointer; border-radius: 6px; font-family: inherit; font-size: 12px; font-weight: 600; padding: 7px 14px; transition: opacity .15s, transform .1s; }
+  .btn:hover  { opacity: .85; }
+  .btn:active { transform: scale(.97); }
+  .btn-primary { background: var(--accent);  color: #0b0f1a; }
+  .btn-success { background: var(--green);   color: #0b0f1a; }
+  .btn-danger  { background: var(--red);     color: #0b0f1a; }
+  .btn-neutral { background: var(--border);  color: var(--text); }
+  .btn-purple  { background: #4c3a8a;        color: var(--purple); border: 1px solid #6d52cc; }
+  .btn-sm { padding: 4px 10px; font-size: 11px; }
+  .btn-icon { padding: 6px 9px; font-size: 14px; }
+
+  /* ── Summary bar ── */
+  .summary-bar {
+    display: flex; align-items: center; gap: 0;
+    background: var(--surface2); border-bottom: 1px solid var(--border);
+    padding: 0 24px; overflow-x: auto;
+  }
+  .summary-item {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 8px 20px; border-right: 1px solid var(--border); min-width: 120px;
+  }
+  .summary-item:last-child { border-right: none; }
+  .summary-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .summary-value { font-size: 14px; font-weight: 700; margin-top: 2px; }
+
+  /* ── Wallet bar ── */
+  .wallet-bar {
+    display: flex; align-items: center; gap: 0;
+    background: #0e1520; border-bottom: 1px solid var(--border);
+    padding: 0 24px; overflow-x: auto; min-height: 42px;
+  }
+  .wallet-bar.hidden { display: none; }
+  .wallet-section {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 20px; border-right: 1px solid var(--border);
+  }
+  .wallet-section:last-child { border-right: none; }
+  .wallet-tag {
+    font-size: 10px; font-weight: 700; letter-spacing: .5px;
+    padding: 2px 7px; border-radius: 4px;
+  }
+  .wallet-tag.margin { background: #1a0d3a; color: var(--purple); border: 1px solid #4c3a8a; }
+  .wallet-tag.spot   { background: #0d2030; color: var(--accent);  border: 1px solid #1a4060; }
+  .wallet-currency { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+  .wallet-amount  { font-size: 13px; font-weight: 700; }
+  .wallet-frozen  { font-size: 11px; color: var(--yellow); }
+  .wallet-avail   { font-size: 11px; color: var(--green); }
+  .wallet-meta    { display: flex; align-items: center; gap: 10px; padding: 8px 20px; margin-left: auto; }
+  .wallet-updated { font-size: 10px; color: var(--muted); }
+  .wallet-error   { font-size: 11px; color: var(--red); padding: 8px 20px; }
+  .wallet-loading { font-size: 11px; color: var(--muted); padding: 8px 20px; }
+
+  /* ── Bot Table ── */
+  .table-wrap { padding: 16px 24px; overflow-x: auto; }
+  .bots-table { width: 100%; border-collapse: collapse; }
+  .bots-table th {
+    text-align: left; padding: 8px 12px; background: var(--surface2);
+    color: var(--muted); border-bottom: 2px solid var(--border);
+    text-transform: uppercase; font-size: 10px; letter-spacing: .5px;
+    white-space: nowrap; position: sticky; top: 0; z-index: 10;
+  }
+  .bots-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .bots-table tr:last-child td { border-bottom: none; }
+  .bots-table tr.row-sim > td:first-child { border-left: 3px dashed #4a3800; }
+  .bots-table tr:hover td { background: rgba(255,255,255,.025); }
+  .col-bot     { min-width: 160px; }
+  .col-config  { min-width: 170px; }
+  .col-pos     { min-width: 150px; }
+  .col-price   { min-width: 90px;  white-space: nowrap; }
+  .col-pnl     { min-width: 90px;  white-space: nowrap; }
+  .col-balance { min-width: 90px;  white-space: nowrap; }
+  .col-trades  { min-width: 80px;  white-space: nowrap; }
+  .col-metrics { min-width: 90px; }
+  .col-equity  { min-width: 130px; }
+  .col-updated { min-width: 70px;  white-space: nowrap; }
+  .col-actions { min-width: 180px; }
+  .bot-name    { font-size: 13px; font-weight: 700; }
+  .bot-id      { font-size: 10px; color: var(--muted); }
+  .row-actions { display: flex; gap: 4px; flex-wrap: wrap; align-items: center; }
+
+  /* ── Mode toggle ── */
+  .mode-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .mode-option { position: relative; }
+  .mode-option input[type="radio"] { position: absolute; opacity: 0; width: 0; }
+  .mode-option label { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 12px 8px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--surface2); transition: border-color .15s, background .15s; text-align: center; }
+  .mode-option label .mode-title { font-size: 13px; font-weight: 700; color: var(--text); }
+  .mode-option label .mode-sub   { font-size: 10px; color: var(--muted); }
+  .mode-option input:checked + label { border-color: var(--accent); background: #0e1e30; }
+  .mode-option.disabled label { cursor: not-allowed; opacity: .45; }
+  .mode-option.disabled label .mode-sub { color: var(--yellow); }
+
+  .badge-sim  { background: #1a1400; color: var(--yellow); border: 1px solid #4a3800; }
+  .badge-real { background: #0d3320; color: var(--green);  border: 1px solid #1a5c35; }
+
+  /* ── Bot card ── */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; transition: border-color .2s; }
+  .card:hover { border-color: #3a4a60; }
+  .card.sim-mode { border-left: 3px dashed #4a3800; }
+
+  .card-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px 10px; border-bottom: 1px solid var(--border); }
+  .card-header-left { display: flex; align-items: center; gap: 8px; }
+
+  .status-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .status-dot.running { background: var(--green);  box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
+  .status-dot.idle    { background: var(--muted); }
+  .status-dot.stopped { background: #3a4a60; }
+  .status-dot.error   { background: var(--red); box-shadow: 0 0 8px var(--red); }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+
+  .card-name { font-size: 14px; font-weight: 700; color: var(--text); }
+  .card-id   { font-size: 10px; color: var(--muted); }
+
+  .badge { display: inline-block; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; letter-spacing: .5px; }
+  .badge-status-running { background: #0d3320; color: var(--green); }
+  .badge-status-idle    { background: #1c2333; color: var(--muted); }
+  .badge-status-stopped { background: #1c2333; color: #3a4a60; }
+  .badge-status-error   { background: #3a1010; color: var(--red); }
+
+  .card-meta { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 14px; border-bottom: 1px solid var(--border); }
+  .tag { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; font-size: 11px; color: var(--muted); }
+  .tag strong { color: var(--text); }
+
+  .card-body { padding: 12px 14px; flex: 1; }
+
+  .pos-banner { display: flex; align-items: center; justify-content: space-between; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-weight: 700; }
+  .pos-banner.long  { background: #0d3320; color: var(--green); border: 1px solid #1a5c35; }
+  .pos-banner.short { background: #3a1010; color: var(--red);   border: 1px solid #6b1c1c; }
+  .pos-banner.none  { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
+  .pos-banner .pos-label { font-size: 13px; letter-spacing: 1px; }
+  .pos-banner .pos-price { font-size: 12px; }
+
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin-bottom: 10px; }
+  .stat-row { display: flex; flex-direction: column; }
+  .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .stat-value { font-size: 13px; font-weight: 700; }
+  .stat-value.pos { color: var(--green); }
+  .stat-value.neg { color: var(--red); }
+  .stat-value.neu { color: var(--text); }
+  .stat-value.warn { color: var(--yellow); }
+
+  /* ── Sparkline row ── */
+  .sparkline-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+  .sparkline-label { font-size: 10px; color: var(--muted); white-space: nowrap; }
+  .sparkline-svg { flex: 1; overflow: hidden; }
+
+  .error-box { background: #3a1010; border: 1px solid #6b1c1c; border-radius: 6px; padding: 6px 10px; font-size: 11px; color: var(--red); margin-bottom: 8px; word-break: break-word; }
+
+  .card-footer { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-top: 1px solid var(--border); background: var(--surface2); }
+  .footer-meta { font-size: 10px; color: var(--muted); }
+  .footer-actions { display: flex; gap: 5px; flex-wrap: wrap; }
+
+  /* ── Modal ── */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.75); z-index: 200; align-items: center; justify-content: center; }
+  .modal-overlay.open { display: flex; }
+
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); width: 480px; max-width: 95vw; max-height: 90vh; overflow-y: auto; }
+  .modal-wide { width: 820px; }
+  .modal-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--border); }
+  .modal-header h2 { font-size: 15px; color: var(--text); }
+  .modal-close { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 20px; line-height: 1; transition: color .15s; }
+  .modal-close:hover { color: var(--text); }
+  .modal-body { padding: 20px; }
+  .modal-footer { padding: 16px 20px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; }
+
+  .form-group { margin-bottom: 14px; }
+  .form-group label { display: block; font-size: 11px; color: var(--muted); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .5px; }
+  .form-group input, .form-group select, .form-group textarea {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 10px; color: var(--text);
+    font-family: inherit; font-size: 13px; outline: none; transition: border-color .15s;
+  }
+  .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: var(--accent); }
+  .form-group select option { background: var(--surface2); }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  /* ── Tab system ── */
+  .tabs { display: flex; border-bottom: 1px solid var(--border); }
+  .tab-btn { background: none; border: none; cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 600; color: var(--muted); padding: 10px 18px; border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-btn:hover:not(.active) { color: var(--text); }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; }
+
+  /* ── Trade history table ── */
+  .trades-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .trades-table th { text-align: left; padding: 6px 8px; background: var(--surface2); color: var(--muted); border-bottom: 1px solid var(--border); text-transform: uppercase; letter-spacing: .5px; }
+  .trades-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  .trades-table tr:last-child td { border-bottom: none; }
+  .trades-table .long    { color: var(--green); }
+  .trades-table .short   { color: var(--red); }
+  .trades-table .pnl-pos { color: var(--green); font-weight: 700; }
+  .trades-table .pnl-neg { color: var(--red);   font-weight: 700; }
+  .trades-table .liq     { color: var(--yellow); }
+
+  /* ── Activity log ── */
+  .activity-list { list-style: none; }
+  .activity-item { display: flex; gap: 10px; padding: 8px 16px; border-bottom: 1px solid var(--border); font-size: 11px; }
+  .activity-item:last-child { border-bottom: none; }
+  .activity-time   { color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+  .activity-event  { font-weight: 700; white-space: nowrap; flex-shrink: 0; }
+  .activity-detail { color: var(--muted); word-break: break-word; }
+  .ev-trade_closed    { color: var(--accent); }
+  .ev-position_opened { color: var(--green); }
+  .ev-position_closed { color: var(--muted); }
+  .ev-bot_started     { color: var(--green); }
+  .ev-bot_stopped     { color: var(--muted); }
+  .ev-error           { color: var(--red); }
+  .ev-warning         { color: var(--yellow); }
+  .ev-order_placed    { color: var(--yellow); }
+  .ev-order_filled    { color: var(--green); }
+  .ev-info            { color: var(--muted); }
+  .ev-reconfigured    { color: var(--purple); }
+  .ev-data_loaded     { color: var(--muted); }
+  .ev-initialized     { color: var(--muted); }
+  .ev-missed_signal   { color: var(--red); opacity: .8; }
+
+  /* ── Empty state ── */
+  .empty-state { text-align: center; padding: 40px; color: var(--muted); font-size: 13px; }
+  .empty-state .icon { font-size: 36px; display: block; margin-bottom: 10px; }
+
+  /* ── Toast notifications ── */
+  #toastContainer { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+  .toast { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; font-size: 12px; max-width: 320px; opacity: 0; transform: translateY(10px); transition: opacity .2s, transform .2s; pointer-events: auto; }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.success { border-color: var(--green); color: var(--green); }
+  .toast.error   { border-color: var(--red);   color: var(--red); }
+  .toast.info    { border-color: var(--accent); color: var(--accent); }
+  .toast.trade   { border-color: var(--purple); color: var(--purple); }
+
+  /* ── Credential status ── */
+  .cred-status { padding: 10px 12px; border-radius: 6px; font-size: 12px; margin-bottom: 14px; }
+  .cred-status.connected { background: #0d3320; border: 1px solid #1a5c35; color: var(--green); }
+  .cred-status.disconnected { background: #1a1400; border: 1px solid #4a3800; color: var(--yellow); }
+
+  /* ── Market hint ── */
+  .market-hint { font-size: 10px; color: var(--muted); margin-top: 5px; min-height: 14px; }
+  .market-hint .dir-long  { color: var(--green); font-weight: 700; }
+  .market-hint .dir-short { color: var(--red);   font-weight: 700; }
+  .market-hint .dir-both  { color: var(--accent); font-weight: 700; }
+  .market-hint .fee       { color: var(--yellow); }
+
+  /* ── Checkbox ── */
+  .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; }
+  .checkbox-row input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+  .checkbox-row label { font-size: 12px; color: var(--text); cursor: pointer; }
+
+  /* ── Main view tabs ── */
+  .main-tabs { display: flex; gap: 4px; padding: 0 24px; background: var(--surface); border-bottom: 1px solid var(--border); }
+  .main-tab-btn { background: none; border: none; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 700; color: var(--muted); padding: 12px 18px; border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; letter-spacing: .5px; }
+  .main-tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .main-tab-btn:hover:not(.active) { color: var(--text); }
+  .view-pane { display: none; }
+  .view-pane.active { display: block; }
+
+  /* ── Tester tab ── */
+  .tester-wrap { padding: 18px 24px 40px; max-width: 1400px; }
+  .tester-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 16px; }
+  .tester-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--accent); margin-bottom: 4px; }
+  .tester-section .hint { font-size: 11px; color: var(--muted); margin-bottom: 12px; }
+  .tester-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .tester-toolbar input[type="text"] { flex: 1; min-width: 180px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; color: var(--text); font-family: inherit; font-size: 12px; outline: none; }
+  .tester-toolbar input[type="text"]:focus { border-color: var(--accent); }
+
+  .chip-grid { display: flex; flex-wrap: wrap; gap: 7px; max-height: 230px; overflow-y: auto; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--surface2); border: 1px solid var(--border); border-radius: 16px; padding: 5px 12px; font-size: 12px; color: var(--text); cursor: pointer; transition: border-color .15s, background .15s; white-space: nowrap; user-select: none; }
+  .chip:hover { border-color: #3a4a60; }
+  .chip.active { border-color: var(--accent); background: #0e1e30; color: var(--accent); }
+  .chip .star { color: var(--muted); font-size: 13px; }
+  .chip.active .star { color: var(--yellow); }
+  .chip .chip-dir { font-size: 9px; color: var(--muted); }
+
+  .opt-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .opt-toggle { position: relative; }
+  .opt-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .opt-toggle label { display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border-radius: 8px; cursor: pointer; border: 1px solid var(--border); background: var(--surface2); font-size: 12px; color: var(--text); transition: border-color .15s, background .15s; }
+  .opt-toggle input:checked + label { border-color: var(--accent); background: #0e1e30; color: var(--accent); }
+  .opt-toggle input:focus-visible + label { outline: 2px solid var(--accent); }
+
+  .tester-run-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .tester-run-note { font-size: 11px; color: var(--muted); }
+  .tester-run-note strong { color: var(--text); }
+
+  .progress-wrap { margin-top: 14px; }
+  .progress-track { height: 8px; background: var(--surface2); border-radius: 5px; overflow: hidden; border: 1px solid var(--border); }
+  .progress-fill { height: 100%; background: var(--accent); width: 0%; transition: width .3s ease; }
+  .progress-meta { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--muted); margin-top: 6px; gap: 12px; }
+  .progress-current { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .tf-result { margin-bottom: 18px; }
+  .tf-result-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  .tf-result-head .tf-name { font-size: 14px; font-weight: 700; color: var(--text); }
+  .tf-result-head .tf-sub { font-size: 11px; color: var(--muted); }
+  .result-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .result-table th { text-align: left; padding: 7px 10px; background: var(--surface2); color: var(--muted); border-bottom: 1px solid var(--border); text-transform: uppercase; font-size: 10px; letter-spacing: .5px; white-space: nowrap; }
+  .result-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .result-table tr:last-child td { border-bottom: none; }
+  .result-table tr:hover td { background: rgba(255,255,255,.025); }
+  .result-table .rank { color: var(--muted); width: 28px; }
+  .result-table .pnl-pos { color: var(--green); font-weight: 700; }
+  .result-table .pnl-neg { color: var(--red); font-weight: 700; }
+  .result-table .err-cell { color: var(--yellow); font-style: italic; }
+  .result-table tr.best td { background: rgba(74,222,128,.06); }
+  .medal { font-size: 12px; }
+
+  /* ── Optimizer tab ── */
+  .opt-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px 16px; }
+  .opt-form .form-group { margin: 0; }
+  .opt-form select, .opt-form input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; color: var(--text); font-family: inherit; font-size: 12px; outline: none; }
+  .opt-form select:focus, .opt-form input:focus { border-color: var(--accent); }
+  .opt-param-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 14px; }
+  .opt-param { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 6px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; font-size: 11px; }
+  .opt-param .pname { color: var(--text); font-weight: 600; }
+  .opt-param .prange { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .opt-summary { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 14px; }
+  .opt-stat { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; min-width: 120px; }
+  .opt-stat .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+  .opt-stat .val { font-size: 18px; font-weight: 700; margin-top: 2px; }
+  .opt-result-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .opt-result-table th { text-align: left; padding: 7px 10px; background: var(--surface2); color: var(--muted); border-bottom: 1px solid var(--border); text-transform: uppercase; font-size: 10px; letter-spacing: .5px; }
+  .opt-result-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  .opt-result-table tr:last-child td { border-bottom: none; }
+  .opt-result-table .changed td { background: rgba(96,165,250,.07); }
+  .opt-result-table .tuned-val { font-weight: 700; color: var(--accent); }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--surface); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3a4a60; }
+
+  /* ── Clock & candle timer ── */
+  .clock-widget { display: flex; flex-direction: column; align-items: flex-end; margin-right: 8px; }
+  .clock-time { font-size: 14px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text); letter-spacing: 1px; }
+  .clock-label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .candle-timer { font-size: 10px; color: var(--accent); font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .candle-timer-label { color: var(--muted); }
+
+  /* ── Optimizer range inputs ── */
+  .opt-range-input { width: 56px !important; padding: 4px 6px !important; font-size: 12px !important; text-align: center; }
+  .opt-param-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; font-size: 12px; }
+  .opt-param-row .pname { color: var(--text); font-weight: 600; flex: 1; }
+  .opt-param-row .pcontrols { display: flex; align-items: center; gap: 6px; color: var(--muted); white-space: nowrap; }
+  .opt-param-row .pdef { color: var(--muted); font-size: 10px; }
+  .opt-param-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+
+  /* ── Optimizer objective selector ── */
+  .opt-objective { display: flex; gap: 8px; flex-wrap: wrap; }
+  .opt-obj-option { position: relative; flex: 1; min-width: 100px; display: flex; flex-direction: column; }
+  .opt-obj-option input[type="radio"] { position: absolute; opacity: 0; width: 0; height: 0; }
+  .opt-obj-option label { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 8px 14px; border-radius: 8px; cursor: pointer; border: 1px solid var(--border); background: var(--surface2); font-size: 12px; color: var(--text); transition: border-color .15s, background .15s; width: 100%; box-sizing: border-box; }
+  .opt-obj-option label .obj-sub { font-size: 9px; color: var(--muted); text-align: center; max-width: 90px; }
+  .opt-obj-option input:checked + label { border-color: var(--accent); background: #0e1e30; color: var(--accent); }
+  .opt-obj-option input:checked + label .obj-sub { color: var(--accent); opacity: .7; }
+
+  /* ── Optimizer history table ── */
+  .opt-history-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .opt-history-table th { text-align: left; padding: 5px 8px; background: var(--surface2); color: var(--muted); border-bottom: 1px solid var(--border); text-transform: uppercase; font-size: 9px; letter-spacing: .5px; }
+  .opt-history-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  .opt-history-table tr:last-child td { border-bottom: none; }
+  .opt-history-table .best-row td { background: rgba(56,189,248,.06); }
+
+  /* ── Three-box layout ── */
+  .three-box-layout { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; padding: 16px 24px; }
+  .tri-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; max-height: calc(100vh - 180px); min-height: 220px; }
+  .tri-box-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface2); border-radius: var(--radius) var(--radius) 0 0; flex-shrink: 0; }
+  .tri-box-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--accent); }
+  .tri-box-count { font-size: 11px; color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 1px 8px; }
+  .tri-box-body { flex: 1; overflow-y: auto; }
+  .tri-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  .tri-row:last-child { border-bottom: none; }
+  .tri-row:hover { background: rgba(255,255,255,.025); }
+  .bot-color-pill { width: 3px; border-radius: 3px; align-self: stretch; min-height: 20px; flex-shrink: 0; }
+  .tri-bot-tag { display: inline-block; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+  .wallet-locked { font-size: 11px; color: var(--yellow); }
+</style>
+</head>
+<body>
+
+<!-- Top Bar -->
+<div class="topbar">
+  <div class="topbar-left">
+    <h1>TRADING BOTS</h1>
+    <div class="ws-indicator">
+      <div class="ws-dot" id="wsDot"></div>
+      <span id="wsLabel">Connecting…</span>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <div class="clock-widget">
+      <span class="clock-time" id="clockTime">--:--:--</span>
+      <span class="clock-label">local time</span>
+    </div>
+    <button class="btn btn-neutral btn-sm" onclick="startAll()" title="Start All Bots">▶ All</button>
+    <button class="btn btn-neutral btn-sm" onclick="stopAll()" title="Stop All Bots">■ All</button>
+    <button class="btn btn-neutral btn-sm btn-icon" onclick="openSettingsModal()" title="Exchange Settings">⚙</button>
+    <button class="btn btn-primary" onclick="openCreateModal()">+ New Bot</button>
+  </div>
+</div>
+
+<!-- Main view tabs -->
+<div class="main-tabs">
+  <button class="main-tab-btn active" data-view="Bots" onclick="switchView('Bots')">Bots</button>
+  <button class="main-tab-btn" data-view="Tester" onclick="switchView('Tester')">Tester</button>
+  <button class="main-tab-btn" data-view="Optimizer" onclick="switchView('Optimizer')">Optimizer</button>
+</div>
+
+<!-- ═══════════════════ BOTS VIEW ═══════════════════ -->
+<div id="viewBots" class="view-pane active">
+
+<!-- Summary Bar -->
+<div class="summary-bar">
+  <div class="summary-item">
+    <span class="summary-label">Running</span>
+    <span class="summary-value" id="sumRunning" style="color:var(--green)">0 / 0</span>
+  </div>
+</div>
+
+<!-- Wallet Bar -->
+<div class="wallet-bar hidden" id="walletBar"></div>
+
+<!-- Three-box layout -->
+<div class="three-box-layout">
+  <div class="tri-box">
+    <div class="tri-box-header">
+      <span class="tri-box-title">Bots</span>
+      <span class="tri-box-count" id="boxBotsHeader">0</span>
+    </div>
+    <div class="tri-box-body" id="boxBotsBody">
+      <div class="empty-state"><span class="icon">🤖</span>Create your first bot to get started.</div>
+    </div>
+  </div>
+  <div class="tri-box">
+    <div class="tri-box-header">
+      <span class="tri-box-title">Orders</span>
+      <span class="tri-box-count" id="boxOrdersHeader">0</span>
+    </div>
+    <div class="tri-box-body" id="boxOrdersBody">
+      <div class="empty-state" style="padding:20px"><span style="color:var(--muted)">No pending orders.</span></div>
+    </div>
+  </div>
+  <div class="tri-box">
+    <div class="tri-box-header">
+      <span class="tri-box-title">Positions</span>
+      <span class="tri-box-count" id="boxPositionsHeader">0</span>
+    </div>
+    <div class="tri-box-body" id="boxPositionsBody">
+      <div class="empty-state" style="padding:20px"><span style="color:var(--muted)">No open positions.</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Activity Feed Bar -->
+<div class="activity-feed-bar" style="padding: 0 24px 16px;">
+  <div class="tri-box" style="max-height: 400px;">
+    <div class="tri-box-header">
+      <span class="tri-box-title">Activity Feed</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span class="tri-box-count" id="feedCount">0</span>
+        <button class="btn btn-neutral btn-sm" style="font-size:10px;padding:1px 8px;line-height:1.6" onclick="clearActivityFeed()" title="Clear feed">✕ Clear</button>
+      </div>
+    </div>
+    <div class="tri-box-body" id="activityFeedBody">
+      <div class="empty-state" style="padding:20px"><span style="color:var(--muted)">No activity yet.</span></div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /viewBots -->
+
+<!-- ═══════════════════ TESTER VIEW ═══════════════════ -->
+<div id="viewTester" class="view-pane">
+  <div class="tester-wrap">
+
+    <div class="tester-section">
+      <h3>1 · Assets</h3>
+      <div class="hint">Star the margin markets you want to test. Selections are saved as favorites.</div>
+      <div class="tester-toolbar">
+        <input type="text" id="tAssetSearch" placeholder="Filter markets…" oninput="renderTesterAssets()">
+        <button class="btn btn-neutral btn-sm" onclick="testerSelectShown()">★ Select shown</button>
+        <button class="btn btn-neutral btn-sm" onclick="testerClearAssets()">Clear</button>
+        <span class="tester-run-note"><strong id="tAssetCount">0</strong> selected</span>
+      </div>
+      <div class="chip-grid" id="tAssetGrid"></div>
+    </div>
+
+    <div class="tester-section">
+      <h3>2 · Strategies</h3>
+      <div class="hint">Each selected strategy is tested against every selected asset and timeframe.</div>
+      <div class="opt-grid" id="tStrategyGrid"></div>
+    </div>
+
+    <div class="tester-section">
+      <h3>3 · Timeframes</h3>
+      <div class="hint">One results table is produced per timeframe.</div>
+      <div class="opt-grid" id="tTimeframeGrid"></div>
+    </div>
+
+    <div class="tester-section">
+      <h3>4 · Run</h3>
+      <div class="tester-run-bar">
+        <div class="form-group" style="margin:0;width:130px">
+          <label>Credit (USDT)</label>
+          <input type="number" id="tCredit" value="100" min="1" step="1" onchange="saveTesterPrefs()">
+        </div>
+        <div class="form-group" style="margin:0;width:120px">
+          <label>Leverage</label>
+          <input type="number" id="tLeverage" value="5" min="1" max="100" step="1" onchange="saveTesterPrefs()">
+        </div>
+        <button class="btn btn-primary" id="tRunBtn" onclick="runTester()" style="padding:9px 20px">▶ Run Backtests</button>
+        <button class="btn btn-danger btn-sm" id="tCancelBtn" onclick="cancelTester()" style="display:none">■ Cancel</button>
+        <span class="tester-run-note" id="tRunNote"></span>
+      </div>
+      <div class="progress-wrap" id="tProgressWrap" style="display:none">
+        <div class="progress-track"><div class="progress-fill" id="tProgressFill"></div></div>
+        <div class="progress-meta">
+          <span class="progress-current" id="tProgressCurrent"></span>
+          <span id="tProgressCount"></span>
+        </div>
+      </div>
+    </div>
+
+    <div id="tResults"></div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════ OPTIMIZER VIEW ═══════════════════ -->
+<div id="viewOptimizer" class="view-pane">
+  <div class="tester-wrap">
+
+    <!-- Sub-tab navigation -->
+    <div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:0;gap:0;margin-left:-2px">
+      <button id="subTabOptimizer" onclick="switchOptimizerSubTab('optimizer')"
+        style="background:transparent;border:none;border-bottom:2px solid var(--accent);padding:8px 20px;cursor:pointer;color:var(--fg);font-size:0.95em;font-weight:500;margin-bottom:-1px">Optimizer</button>
+      <button id="subTabTester" onclick="switchOptimizerSubTab('tester')"
+        style="background:transparent;border:none;border-bottom:2px solid transparent;padding:8px 20px;cursor:pointer;color:var(--muted);font-size:0.95em;margin-bottom:-1px">Optimizer Tester</button>
+    </div>
+
+    <div id="optimizerPane">
+    <div class="tester-section">
+      <h3>Optimization Target</h3>
+      <div class="hint">
+        Pick one symbol, timeframe, candle window and strategy. A
+        <strong>Differential-Evolution</strong> global search then tunes that strategy's
+        indicator inputs to maximize backtested net P&amp;L over the selected window.
+      </div>
+      <div class="opt-form">
+        <div class="form-group">
+          <label>Symbol</label>
+          <select id="oSymbol" onchange="saveOptimizerPrefs()"></select>
+        </div>
+        <div class="form-group">
+          <label>Strategy</label>
+          <select id="oStrategy" onchange="onOptimizerStrategyChange()"></select>
+        </div>
+        <div class="form-group">
+          <label>Timeframe</label>
+          <select id="oTimeframe" onchange="saveOptimizerPrefs()"></select>
+        </div>
+        <div class="form-group">
+          <label>Past candles</label>
+          <input type="number" id="oCandles" value="1000" min="200" max="5000" step="100" onchange="saveOptimizerPrefs()">
+        </div>
+        <div class="form-group">
+          <label>Credit (USDT)</label>
+          <input type="number" id="oCredit" value="100" min="1" step="1" onchange="saveOptimizerPrefs()">
+        </div>
+        <div class="form-group">
+          <label>Leverage</label>
+          <input type="number" id="oLeverage" value="5" min="1" max="100" step="1" onchange="saveOptimizerPrefs()">
+        </div>
+        <div class="form-group">
+          <label>CPU cores</label>
+          <select id="oCores" onchange="saveOptimizerPrefs()"></select>
+        </div>
+        <div class="form-group">
+          <label>Generations</label>
+          <input type="number" id="oMaxiter" value="30" min="5" max="500" step="5" onchange="saveOptimizerPrefs()">
+        </div>
+      </div>
+    </div>
+
+    <div class="tester-section">
+      <h3>Optimization Goal</h3>
+      <div class="hint">Choose what the optimizer should maximize. "Balanced" weights both metrics equally.</div>
+      <div class="opt-objective">
+        <div class="opt-obj-option">
+          <input type="radio" name="oObjective" id="oObjProfit" value="profit" checked onchange="saveOptimizerPrefs(); _onObjectiveChange()">
+          <label for="oObjProfit">Highest Profit<span class="obj-sub">Maximize net P&amp;L</span></label>
+        </div>
+        <div class="opt-obj-option">
+          <input type="radio" name="oObjective" id="oObjWinrate" value="winrate" onchange="saveOptimizerPrefs(); _onObjectiveChange()">
+          <label for="oObjWinrate">Highest Win Rate<span class="obj-sub">Maximize % of winning trades</span></label>
+        </div>
+        <div class="opt-obj-option">
+          <input type="radio" name="oObjective" id="oObjBalanced" value="balanced" onchange="saveOptimizerPrefs(); _onObjectiveChange()">
+          <label for="oObjBalanced">Balanced<span class="obj-sub">Profit % + Win Rate weighted equally</span></label>
+        </div>
+        <div class="opt-obj-option">
+          <input type="radio" name="oObjective" id="oObjLargeMove" value="large_move" onchange="saveOptimizerPrefs(); _onObjectiveChange()">
+          <label for="oObjLargeMove">Large Price Move<span class="obj-sub">Maximize big-move trade %</span></label>
+        </div>
+      </div>
+      <div id="oLargeMoveRow" style="display:none; margin-top:12px; align-items:center; gap:8px; flex-wrap:wrap;">
+        <label style="font-size:12px; color:var(--muted);">Min price change (%):</label>
+        <input type="number" id="oMinPriceChange" value="5" min="0.1" max="100" step="0.5"
+               style="width:70px;" onchange="saveOptimizerPrefs()">
+      </div>
+    </div>
+
+    <div class="tester-section" id="oParamSection" style="display:none">
+      <div class="opt-param-section-header">
+        <h3>Parameter Search Ranges</h3>
+        <button class="btn btn-neutral btn-sm" onclick="resetOptimizerBounds()" title="Reset all bounds to their defaults">↺ Reset to Defaults</button>
+      </div>
+      <div class="hint">Each parameter is searched within its min–max range. Edit the bounds to focus the search. Default value shown for reference.</div>
+      <div id="oParamSpace" class="opt-param-grid"></div>
+    </div>
+
+    <div class="tester-section">
+      <h3>Run</h3>
+      <div class="tester-run-bar">
+        <button class="btn btn-primary" id="oRunBtn" onclick="runOptimizer()" style="padding:9px 20px">▶ Optimize</button>
+        <button class="btn btn-danger btn-sm" id="oCancelBtn" onclick="cancelOptimizer()" style="display:none">■ Cancel</button>
+        <span class="tester-run-note" id="oRunNote"></span>
+      </div>
+      <div class="progress-wrap" id="oProgressWrap" style="display:none">
+        <div class="progress-track"><div class="progress-fill" id="oProgressFill"></div></div>
+        <div class="progress-meta">
+          <span class="progress-current" id="oProgressCurrent"></span>
+          <span id="oProgressCount"></span>
+        </div>
+      </div>
+    </div>
+
+    <div id="oResults"></div>
+    <div id="oChart"></div>
+
+    </div><!-- /optimizerPane -->
+
+    <!-- ═══ OPTIMIZER TESTER PANE ═══ -->
+    <div id="optimizerTesterPane" style="display:none">
+
+      <div class="tester-section">
+        <h3>Optimization Target</h3>
+        <div class="hint">
+          The candle history is split chronologically: the <strong>training</strong> window is given to
+          Differential Evolution to find the best parameters; the <strong>test</strong> window is held out
+          and used only to evaluate how those parameters generalize to unseen data.
+        </div>
+        <div class="opt-form">
+          <div class="form-group">
+            <label>Symbol</label>
+            <select id="otSymbol"></select>
+          </div>
+          <div class="form-group">
+            <label>Strategy</label>
+            <select id="otStrategy" onchange="onOptimizerTesterStrategyChange()"></select>
+          </div>
+          <div class="form-group">
+            <label>Timeframe</label>
+            <select id="otTimeframe"></select>
+          </div>
+          <div class="form-group">
+            <label>Total candles</label>
+            <input type="number" id="otCandles" value="1000" min="200" max="5000" step="100">
+          </div>
+          <div class="form-group" style="grid-column:1/-1">
+            <label>Train / Test Split</label>
+            <div style="display:flex;align-items:center;gap:14px;margin-top:6px">
+              <input type="range" id="otTrainPct" min="50" max="90" step="5" value="70"
+                     oninput="_updateTrainPctLabel()" style="flex:1;max-width:240px">
+              <span id="otTrainPctLabel" style="font-size:0.88em;color:var(--muted);white-space:nowrap">Train 70% · Test 30%</span>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Credit (USDT)</label>
+            <input type="number" id="otCredit" value="100" min="1" step="1">
+          </div>
+          <div class="form-group">
+            <label>Leverage</label>
+            <input type="number" id="otLeverage" value="5" min="1" max="100" step="1">
+          </div>
+          <div class="form-group">
+            <label>CPU cores</label>
+            <select id="otCores"></select>
+          </div>
+          <div class="form-group">
+            <label>Generations</label>
+            <input type="number" id="otMaxiter" value="30" min="5" max="500" step="5">
+          </div>
+        </div>
+      </div>
+
+      <div class="tester-section">
+        <h3>Optimization Goal</h3>
+        <div class="hint">What the DE search maximizes over the training window.</div>
+        <div class="opt-objective">
+          <div class="opt-obj-option">
+            <input type="radio" name="otObjective" id="otObjProfit" value="profit" checked onchange="_otObjectiveChange()">
+            <label for="otObjProfit">Highest Profit<span class="obj-sub">Maximize net P&amp;L</span></label>
+          </div>
+          <div class="opt-obj-option">
+            <input type="radio" name="otObjective" id="otObjWinrate" value="winrate" onchange="_otObjectiveChange()">
+            <label for="otObjWinrate">Highest Win Rate<span class="obj-sub">Maximize % of winning trades</span></label>
+          </div>
+          <div class="opt-obj-option">
+            <input type="radio" name="otObjective" id="otObjBalanced" value="balanced" onchange="_otObjectiveChange()">
+            <label for="otObjBalanced">Balanced<span class="obj-sub">Profit % + Win Rate weighted equally</span></label>
+          </div>
+          <div class="opt-obj-option">
+            <input type="radio" name="otObjective" id="otObjLargeMove" value="large_move" onchange="_otObjectiveChange()">
+            <label for="otObjLargeMove">Large Price Move<span class="obj-sub">Maximize big-move trade %</span></label>
+          </div>
+        </div>
+        <div id="otLargeMoveRow" style="display:none;margin-top:12px;align-items:center;gap:8px;flex-wrap:wrap;">
+          <label style="font-size:12px;color:var(--muted);">Min price change (%):</label>
+          <input type="number" id="otMinPriceChange" value="5" min="0.1" max="100" step="0.5" style="width:70px;">
+        </div>
+      </div>
+
+      <div class="tester-section" id="otParamSection" style="display:none">
+        <div class="opt-param-section-header">
+          <h3>Parameter Search Ranges</h3>
+          <button class="btn btn-neutral btn-sm" onclick="resetOptimizerTesterBounds()" title="Reset all bounds to their defaults">↺ Reset to Defaults</button>
+        </div>
+        <div class="hint">Searched over the training candles only. Edit bounds to focus the search.</div>
+        <div id="otParamSpace" class="opt-param-grid"></div>
+      </div>
+
+      <div class="tester-section">
+        <h3>Run</h3>
+        <div class="tester-run-bar">
+          <button class="btn btn-primary" id="otRunBtn" onclick="runOptimizerTester()" style="padding:9px 20px">▶ Optimize &amp; Test</button>
+          <button class="btn btn-danger btn-sm" id="otCancelBtn" onclick="cancelOptimizerTester()" style="display:none">■ Cancel</button>
+          <span class="tester-run-note" id="otRunNote"></span>
+        </div>
+        <div class="progress-wrap" id="otProgressWrap" style="display:none">
+          <div class="progress-track"><div class="progress-fill" id="otProgressFill"></div></div>
+          <div class="progress-meta">
+            <span class="progress-current" id="otProgressCurrent"></span>
+            <span id="otProgressCount"></span>
+          </div>
+        </div>
+      </div>
+
+      <div id="otResults"></div>
+      <div id="otTrainChart"></div>
+      <div id="otTestChart"></div>
+
+    </div><!-- /optimizerTesterPane -->
+
+  </div>
+</div><!-- /viewOptimizer -->
+
+<!-- Toast container -->
+<div id="toastContainer"></div>
+
+<!-- ─────────────────────── MODALS ─────────────────────── -->
+
+<!-- Create Bot Modal -->
+<div class="modal-overlay" id="createModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Create New Bot</h2>
+      <button class="modal-close" onclick="closeModal('createModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Trading Mode</label>
+        <div class="mode-toggle">
+          <div class="mode-option">
+            <input type="radio" name="fMode" id="fModeSim" value="simulation" checked onchange="refreshCreateBudget()">
+            <label for="fModeSim"><span class="mode-title">Simulation</span><span class="mode-sub">Paper trading — no real orders</span></label>
+          </div>
+          <div class="mode-option">
+            <input type="radio" name="fMode" id="fModeReal" value="real" onchange="refreshCreateBudget()">
+            <label for="fModeReal"><span class="mode-title">Real Trade</span><span class="mode-sub">API key required</span></label>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Bot Name (optional)</label>
+        <input type="text" id="fName" placeholder="My BTC Bot">
+      </div>
+      <div class="form-group">
+        <label>Symbol — Margin Market</label>
+        <select id="fSymbol" onchange="onMarketChange('f')">
+          <option value="">Loading available markets…</option>
+        </select>
+        <div class="market-hint" id="fSymbolHint"></div>
+      </div>
+      <div class="form-group">
+        <label>Timeframe</label>
+        <select id="fTimeframe">
+          <option value="1">1 minute</option><option value="5">5 minutes</option>
+          <option value="15">15 minutes</option><option value="30">30 minutes</option>
+          <option value="60">1 hour</option><option value="180">3 hours</option>
+          <option value="240" selected>4 hours</option><option value="D">1 day</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Strategy</label>
+        <select id="fStrategy">
+          <option value="AdvRSI">Advanced RSI Combined</option>
+          <option value="TrendMomentum">Trend-Filtered Momentum</option>
+          <option value="ExtremeReversal">Extreme Reversal (Beta)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Credit (USDT)</label>
+          <input type="number" id="fCredit" value="100" min="1" step="1" oninput="validateCreateBudget()">
+          <div class="market-hint" id="fCreditHint"></div>
+        </div>
+        <div class="form-group">
+          <label>Leverage</label>
+          <input type="number" id="fLeverage" value="5" min="1" max="100" step="1">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-neutral" onclick="closeModal('createModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitCreate()">Create Bot</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Bot Modal -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="editModalTitle">Edit Bot</h2>
+      <button class="modal-close" onclick="closeModal('editModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Trading Mode</label>
+        <div class="mode-toggle">
+          <div class="mode-option">
+            <input type="radio" name="eMode" id="eModeSim" value="simulation" checked>
+            <label for="eModeSim"><span class="mode-title">Simulation</span><span class="mode-sub">Paper trading</span></label>
+          </div>
+          <div class="mode-option">
+            <input type="radio" name="eMode" id="eModeReal" value="real">
+            <label for="eModeReal"><span class="mode-title">Real Trade</span><span class="mode-sub">API key required</span></label>
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Bot Name</label>
+        <input type="text" id="eName" placeholder="Bot name">
+      </div>
+      <div class="form-group">
+        <label>Symbol — Margin Market</label>
+        <select id="eSymbol" onchange="onMarketChange('e')">
+          <option value="">Loading available markets…</option>
+        </select>
+        <div class="market-hint" id="eSymbolHint"></div>
+      </div>
+      <div class="form-group">
+        <label>Timeframe</label>
+        <select id="eTimeframe">
+          <option value="1">1 minute</option><option value="5">5 minutes</option>
+          <option value="15">15 minutes</option><option value="30">30 minutes</option>
+          <option value="60">1 hour</option><option value="180">3 hours</option>
+          <option value="240">4 hours</option><option value="D">1 day</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Strategy</label>
+        <select id="eStrategy">
+          <option value="AdvRSI">Advanced RSI Combined</option>
+          <option value="TrendMomentum">Trend-Filtered Momentum</option>
+          <option value="ExtremeReversal">Extreme Reversal (Beta)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Credit (USDT)</label>
+          <input type="number" id="eCredit" min="1" step="1">
+        </div>
+        <div class="form-group">
+          <label>Leverage</label>
+          <input type="number" id="eLeverage" min="1" max="100" step="1">
+        </div>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="eRestart">
+        <label for="eRestart">Auto-restart bot after saving</label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-neutral" onclick="closeModal('editModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitEdit()">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Trade History Modal -->
+<div class="modal-overlay" id="historyModal">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h2 id="historyTitle">Trade History</h2>
+      <button class="modal-close" onclick="closeModal('historyModal')">×</button>
+    </div>
+    <div class="tabs" id="historyTabs">
+      <button class="tab-btn active" onclick="switchTab('tabTrades')">Trades</button>
+      <button class="tab-btn" onclick="switchTab('tabChart')">P&amp;L Chart</button>
+      <button class="tab-btn" onclick="switchTab('tabActivity')">Activity Log</button>
+    </div>
+    <div id="tabTrades" class="tab-pane active" style="overflow-x:auto; min-height:200px;"></div>
+    <div id="tabChart"  class="tab-pane" style="padding:16px; min-height:200px;"></div>
+    <div id="tabActivity" class="tab-pane" style="min-height:200px;"></div>
+    <div class="modal-footer">
+      <button class="btn btn-neutral" onclick="closeModal('historyModal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Backtest Results Modal -->
+<div class="modal-overlay" id="backtestModal">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h2 id="backtestModalTitle">Backtest Results</h2>
+      <button class="modal-close" onclick="cancelBacktest()">×</button>
+    </div>
+    <div class="modal-body" style="padding:0">
+      <div id="backtestSummary" style="padding:16px 20px;border-bottom:1px solid var(--border)"></div>
+      <div id="backtestTradesWrap" style="max-height:340px;overflow-y:auto;padding:0 20px 16px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-neutral" onclick="cancelBacktest()">Cancel</button>
+      <button class="btn btn-success" id="backtestConfirmBtn" onclick="confirmStartBot()">Start Bot</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Exchange Settings</h2>
+      <button class="modal-close" onclick="closeModal('settingsModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="credStatus" class="cred-status disconnected">Not connected — no credentials set</div>
+      <div class="form-group">
+        <label>Auth Method</label>
+        <select id="sAuthMethod" onchange="toggleAuthFields()">
+          <option value="token">Session Token</option>
+          <option value="api_key">API Key (Ed25519)</option>
+        </select>
+      </div>
+      <div id="sTokenGroup" class="form-group">
+        <label>Nobitex Token</label>
+        <input type="password" id="sToken" placeholder="Paste your session token">
+      </div>
+      <div id="sApiKeyGroup" style="display:none">
+        <div class="form-group">
+          <label>Public Key</label>
+          <input type="text" id="sPublicKey" placeholder="Base64url public key">
+        </div>
+        <div class="form-group">
+          <label>Private Key</label>
+          <input type="password" id="sPrivateKey" placeholder="Base64url private key">
+        </div>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="sTestnet">
+        <label for="sTestnet">Use Testnet (testnetapiv2.nobitex.ir)</label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-neutral" onclick="closeModal('settingsModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCredentials()">Save &amp; Connect</button>
+    </div>
+  </div>
+</div>
+
+<!-- Candle Count Warning Modal -->
+<div class="modal-overlay" id="candleWarnModal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-header">
+      <h2>Fewer Candles Than Requested</h2>
+      <button class="modal-close" onclick="closeModal('candleWarnModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <p id="candleWarnMsg" style="margin:0 0 20px; line-height:1.6;"></p>
+      <div style="display:flex; gap:8px; justify-content:flex-end;">
+        <button class="btn btn-danger"   onclick="_candleWarnCancel()">Cancel</button>
+        <button class="btn btn-neutral"  onclick="_candleWarnRetry()">Retry</button>
+        <button class="btn btn-primary"  onclick="_candleWarnContinue()">Continue</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let bots = [];
+let exchangePositions = [];
+let exchangeOrders = [];
+let ws = null;
+let wsRetryDelay = 1000;
+let editingBotId = null;
+let prevClosedTrades = {};    // bot_id → closed_trade_count
+let prevPositionKeys = {};    // bot_id → Set of entry_time strings for open positions
+let notifPermission = 'default';
+let _pendingOptParams = null; // optimized params to apply when creating a new bot
+
+// ── Clock ─────────────────────────────────────────────────────────────────────
+function updateClock() {
+  const el = document.getElementById('clockTime');
+  if (!el) return;
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2, '0');
+  const m = String(now.getMinutes()).padStart(2, '0');
+  const s = String(now.getSeconds()).padStart(2, '0');
+  el.textContent = `${h}:${m}:${s}`;
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Candle timer ──────────────────────────────────────────────────────────────
+const _TF_SECS = {'1':60,'5':300,'15':900,'30':1800,'60':3600,'180':10800,'240':14400,'D':86400};
+function nextCandleStr(tf) {
+  const secs = _TF_SECS[String(tf)];
+  if (!secs) return '';
+  const nowSec = Math.floor(Date.now() / 1000);
+  let rem = secs - (nowSec % secs);
+  if (rem <= 0) rem = secs;
+  const h = Math.floor(rem / 3600);
+  const mn = Math.floor((rem % 3600) / 60);
+  const sc = rem % 60;
+  const pad = n => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(mn)}:${pad(sc)}` : `${pad(mn)}:${pad(sc)}`;
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+function connectWS() {
+  const url = `ws://${location.host}/ws`;
+  ws = new WebSocket(url);
+  ws.onopen  = () => { wsRetryDelay = 1000; setWsStatus('connected'); };
+  ws.onmessage = (evt) => {
+    const data = JSON.parse(evt.data);
+    const newBots = data.bots || data;
+    detectTradeNotifications(newBots);
+    bots = newBots;
+    exchangePositions = (data.exchange && data.exchange.positions) || [];
+    exchangeOrders = (data.exchange && data.exchange.orders) || [];
+    renderGrid();
+    updateSummary();
+  };
+  ws.onerror = () => setWsStatus('error');
+  ws.onclose = () => {
+    setWsStatus('disconnected');
+    setTimeout(connectWS, wsRetryDelay);
+    wsRetryDelay = Math.min(wsRetryDelay * 2, 15000);
+  };
+}
+
+function setWsStatus(state) {
+  const dot = document.getElementById('wsDot');
+  const lbl = document.getElementById('wsLabel');
+  dot.className = 'ws-dot' + (state === 'connected' ? ' connected' : state === 'error' ? ' error' : '');
+  lbl.textContent = state === 'connected' ? 'Live' : state === 'error' ? 'Error' : 'Reconnecting…';
+}
+
+// ── Trade notifications ───────────────────────────────────────────────────────
+function detectTradeNotifications(newBots) {
+  newBots.forEach(bot => {
+    const hadPrevData = prevClosedTrades[bot.id] !== undefined;
+
+    // ── Closed trades ─────────────────────────────────────────────────────────
+    // closed_trade_count increases only when a position actually closes.
+    // (trade_count includes pending open-position records and increases on open.)
+    const prevClosed = prevClosedTrades[bot.id] ?? 0;
+    const curClosed  = bot.closed_trade_count ?? 0;
+    if (hadPrevData && curClosed > prevClosed) {
+      const n = curClosed - prevClosed;
+      showToast(`${bot.name}: ${n} trade${n > 1 ? 's' : ''} closed`, 'trade');
+      if (notifPermission === 'granted') {
+        try {
+          new Notification(`${bot.name} — Trade Closed`, {
+            body: `${n} trade${n > 1 ? 's' : ''} completed on ${bot.symbol}`,
+            silent: true,
+          });
+        } catch (_) {}
+      }
+    }
+
+    // ── Newly opened positions ────────────────────────────────────────────────
+    const prevKeys = prevPositionKeys[bot.id] ?? new Set();
+    const curKeys  = new Set((bot.open_positions || []).map(p => p.entry_time));
+    if (hadPrevData) {
+      for (const key of curKeys) {
+        if (!prevKeys.has(key)) {
+          const pos = (bot.open_positions || []).find(p => p.entry_time === key);
+          if (pos) {
+            const dir   = pos.direction;
+            const price = pos.entry_price != null ? `$${fmtNum(pos.entry_price)}` : '';
+            showToast(`${bot.name}: ${dir} position opened${price ? ' @ ' + price : ''}`, 'info');
+            if (notifPermission === 'granted') {
+              try {
+                new Notification(`${bot.name} — Position Opened`, {
+                  body: `${dir} on ${bot.symbol}${price ? ' @ ' + price : ''}`,
+                  silent: true,
+                });
+              } catch (_) {}
+            }
+          }
+        }
+      }
+    }
+
+    prevClosedTrades[bot.id]  = curClosed;
+    prevPositionKeys[bot.id]  = curKeys;
+  });
+}
+
+// ── Bot color palette ─────────────────────────────────────────────────────────
+const BOT_COLORS = ['#38bdf8','#4ade80','#f87171','#fbbf24','#a78bfa','#fb923c','#34d399','#f472b6'];
+function getBotColor(botId) {
+  let h = 0;
+  for (let i = 0; i < botId.length; i++) h = (h * 31 + botId.charCodeAt(i)) & 0xffff;
+  return BOT_COLORS[h % BOT_COLORS.length];
+}
+
+// ── Rendering ─────────────────────────────────────────────────────────────────
+function renderGrid() {
+  renderBotsBox();
+  renderOrdersBox();
+  renderPositionsBox();
+  renderActivityFeed();
+}
+
+let _feedClearedBefore = null;
+
+function clearActivityFeed() {
+  _feedClearedBefore = new Date().toISOString();
+  renderActivityFeed();
+}
+
+function renderActivityFeed() {
+  const body    = document.getElementById('activityFeedBody');
+  const counter = document.getElementById('feedCount');
+  if (!body) return;
+
+  const allEntries = [];
+  for (const b of bots) {
+    const color = getBotColor(b.id);
+    for (const item of (b.activity_log || [])) {
+      if (_feedClearedBefore && item.time <= _feedClearedBefore) continue;
+      allEntries.push({ ...item, _botName: b.name, _color: color });
+    }
+  }
+
+  if (!allEntries.length) {
+    counter.textContent = 0;
+    body.innerHTML = `<div class="empty-state" style="padding:20px"><span style="color:var(--muted)">No activity yet.</span></div>`;
+    return;
+  }
+
+  allEntries.sort((a, b) => b.time.localeCompare(a.time));
+  const entries = allEntries.slice(0, 50);
+  counter.textContent = entries.length;
+
+  body.innerHTML = `<ul class="activity-list">${entries.map(item => {
+    const color   = item._color;
+    const t       = new Date(item.time).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const evLabel = item.event.replace(/_/g, ' ');
+    const tagHtml = `<span class="tri-bot-tag" style="background:${color}22;color:${color};border:1px solid ${color}55">${escHtml(item._botName)}</span>`;
+    return `<li class="activity-item">
+  <span class="activity-time">${t}</span>
+  ${tagHtml}
+  <span class="activity-event ev-${item.event}">${evLabel}</span>
+  <span class="activity-detail">${escHtml(item.detail)}</span>
+</li>`;
+  }).join('')}</ul>`;
+}
+
+function renderBotsBox() {
+  const body   = document.getElementById('boxBotsBody');
+  const header = document.getElementById('boxBotsHeader');
+  header.textContent = bots.length;
+  if (!bots.length) {
+    body.innerHTML = `<div class="empty-state"><span class="icon">🤖</span>Create your first bot to get started.</div>`;
+    return;
+  }
+  body.innerHTML = bots.map(b => {
+    const isSim    = b.mode !== 'real';
+    const pnlCls   = b.total_pnl > 0 ? 'pos' : b.total_pnl < 0 ? 'neg' : 'neu';
+    const pnlSign  = b.total_pnl > 0 ? '+' : '';
+    const errorTip = b.error ? ` <span title="${escHtml(b.error)}" style="color:var(--red);cursor:help">⚠</span>` : '';
+    const startBtn = b.status !== 'running'
+      ? `<button class="btn btn-success btn-sm" onclick="startBot('${b.id}')">▶</button>` : '';
+    const stopBtn  = b.status === 'running'
+      ? `<button class="btn btn-danger btn-sm" onclick="stopBot('${b.id}')">■</button>` : '';
+    const color = getBotColor(b.id);
+    return `<div class="tri-row" id="card-${b.id}">
+  <div class="bot-color-pill" style="background:${color}"></div>
+  <div style="flex:1;min-width:0">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
+      <div class="status-dot ${b.status}"></div>
+      <span style="font-size:12px;font-weight:700">${escHtml(b.name)}${errorTip}</span>
+      <span class="bot-id">${b.id}</span>
+      <span class="badge ${isSim ? 'badge-sim' : 'badge-real'}" style="margin-left:auto">${isSim ? 'SIM' : 'LIVE'}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <span style="font-size:12px;font-weight:700">${escHtml(b.symbol)}</span>
+      <span style="font-size:11px;color:var(--muted)">${escHtml(b.strategy)} · ${fmtTF(b.timeframe)} · ${b.leverage}×</span>
+      <span style="font-size:11px;color:var(--muted);background:rgba(255,255,255,.07);border:1px solid var(--border);border-radius:4px;padding:1px 5px">$${b.credit}</span>
+      <span class="stat-value ${pnlCls}" style="font-size:12px;margin-left:auto">${pnlSign}$${b.total_pnl.toFixed(2)}</span>
+    </div>
+  </div>
+  <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
+    ${startBtn}${stopBtn}
+    <button class="btn btn-neutral btn-sm btn-icon" onclick="openEditModal('${b.id}')" title="Edit">✎</button>
+    <button class="btn btn-neutral btn-sm" onclick="showHistory('${b.id}')">Hist</button>
+    <button class="btn btn-danger btn-sm btn-icon" onclick="deleteBot('${b.id}')">✕</button>
+  </div>
+</div>`;
+  }).join('');
+}
+
+function renderOrdersBox() {
+  const body   = document.getElementById('boxOrdersBody');
+  const header = document.getElementById('boxOrdersHeader');
+
+  const botOrders = bots
+    .filter(b => b.pending_order != null)
+    .map(b => ({ type: 'bot', bot: b, order: b.pending_order }));
+
+  const trackedIds = new Set(
+    botOrders.map(e => e.order.order_id).filter(id => id != null)
+  );
+  const externalOrders = exchangeOrders
+    .filter(o => o.attributed_bot_id == null && !trackedIds.has(o.order_id))
+    .map(o => ({ type: 'external', order: o }));
+
+  const all = [...botOrders, ...externalOrders];
+  header.textContent = all.length;
+
+  if (!all.length) {
+    body.innerHTML = `<div class="empty-state" style="padding:20px"><span style="color:var(--muted)">No pending orders.</span></div>`;
+    return;
+  }
+
+  body.innerHTML = all.map(entry => {
+    const o         = entry.order;
+    const side      = o.side === 'buy' ? 'LONG' : 'SHORT';
+    const sideColor = o.side === 'buy' ? 'var(--green)' : 'var(--red)';
+    const pct       = o.matched_pct ?? 0;
+    const age       = o.placed_at ? timeAgo(o.placed_at) : '—';
+    const barColor  = pct > 50 ? 'var(--green)' : pct > 0 ? 'var(--yellow)' : 'var(--muted)';
+
+    let tagHtml, symLabel;
+    if (entry.type === 'bot') {
+      const color = getBotColor(entry.bot.id);
+      tagHtml  = `<span class="tri-bot-tag" style="background:${color}22;color:${color};border:1px solid ${color}55">${escHtml(entry.bot.name)}</span>`;
+      symLabel = `<span style="font-size:11px;font-weight:600">${escHtml(entry.bot.symbol)}</span>`;
+    } else {
+      const sym = escHtml(o.symbol || '');
+      tagHtml  = `<span class="tri-bot-tag">${sym ? sym + ' · ' : ''}External</span>`;
+      symLabel = '';
+    }
+
+    return `<div class="tri-row">
+  <div style="flex:1;min-width:0">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
+      ${tagHtml}
+      <span style="font-size:11px;font-weight:700;color:${sideColor}">${side}</span>
+      ${symLabel}
+      <span style="font-size:10px;color:var(--muted);margin-left:auto">${age}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+      <span style="font-size:11px;color:var(--muted)">${o.amount.toFixed(4)} @ $${fmtNum(o.price)}</span>
+      <span style="font-size:11px;font-weight:700;color:${barColor};margin-left:auto">${pct.toFixed(0)}% filled</span>
+    </div>
+    <div style="height:4px;background:var(--surface2);border-radius:2px;overflow:hidden">
+      <div style="height:100%;width:${Math.min(pct,100)}%;background:${barColor};transition:width .5s"></div>
+    </div>
+  </div>
+</div>`;
+  }).join('');
+}
+
+function renderPositionsBox() {
+  const body   = document.getElementById('boxPositionsBody');
+  const header = document.getElementById('boxPositionsHeader');
+
+  const coveredIds = new Set(
+    exchangePositions.map(p => p.exchange_id).filter(id => id != null)
+  );
+
+  const exPos = exchangePositions.map(p => ({
+    source: 'exchange', pos: p,
+    botName: p.attributed_bot_name || null,
+    botId:   p.attributed_bot_id   || null,
+    symbol:  p.symbol || '',
+    color:   p.attributed_bot_id ? getBotColor(p.attributed_bot_id) : '#64748b',
+  }));
+
+  const simPos = bots
+    .filter(b => b.mode !== 'real')
+    .flatMap(b => (b.open_positions || []).map(p => ({
+      source: 'sim', pos: p,
+      botName: b.name, botId: b.id,
+      symbol: b.symbol || '', color: getBotColor(b.id),
+    })));
+
+  const realFallback = bots
+    .filter(b => b.mode === 'real')
+    .flatMap(b => (b.open_positions || [])
+      .filter(p => !coveredIds.has(p.exchange_id))
+      .map(p => ({
+        source: 'real', pos: p,
+        botName: b.name, botId: b.id,
+        symbol: b.symbol || '', color: getBotColor(b.id),
+      })));
+
+  const all = [...exPos, ...simPos, ...realFallback];
+  header.textContent = all.length;
+
+  if (!all.length) {
+    body.innerHTML = `<div class="empty-state" style="padding:20px"><span style="color:var(--muted)">No open positions.</span></div>`;
+    return;
+  }
+
+  body.innerHTML = all.map(({ source, pos: p, botName, botId, color, symbol }) => {
+    const isLong      = p.direction === 'Long';
+    const dirColor    = isLong ? 'var(--green)' : 'var(--red)';
+    const arrow       = isLong ? '↑' : '↓';
+    let unreal = p.unrealized_pnl != null ? p.unrealized_pnl : null;
+    if (unreal == null && source === 'sim') {
+      const bot = bots.find(b => b.id === botId);
+      if (bot && bot.current_price != null && p.entry_price) {
+        const pct = (bot.current_price - p.entry_price) / p.entry_price;
+        unreal = (bot.leverage || 1) * (bot.credit || 0) * (isLong ? 1 : -1) * pct;
+      }
+    }
+    const unrealColor = unreal == null ? 'var(--muted)' : unreal >= 0 ? 'var(--green)' : 'var(--red)';
+    const unrealStr   = unreal != null ? `${unreal >= 0 ? '+' : ''}$${Math.abs(unreal).toFixed(2)}` : '—';
+    const tagHtml = botName
+      ? `<span class="tri-bot-tag" style="background:${color}22;color:${color};border:1px solid ${color}55">${escHtml(botName)}</span>`
+      : `<span class="tri-bot-tag" style="background:#64748b22;color:#94a3b8;border:1px solid #64748b55">External</span>`;
+    return `<div class="tri-row">
+  <div class="bot-color-pill" style="background:${color}"></div>
+  <div style="flex:1;min-width:0">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap">
+      ${tagHtml}
+      <span style="font-size:12px;font-weight:700;color:${dirColor}">${arrow} ${p.direction.toUpperCase()}</span>
+      <span style="font-size:11px;font-weight:600">${escHtml(symbol)}</span>
+    </div>
+    <div style="display:flex;gap:14px;flex-wrap:wrap">
+      <div><div style="font-size:10px;color:var(--muted)">Entry</div><div style="font-size:12px;font-weight:700">$${fmtNum(p.entry_price)}</div></div>
+      ${p.mark_price ? `<div><div style="font-size:10px;color:var(--muted)">Mark</div><div style="font-size:12px">$${fmtNum(p.mark_price)}</div></div>` : ''}
+      <div><div style="font-size:10px;color:var(--muted)">Unrealized</div><div style="font-size:12px;font-weight:700;color:${unrealColor}">${unrealStr}</div></div>
+      ${p.liquidation_price ? `<div><div style="font-size:10px;color:var(--muted)">Liq</div><div style="font-size:12px;color:var(--yellow)">$${fmtNum(p.liquidation_price)}</div></div>` : ''}
+    </div>
+  </div>
+</div>`;
+  }).join('');
+}
+
+function renderRow(b) {
+  const isSim   = b.mode !== 'real';
+  const pnlCls  = b.total_pnl > 0 ? 'pos' : b.total_pnl < 0 ? 'neg' : 'neu';
+  const pnlSign = b.total_pnl > 0 ? '+' : '';
+  const price   = b.current_price != null ? fmtNum(b.current_price) : '—';
+  const ago     = b.last_updated ? timeAgo(b.last_updated) : 'never';
+  const modeBadge = isSim
+    ? `<span class="badge badge-sim">SIM</span>`
+    : `<span class="badge badge-real">LIVE</span>`;
+  const errorTip = b.error
+    ? ` <span title="${escHtml(b.error)}" style="color:var(--red);cursor:help">⚠</span>` : '';
+
+  const wrColor = b.win_rate >= 60 ? 'var(--green)' : b.win_rate >= 45 ? 'var(--yellow)' : 'var(--red)';
+  const ddColor = b.max_drawdown < 10 ? 'var(--green)' : b.max_drawdown < 25 ? 'var(--yellow)' : 'var(--red)';
+  const metricsHtml = b.trade_count > 0
+    ? `<div style="font-size:11px"><span style="color:${wrColor};font-weight:700">${b.win_rate.toFixed(1)}%</span> <span style="color:var(--muted)">WR</span></div>
+       <div style="font-size:11px"><span style="color:${ddColor};font-weight:700">${b.max_drawdown.toFixed(1)}%</span> <span style="color:var(--muted)">DD</span></div>`
+    : `<span style="color:var(--muted)">—</span>`;
+
+  const startBtn = b.status !== 'running'
+    ? `<button class="btn btn-success btn-sm" onclick="startBot('${b.id}')">▶</button>` : '';
+  const stopBtn = b.status === 'running'
+    ? `<button class="btn btn-danger btn-sm" onclick="stopBot('${b.id}')">■</button>` : '';
+
+  return `<tr id="card-${b.id}"${isSim ? ' class="row-sim"' : ''}>
+  <td class="col-bot">
+    <div style="display:flex;align-items:center;gap:7px">
+      <div class="status-dot ${b.status}"></div>
+      <div>
+        <div class="bot-name">${escHtml(b.name)}${errorTip}</div>
+        <div class="bot-id">${b.id}</div>
+      </div>
+    </div>
+    <div style="margin-top:5px;display:flex;gap:4px;flex-wrap:wrap">
+      ${modeBadge}<span class="badge badge-status-${b.status}">${b.status.toUpperCase()}</span>
+    </div>
+  </td>
+  <td class="col-config">
+    <div style="font-size:12px;font-weight:700">${escHtml(b.symbol)}</div>
+    <div style="font-size:11px;color:var(--muted)">${escHtml(b.strategy)} · ${fmtTF(b.timeframe)}</div>
+    <div style="font-size:11px;color:var(--muted)">${b.leverage}× · $${b.credit}</div>
+  </td>
+  <td class="col-pos">${renderPositionCell(b)}</td>
+  <td class="col-price" style="font-size:13px;font-weight:600">${price}</td>
+  <td class="col-pnl"><span class="stat-value ${pnlCls}">${pnlSign}$${b.total_pnl.toFixed(2)}</span></td>
+  <td class="col-balance" style="font-size:13px;font-weight:600">$${b.balance.toFixed(2)}</td>
+  <td class="col-trades"><span style="font-weight:600">${b.trade_count}</span><span style="color:var(--muted)"> / ${b.candle_count}</span></td>
+  <td class="col-metrics">${metricsHtml}</td>
+  <td class="col-equity">${renderSparkline(b.balance_history)}</td>
+  <td class="col-updated" style="font-size:11px">
+    <div style="color:var(--muted)">${ago}</div>
+    <div class="candle-timer"><span class="candle-timer-label">next </span>${nextCandleStr(b.timeframe)}</div>
+  </td>
+  <td class="col-actions">
+    <div class="row-actions">
+      ${startBtn}${stopBtn}
+      <button class="btn btn-neutral btn-sm btn-icon" onclick="openEditModal('${b.id}')" title="Edit">✎</button>
+      <button class="btn btn-neutral btn-sm btn-icon" onclick="duplicateBot('${b.id}')" title="Duplicate">⎘</button>
+      <button class="btn btn-neutral btn-sm" onclick="showHistory('${b.id}')">Hist</button>
+      <button class="btn btn-danger btn-sm btn-icon" onclick="deleteBot('${b.id}')">✕</button>
+    </div>
+  </td>
+</tr>`;
+}
+
+function renderPositionCell(b) {
+  if (!b.open_positions || !b.open_positions.length)
+    return `<span style="color:var(--muted)">—</span>`;
+  return b.open_positions.map(p => {
+    const color = p.direction === 'Long' ? 'var(--green)' : 'var(--red)';
+    const arrow = p.direction === 'Long' ? '↑' : '↓';
+    const unreal = calcUnrealized(b, p);
+    const unrealColor = unreal != null && unreal >= 0 ? 'var(--green)' : 'var(--red)';
+    const unrealStr = unreal != null
+      ? `<span style="color:${unrealColor};font-size:10px"> · ${unreal >= 0 ? '+' : ''}$${Math.abs(unreal).toFixed(2)}</span>`
+      : '';
+    const liqStr = p.liquidation_price
+      ? `<div style="font-size:10px;color:var(--yellow)">Liq: $${fmtNum(p.liquidation_price)}</div>`
+      : '';
+    const markStr = p.mark_price
+      ? `<div style="font-size:10px;color:var(--muted)">Mark: $${fmtNum(p.mark_price)}</div>`
+      : '';
+    return `<div style="color:${color};font-size:11px;font-weight:700">${arrow} ${p.direction.toUpperCase()}</div>
+<div style="font-size:10px;color:var(--muted)">@ $${fmtNum(p.entry_price)}${unrealStr}</div>${liqStr}${markStr}`;
+  }).join('<div style="height:4px"></div>');
+}
+
+function calcUnrealized(b, pos) {
+  if (pos.unrealized_pnl != null) return pos.unrealized_pnl;
+  if (b.current_price == null) return null;
+  const pct = (b.current_price - pos.entry_price) / pos.entry_price;
+  return b.leverage * b.credit * (pos.direction === 'Long' ? 1 : -1) * pct;
+}
+
+function renderSparkline(history, credit) {
+  if (!history || history.length < 2)
+    return '';
+  const vals = history;
+  const min  = Math.min(...vals);
+  const max  = Math.max(...vals);
+  const range = max - min || 1;
+  const W = 120, H = 34;
+  const pts = vals.map((v, i) => {
+    const x = (i / (vals.length - 1)) * W;
+    const y = H - ((v - min) / range) * H;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const last  = vals[vals.length - 1];
+  const first = vals[0];
+  const color = last > first ? 'var(--green)' : last < first ? 'var(--red)' : 'var(--muted)';
+  const pct   = first > 0 ? ((last - first) / first * 100) : 0;
+  const pctStr = (pct >= 0 ? '+' : '') + pct.toFixed(1) + '%';
+  return `<div class="sparkline-row">
+  <span class="sparkline-label">Equity<br><span style="color:${color};font-weight:700">${pctStr}</span></span>
+  <div class="sparkline-svg">
+    <svg width="100%" height="${H}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+      <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>
+  </div>
+</div>`;
+}
+
+// ── Summary bar ───────────────────────────────────────────────────────────────
+function updateSummary() {
+  const running = bots.filter(b => b.status === 'running').length;
+  document.getElementById('sumRunning').textContent = `${running} / ${bots.length}`;
+}
+
+// ── Wallet ─────────────────────────────────────────────────────────────────────
+let walletRefreshTimer = null;
+
+async function fetchWallet() {
+  const bar = document.getElementById('walletBar');
+  bar.classList.remove('hidden');
+  bar.innerHTML = `<div class="wallet-loading">Fetching wallet…</div>`;
+
+  try {
+    const res  = await fetch('/api/wallet');
+    const data = await res.json();
+
+    if (!data.ok) {
+      if (data.error === 'no_credentials') {
+        bar.innerHTML = `
+          <div class="wallet-error">No exchange credentials — </div>
+          <button class="btn btn-neutral btn-sm" style="margin:0 12px" onclick="openSettingsModal()">⚙ Connect Exchange</button>`;
+      } else {
+        bar.innerHTML = `<div class="wallet-error">Wallet error: ${escHtml(data.error)}</div>
+          <div class="wallet-meta"><button class="btn btn-neutral btn-sm" onclick="fetchWallet()">Retry</button></div>`;
+      }
+      return;
+    }
+
+    const margin     = data.margin || {};
+    const spot       = data.spot   || {};
+    const now        = new Date().toLocaleTimeString();
+    const usdtAvail  = data.usdt_available ?? null;
+    const usdtLocked = data.usdt_locked_in ?? null;
+
+    // Margin (تعهدی) USDT section — use explicit available/locked_in from server
+    let usdtSection = '';
+    if (usdtAvail !== null) {
+      usdtSection = `
+<div class="wallet-section">
+  <span class="wallet-tag margin">تعهدی</span>
+  <span class="wallet-currency">USDT</span>
+  <span class="wallet-avail" style="font-size:13px;font-weight:700">✓ ${fmtWallet(usdtAvail)}</span>
+  <span style="font-size:10px;color:var(--muted)">Available</span>
+  ${usdtLocked > 0 ? `<span class="wallet-locked">🔒 ${fmtWallet(usdtLocked)}</span><span style="font-size:10px;color:var(--muted)">Locked In</span>` : ''}
+</div>`;
+    }
+
+    // Other margin currencies (non-USDT) with non-zero balance
+    const mItems = Object.entries(margin)
+      .filter(([cur, w]) => cur.toUpperCase() !== 'USDT' && parseFloat(w.balance || 0) > 0)
+      .map(([cur, w]) => {
+        const bal    = parseFloat(w.balance || 0);
+        const frozen = parseFloat(w.frozen  || 0);
+        const avail  = bal - frozen;
+        return `
+<div class="wallet-section">
+  <span class="wallet-tag margin">تعهدی</span>
+  <span class="wallet-currency">${cur.toUpperCase()}</span>
+  <span class="wallet-amount">${fmtWallet(bal)}</span>
+  ${frozen > 0 ? `<span class="wallet-frozen">🔒 ${fmtWallet(frozen)}</span><span class="wallet-avail">✓ ${fmtWallet(avail)}</span>` : ''}
+</div>`;
+      }).join('');
+
+    // Spot section
+    const sItems = Object.entries(spot)
+      .filter(([, w]) => parseFloat(w.balance || 0) > 0)
+      .slice(0, 5)
+      .map(([cur, w]) => {
+        const bal = parseFloat(w.balance || 0);
+        return `<span class="wallet-currency">${cur.toUpperCase()}</span><span class="wallet-amount" style="margin-right:10px">${fmtWallet(bal)}</span>`;
+      }).join('');
+
+    bar.innerHTML = `
+      ${usdtSection || '<div class="wallet-error" style="color:var(--muted)">No margin (تعهدی) balance</div>'}
+      ${mItems}
+      <div class="wallet-section">
+        <span class="wallet-tag spot">Spot</span>
+        ${sItems || '<span class="wallet-currency" style="color:var(--muted)">Empty</span>'}
+      </div>
+      <div class="wallet-meta">
+        <span class="wallet-updated">Updated ${now}</span>
+        <button class="btn btn-neutral btn-sm" onclick="fetchWallet()">⟳</button>
+      </div>`;
+
+  } catch (e) {
+    bar.innerHTML = `<div class="wallet-error">Network error: ${escHtml(String(e))}</div>`;
+  }
+}
+
+function fmtWallet(n) {
+  if (n == null) return '—';
+  return n >= 1000
+    ? n.toLocaleString('en-US', { maximumFractionDigits: 2 })
+    : n.toFixed(n < 0.01 ? 6 : 4);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmtNum(n) {
+  if (n == null) return '—';
+  return n >= 1000
+    ? n.toLocaleString('en-US', { maximumFractionDigits: 2 })
+    : n.toFixed(n < 0.01 ? 6 : 4);
+}
+function fmtTF(tf) {
+  return ({ '1':'1m','5':'5m','15':'15m','30':'30m','60':'1h','180':'3h','240':'4h','D':'1D','W':'1W','M':'1M' })[tf] || tf;
+}
+function timeAgo(iso) {
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diff < 5)    return 'just now';
+  if (diff < 60)   return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  return `${Math.floor(diff / 3600)}h ago`;
+}
+function escHtml(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function fmtDuration(start, end) {
+  if (!start || !end) return '—';
+  try {
+    let secs = Math.round((new Date(end.replace(' ','T')+'Z') - new Date(start.replace(' ','T')+'Z')) / 1000);
+    if (secs <= 0) return '—';
+    const d = Math.floor(secs / 86400); secs %= 86400;
+    const h = Math.floor(secs / 3600);  secs %= 3600;
+    const m = Math.floor(secs / 60);
+    if (d > 0) return h > 0 ? `${d}d${h}h` : `${d}d`;
+    if (h > 0) return m > 0 ? `${h}h${m}m` : `${h}h`;
+    return `${m}m`;
+  } catch { return '—'; }
+}
+function fmtDate(s) {
+  if (!s) return '—';
+  try {
+    const d = new Date(s.replace(' ', 'T') + 'Z');
+    return d.toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', timeZone:'UTC' });
+  } catch { return s; }
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg, type = 'info') {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.textContent = msg;
+  c.appendChild(t);
+  requestAnimationFrame(() => { requestAnimationFrame(() => t.classList.add('show')); });
+  setTimeout(() => {
+    t.classList.remove('show');
+    setTimeout(() => t.remove(), 300);
+  }, 3500);
+}
+
+// Re-render timestamps every 10s
+setInterval(() => renderGrid(), 10000);
+
+// ── Modals ────────────────────────────────────────────────────────────────────
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  if (id === 'createModal') _pendingOptParams = null;
+}
+
+// Close modals on backdrop click
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', e => { if (e.target === el) el.classList.remove('open'); });
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+});
+
+function openCreateModal() {
+  _pendingOptParams = null;   // clear any stale optimizer params
+  populateSymbolSelect('f', 'zecusdt');
+  document.getElementById('createModal').classList.add('open');
+  refreshCreateBudget();
+}
+
+// Margin USDT budget for a new live bot ({available, committed, remaining}), or
+// null when no budget applies (simulation, or wallet unreadable).
+let _createBudget = null;
+
+async function refreshCreateBudget() {
+  const hint = document.getElementById('fCreditHint');
+  const credit = document.getElementById('fCredit');
+  const isReal = document.getElementById('fModeReal')?.checked;
+  _createBudget = null;
+  hint.style.color = '';
+  credit.removeAttribute('max');
+  if (!isReal) { hint.textContent = ''; return; }
+  hint.textContent = 'Checking available margin USDT…';
+  try {
+    const res = await fetch('/api/wallet');
+    const data = await res.json();
+    if (!data.ok) {
+      hint.textContent = data.error === 'no_credentials'
+        ? 'No exchange credentials — connect to enforce a budget.'
+        : 'Wallet unavailable — budget not enforced.';
+      return;
+    }
+    const b = data.usdt_budget;
+    if (!b || b.remaining == null) { hint.textContent = 'Budget unavailable.'; return; }
+    _createBudget = b;
+    credit.setAttribute('max', String(Math.max(0, b.remaining)));
+    validateCreateBudget();
+  } catch (e) {
+    hint.textContent = 'Wallet check failed — budget not enforced.';
+  }
+}
+
+// Render the credit hint and return true if the credit is within budget
+// (or no budget applies).
+function validateCreateBudget() {
+  const hint = document.getElementById('fCreditHint');
+  const isReal = document.getElementById('fModeReal')?.checked;
+  if (!isReal || !_createBudget) { hint.style.color = ''; return true; }
+  const b = _createBudget;
+  const credit = parseFloat(document.getElementById('fCredit').value) || 0;
+  const over = credit > b.remaining + 1e-9;
+  hint.style.color = over ? 'var(--danger, #f87171)' : '';
+  hint.textContent = over
+    ? `Credit ${fmtWallet(credit)} exceeds available ${fmtWallet(b.remaining)} USDT.`
+    : `Available: ${fmtWallet(b.remaining)} USDT (free ${fmtWallet(b.available)} − ${fmtWallet(b.committed)} committed to running live bots).`;
+  return !over;
+}
+
+// ── Create Bot ────────────────────────────────────────────────────────────────
+async function submitCreate() {
+  const modeEl = document.querySelector('input[name="fMode"]:checked');
+  if (modeEl && modeEl.value === 'real' && !validateCreateBudget()) {
+    showToast(`Credit exceeds available margin USDT (${fmtWallet(_createBudget && _createBudget.remaining)} remaining)`, 'error');
+    return;
+  }
+  const payload = {
+    name:          document.getElementById('fName').value.trim(),
+    symbol:        document.getElementById('fSymbol').value.trim() || 'btcusdt',
+    timeframe:     document.getElementById('fTimeframe').value,
+    strategy_name: document.getElementById('fStrategy').value,
+    credit:        parseFloat(document.getElementById('fCredit').value) || 100,
+    leverage:      parseInt(document.getElementById('fLeverage').value) || 5,
+    mode:          modeEl ? modeEl.value : 'simulation',
+  };
+  if (_pendingOptParams) {
+    payload.custom_params = _pendingOptParams;
+    _pendingOptParams = null;
+  }
+  try {
+    const res = await fetch('/api/bots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!res.ok) { showToast('Error: ' + (await res.text()), 'error'); return; }
+    closeModal('createModal');
+    showToast('Bot created' + (payload.custom_params ? ' with optimized inputs' : ''), 'success');
+  } catch (e) { showToast('Network error: ' + e, 'error'); }
+}
+
+// ── Edit Bot ──────────────────────────────────────────────────────────────────
+function openEditModal(id) {
+  const bot = bots.find(b => b.id === id);
+  if (!bot) return;
+  editingBotId = id;
+  document.getElementById('editModalTitle').textContent = `Edit — ${bot.name}`;
+  document.getElementById('eName').value     = bot.name || '';
+  document.getElementById('eStrategy').value = bot.strategy;
+  document.getElementById('eCredit').value   = bot.credit;
+  document.getElementById('eLeverage').value = bot.leverage;
+  document.getElementById('eRestart').checked = bot.status === 'running';
+  // Symbol — populate first, then set selection
+  populateSymbolSelect('e', bot.symbol.toLowerCase());
+  // Timeframe
+  const tfSel = document.getElementById('eTimeframe');
+  for (let i = 0; i < tfSel.options.length; i++)
+    if (tfSel.options[i].value === String(bot.timeframe)) { tfSel.selectedIndex = i; break; }
+  // Mode
+  const modeVal = bot.mode || 'simulation';
+  const modeRad = document.querySelector(`input[name="eMode"][value="${modeVal}"]`);
+  if (modeRad) modeRad.checked = true;
+  document.getElementById('editModal').classList.add('open');
+}
+
+async function submitEdit() {
+  if (!editingBotId) return;
+  const payload = {
+    name:          document.getElementById('eName').value.trim(),
+    symbol:        document.getElementById('eSymbol').value.trim(),
+    timeframe:     document.getElementById('eTimeframe').value,
+    strategy_name: document.getElementById('eStrategy').value,
+    credit:        parseFloat(document.getElementById('eCredit').value) || 100,
+    leverage:      parseInt(document.getElementById('eLeverage').value) || 5,
+    mode:          document.querySelector('input[name="eMode"]:checked')?.value || 'simulation',
+    restart:       document.getElementById('eRestart').checked,
+  };
+  try {
+    const res = await fetch(`/api/bots/${editingBotId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!res.ok) { showToast('Error: ' + (await res.text()), 'error'); return; }
+    closeModal('editModal');
+    showToast('Bot updated', 'success');
+  } catch (e) { showToast('Network error: ' + e, 'error'); }
+}
+
+// ── Bot Controls ──────────────────────────────────────────────────────────────
+let _pendingStartBotId = null;
+
+// POST a start request, surfacing a budget/other rejection as a toast.
+async function postStart(id) {
+  const res = await fetch(`/api/bots/${id}/start`, { method: 'POST' });
+  if (!res.ok) {
+    let msg = 'Start failed';
+    try { msg = (await res.json()).error || msg; } catch (_) {}
+    showToast(msg, 'error');
+    return false;
+  }
+  return true;
+}
+
+async function startBot(id) {
+  showToast('Running 500-candle backtest…', 'info');
+  try {
+    const res  = await fetch(`/api/bots/${id}/backtest`);
+    const data = await res.json();
+
+    if (!res.ok || !data.ok) {
+      if (await postStart(id)) showToast('Backtest unavailable — bot started', 'info');
+      return;
+    }
+
+    if (data.trade_count === 0) {
+      if (await postStart(id)) showToast(`No trades found in ${data.candle_count} candles — bot started`, 'info');
+      return;
+    }
+
+    _pendingStartBotId = id;
+    _showBacktestModal(data);
+
+  } catch (e) {
+    await postStart(id);
+  }
+}
+
+function _showBacktestModal(data) {
+  const profitable = data.profitable !== false;
+  const pnl        = data.total_pnl;
+  const pnlSign    = pnl >= 0 ? '+' : '';
+  const pnlColor   = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+  const pnlStr     = `${pnlSign}$${Math.abs(pnl).toFixed(2)}`;
+
+  // Header title + confirm button colour
+  document.getElementById('backtestModalTitle').textContent = profitable
+    ? 'Backtest Results'
+    : '⚠ Backtest Warning — Unprofitable';
+  const confirmBtn = document.getElementById('backtestConfirmBtn');
+  confirmBtn.className = profitable ? 'btn btn-success' : 'btn btn-danger';
+  confirmBtn.textContent = profitable ? 'Start Bot' : 'Start Anyway';
+
+  // Summary row
+  document.getElementById('backtestSummary').innerHTML = `
+    <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;">
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Net P&amp;L</div>
+        <div style="font-size:20px;font-weight:700;color:${pnlColor}">${pnlSign}$${Math.abs(pnl).toFixed(2)}</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Trades</div>
+        <div style="font-size:20px;font-weight:700">${data.trade_count}</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Win Rate</div>
+        <div style="font-size:20px;font-weight:700;color:${data.win_rate >= 50 ? 'var(--green)' : 'var(--red)'}">${data.win_rate.toFixed(1)}%</div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Candles</div>
+        <div style="font-size:20px;font-weight:700">${data.candle_count}</div>
+      </div>
+      ${!profitable ? `<div style="background:#1a1000;border:1px solid #6b3a00;border-radius:6px;padding:8px 14px;font-size:12px;color:var(--yellow);margin-left:auto;">
+        This bot would not have been profitable. Are you sure?
+      </div>` : ''}
+    </div>`;
+
+  // Trades table
+  const trades = data.trades || [];
+  const wrap   = document.getElementById('backtestTradesWrap');
+  if (!trades.length) {
+    wrap.innerHTML = `<div class="empty-state"><span class="icon">📭</span>No closed trades in backtest.</div>`;
+  } else {
+    wrap.innerHTML = `<table class="trades-table" style="margin-top:12px">
+  <thead><tr>
+    <th>#</th><th>Dir</th><th>Start</th><th>End</th><th>Duration</th>
+    <th>Entry $</th><th>Exit $</th><th>Change</th><th>P&amp;L</th><th>Balance</th><th>Liq</th>
+  </tr></thead>
+  <tbody>${trades.map(t => {
+      const pnl    = parseFloat(t['P&L ($)'] || 0);
+      const pnlCls = pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
+      const pnlStr = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
+      return `<tr>
+    <td>${t['Trade #'] ?? ''}</td>
+    <td class="${t['Position'] === 'Long' ? 'long' : 'short'}">${t['Position'] ?? ''}</td>
+    <td>${fmtDate(t['Start Time'])}</td>
+    <td>${fmtDate(t['End Time'])}</td>
+    <td style="color:var(--muted)">${fmtDuration(t['Start Time'], t['End Time'])}</td>
+    <td>$${parseFloat(t['Start Price'] || 0).toFixed(2)}</td>
+    <td>$${parseFloat(t['End Price']  || 0).toFixed(2)}</td>
+    <td>${t['Price Change'] ?? ''}</td>
+    <td class="${pnlCls}">${pnlStr}</td>
+    <td>$${parseFloat(t['Balance ($)'] || 0).toFixed(2)}</td>
+    <td class="${t['Liquidated'] ? 'liq' : ''}">${t['Liquidated'] ? 'LIQ' : ''}</td>
+  </tr>`;
+    }).join('')}</tbody>
+</table>`;
+  }
+
+  document.getElementById('backtestModal').classList.add('open');
+}
+
+async function confirmStartBot() {
+  const id = _pendingStartBotId;
+  _pendingStartBotId = null;
+  document.getElementById('backtestModal').classList.remove('open');
+  if (!id) return;
+  if (await postStart(id)) showToast('Bot started', 'success');
+}
+
+function cancelBacktest() {
+  _pendingStartBotId = null;
+  document.getElementById('backtestModal').classList.remove('open');
+}
+
+async function stopBot(id)  { await fetch(`/api/bots/${id}/stop`,  { method: 'POST' }); }
+
+async function deleteBot(id) {
+  if (!confirm('Delete this bot and all its data?')) return;
+  await fetch(`/api/bots/${id}`, { method: 'DELETE' });
+  bots = bots.filter(b => b.id !== id);
+  renderGrid();
+  updateSummary();
+  showToast('Bot deleted', 'info');
+}
+
+async function duplicateBot(id) {
+  try {
+    const res = await fetch(`/api/bots/${id}/duplicate`, { method: 'POST' });
+    if (!res.ok) { showToast('Duplicate failed', 'error'); return; }
+    showToast('Bot duplicated', 'success');
+  } catch (e) { showToast('Network error: ' + e, 'error'); }
+}
+
+async function startAll() {
+  const res = await fetch('/api/bots/actions/start-all', { method: 'POST' });
+  let blocked = [];
+  try { blocked = (await res.json()).blocked || []; } catch (_) {}
+  if (blocked.length) {
+    showToast(`${blocked.length} live bot(s) blocked — over margin USDT budget`, 'error');
+  } else {
+    showToast('Starting all bots…', 'info');
+  }
+}
+async function stopAll() {
+  await fetch('/api/bots/actions/stop-all', { method: 'POST' });
+  showToast('Stopping all bots…', 'info');
+}
+
+// ── History Modal ─────────────────────────────────────────────────────────────
+function switchTab(tabId) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(tabId).classList.add('active');
+  const idx = ['tabTrades','tabChart','tabActivity'].indexOf(tabId);
+  document.querySelectorAll('.tab-btn')[idx].classList.add('active');
+}
+
+async function showHistory(id) {
+  const res = await fetch(`/api/bots/${id}`);
+  if (!res.ok) { showToast('Could not load bot', 'error'); return; }
+  const bot = await res.json();
+
+  document.getElementById('historyTitle').textContent = `History — ${bot.name}`;
+  switchTab('tabTrades');
+
+  // Trades tab
+  const trades = bot.trades || [];
+  const tradesPane = document.getElementById('tabTrades');
+  if (!trades.length) {
+    tradesPane.innerHTML = `<div class="empty-state"><span class="icon">📭</span>No completed trades yet.</div>`;
+  } else {
+    tradesPane.innerHTML = `<table class="trades-table">
+  <thead><tr><th>#</th><th>Dir</th><th>Start</th><th>End</th><th>Duration</th><th>Entry $</th><th>Exit $</th><th>Change</th><th>P&amp;L</th><th>Balance</th><th>Liq</th></tr></thead>
+  <tbody>${trades.map(t => {
+      const pnl = parseFloat(t['P&L ($)'] || 0);
+      const pnlCls = pnl >= 0 ? 'pnl-pos' : 'pnl-neg';
+      const pnlStr = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
+      return `<tr>
+  <td>${t['Trade #'] ?? ''}</td>
+  <td class="${t['Position'] === 'Long' ? 'long' : 'short'}">${t['Position'] ?? ''}</td>
+  <td>${fmtDate(t['Start Time'])}</td>
+  <td>${fmtDate(t['End Time'])}</td>
+  <td style="color:var(--muted)">${fmtDuration(t['Start Time'], t['End Time'])}</td>
+  <td>$${parseFloat(t['Start Price']||0).toFixed(2)}</td>
+  <td>$${parseFloat(t['End Price']||0).toFixed(2)}</td>
+  <td>${t['Price Change'] ?? ''}</td>
+  <td class="${pnlCls}">${pnlStr}</td>
+  <td>$${parseFloat(t['Balance ($)']||0).toFixed(2)}</td>
+  <td class="${t['Liquidated'] ? 'liq' : ''}">${t['Liquidated'] ? 'LIQ' : ''}</td>
+</tr>`;
+  }).join('')}</tbody></table>`;
+  }
+
+  // P&L chart tab
+  const chartPane = document.getElementById('tabChart');
+  chartPane.innerHTML = trades.length ? renderPnlChart(trades) : `<div class="empty-state"><span class="icon">📊</span>No trades to chart.</div>`;
+
+  // Activity tab
+  const actPane = document.getElementById('tabActivity');
+  const log = bot.activity_log || [];
+  if (!log.length) {
+    actPane.innerHTML = `<div class="empty-state"><span class="icon">📋</span>No activity recorded yet.</div>`;
+  } else {
+    actPane.innerHTML = `<ul class="activity-list">${log.map(item => {
+      const t = new Date(item.time).toLocaleString('en-GB', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+      const evLabel = item.event.replace(/_/g, ' ');
+      return `<li class="activity-item">
+  <span class="activity-time">${t}</span>
+  <span class="activity-event ev-${item.event}">${evLabel}</span>
+  <span class="activity-detail">${escHtml(item.detail)}</span>
+</li>`;
+    }).join('')}</ul>`;
+  }
+
+  document.getElementById('historyModal').classList.add('open');
+}
+
+function renderPnlChart(trades) {
+  const pnls = trades.map(t => parseFloat(t['P&L ($)'] || 0));
+  const absMax = Math.max(...pnls.map(Math.abs)) || 1;
+  const barW = Math.max(6, Math.min(24, Math.floor(700 / pnls.length) - 2));
+  const H = 120, MID = 60;
+  const totalW = pnls.length * (barW + 2);
+  const bars = pnls.map((pnl, i) => {
+    const color = pnl >= 0 ? 'var(--green)' : 'var(--red)';
+    const h = Math.max(2, Math.abs(pnl) / absMax * MID);
+    const x = i * (barW + 2);
+    const y = pnl >= 0 ? MID - h : MID;
+    return `<rect x="${x}" y="${y.toFixed(1)}" width="${barW}" height="${h.toFixed(1)}" fill="${color}" opacity="0.85" rx="1"/>`;
+  }).join('');
+  const wins  = pnls.filter(p => p > 0).length;
+  const total = pnls.length;
+  const sumPnl = pnls.reduce((a, b) => a + b, 0);
+  const sumColor = sumPnl >= 0 ? 'var(--green)' : 'var(--red)';
+  return `<div style="padding:16px">
+  <div style="display:flex;gap:24px;margin-bottom:12px;font-size:12px">
+    <span>Trades: <strong>${total}</strong></span>
+    <span>Wins: <strong style="color:var(--green)">${wins}</strong></span>
+    <span>Losses: <strong style="color:var(--red)">${total - wins}</strong></span>
+    <span>Net: <strong style="color:${sumColor}">${sumPnl >= 0 ? '+' : ''}$${sumPnl.toFixed(2)}</strong></span>
+  </div>
+  <div style="overflow-x:auto">
+    <svg width="${totalW}" height="${H}" viewBox="0 0 ${totalW} ${H}">
+      <line x1="0" y1="${MID}" x2="${totalW}" y2="${MID}" stroke="var(--border)" stroke-width="1"/>
+      ${bars}
+    </svg>
+  </div>
+</div>`;
+}
+
+// ── Settings Modal ────────────────────────────────────────────────────────────
+async function openSettingsModal() {
+  try {
+    const res  = await fetch('/api/settings/credentials');
+    const data = await res.json();
+    const statusEl = document.getElementById('credStatus');
+    if (data.has_credentials) {
+      statusEl.className = 'cred-status connected';
+      statusEl.textContent = `Connected via ${data.auth_type === 'api_key' ? 'API Key (Ed25519)' : 'Session Token'}${data.testnet ? ' · Testnet' : ''}`;
+    } else {
+      statusEl.className = 'cred-status disconnected';
+      statusEl.textContent = 'Not connected — no credentials set';
+    }
+    document.getElementById('sTestnet').checked = data.testnet || false;
+    if (data.auth_type === 'api_key') {
+      document.getElementById('sAuthMethod').value = 'api_key';
+      toggleAuthFields();
+    }
+  } catch (_) {}
+  document.getElementById('settingsModal').classList.add('open');
+}
+
+function toggleAuthFields() {
+  const method = document.getElementById('sAuthMethod').value;
+  document.getElementById('sTokenGroup').style.display  = method === 'token'   ? '' : 'none';
+  document.getElementById('sApiKeyGroup').style.display = method === 'api_key' ? '' : 'none';
+}
+
+async function saveCredentials() {
+  const method = document.getElementById('sAuthMethod').value;
+  const payload = {
+    testnet: document.getElementById('sTestnet').checked,
+    token:       method === 'token'   ? document.getElementById('sToken').value.trim()      : '',
+    public_key:  method === 'api_key' ? document.getElementById('sPublicKey').value.trim()  : '',
+    private_key: method === 'api_key' ? document.getElementById('sPrivateKey').value.trim() : '',
+  };
+  try {
+    const res = await fetch('/api/settings/credentials', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    if (!res.ok) { showToast('Save failed: ' + (await res.text()), 'error'); return; }
+    closeModal('settingsModal');
+    showToast('Credentials saved', 'success');
+    fetchWallet();
+  } catch (e) { showToast('Network error: ' + e, 'error'); }
+}
+
+// ── Margin Markets ────────────────────────────────────────────────────────────
+let marginMarkets = [];
+
+async function loadMarginMarkets() {
+  try {
+    const res  = await fetch('/api/margin-markets');
+    const data = await res.json();
+    if (data.ok && data.markets.length) {
+      marginMarkets = data.markets;
+      if (data.source === 'fallback')
+        showToast('Using cached symbol list — connect exchange for live data', 'info');
+    }
+  } catch (_) {}
+  // Populate create modal with default selection
+  populateSymbolSelect('f', 'zecusdt');
+}
+
+function populateSymbolSelect(prefix, defaultSymbol) {
+  const sel = document.getElementById(`${prefix}Symbol`);
+  if (!sel) return;
+
+  if (!marginMarkets.length) {
+    sel.innerHTML = '<option value="">No markets available — check connection</option>';
+    return;
+  }
+
+  const defaultLower = (defaultSymbol || '').toLowerCase();
+  sel.innerHTML = marginMarkets.map(m => {
+    const dir = m.buyEnabled && m.sellEnabled ? 'Long & Short'
+              : m.buyEnabled  ? 'Long only'
+              : 'Short only';
+    const dst = m.dstCurrency.toUpperCase();
+    const label = `${m.symbol} (${dst}) · ${dir} · max ${m.maxLeverage}×`;
+    const selected = m.symbol.toLowerCase() === defaultLower ? 'selected' : '';
+    return `<option value="${m.symbol.toLowerCase()}" data-max-lev="${m.maxLeverage}" data-buy="${m.buyEnabled}" data-sell="${m.sellEnabled}" data-fee="${m.feeRate}" ${selected}>${label}</option>`;
+  }).join('');
+
+  // Trigger hint update for the currently selected option
+  onMarketChange(prefix);
+}
+
+function onMarketChange(prefix) {
+  const sel    = document.getElementById(`${prefix}Symbol`);
+  const hint   = document.getElementById(`${prefix}SymbolHint`);
+  const levEl  = document.getElementById(`${prefix}Leverage`);
+  if (!sel || !sel.selectedOptions.length) return;
+
+  const opt    = sel.selectedOptions[0];
+  const maxLev = parseInt(opt.dataset.maxLev || 5);
+  const buy    = opt.dataset.buy === 'true';
+  const sell   = opt.dataset.sell === 'true';
+  const fee    = opt.dataset.fee  || '0.001';
+
+  // Clamp leverage to market max
+  if (levEl) {
+    levEl.max = maxLev;
+    if (parseInt(levEl.value) > maxLev) levEl.value = maxLev;
+  }
+
+  // Direction badge
+  let dirHtml = '';
+  if (buy && sell) dirHtml = `<span class="dir-both">↑↓ Long &amp; Short</span>`;
+  else if (buy)    dirHtml = `<span class="dir-long">↑ Long only</span>`;
+  else             dirHtml = `<span class="dir-short">↓ Short only</span>`;
+
+  const feeStr = (parseFloat(fee) * 100).toFixed(2);
+  if (hint) hint.innerHTML = `${dirHtml} &nbsp;·&nbsp; Max leverage: <strong>${maxLev}×</strong> &nbsp;·&nbsp; <span class="fee">Fee: ${feeStr}%/day</span>`;
+}
+
+// ── Tester tab ────────────────────────────────────────────────────────────────
+let testerConfig = {};
+let testerFavorites = new Set();   // lowercase symbols chosen for testing (saved as favorites)
+let testerStrategies = new Set();
+let testerTimeframes = new Set();
+let _testerConfigLoaded = false;
+let testerJobId = null;
+let testerPollTimer = null;
+let _testerPrefsTimer = null;
+
+function switchView(view) {
+  document.querySelectorAll('.view-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.main-tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('view' + view).classList.add('active');
+  document.querySelector(`.main-tab-btn[data-view="${view}"]`).classList.add('active');
+  if (view === 'Tester') initTesterTab();
+  if (view === 'Optimizer') initOptimizerTab();
+}
+
+async function initTesterTab() {
+  if (!marginMarkets.length) { try { await loadMarginMarkets(); } catch (_) {} }
+  if (!_testerConfigLoaded) {
+    try {
+      const res = await fetch('/api/tester/config');
+      testerConfig = await res.json();
+      testerFavorites  = new Set((testerConfig.favorites  || []).map(s => s.toLowerCase()));
+      testerStrategies = new Set(testerConfig.strategies || []);
+      testerTimeframes = new Set(testerConfig.timeframes || []);
+      if (testerConfig.credit   != null) document.getElementById('tCredit').value   = testerConfig.credit;
+      if (testerConfig.leverage != null) document.getElementById('tLeverage').value = testerConfig.leverage;
+      _testerConfigLoaded = true;
+    } catch (_) {}
+  }
+  renderTesterAssets();
+  renderTesterStrategies();
+  renderTesterTimeframes();
+  updateRunNote();
+}
+
+// ── Asset chips ─────────────────────────────────────────────────────────────
+function renderTesterAssets() {
+  const grid = document.getElementById('tAssetGrid');
+  if (!grid) return;
+  if (!marginMarkets.length) {
+    grid.innerHTML = '<div style="color:var(--muted);font-size:12px">No markets available — check exchange connection.</div>';
+    updateAssetCount();
+    return;
+  }
+  const q = (document.getElementById('tAssetSearch').value || '').toLowerCase().trim();
+  const items = marginMarkets.filter(m => !q || m.symbol.toLowerCase().includes(q));
+  grid.innerHTML = items.map(m => {
+    const sym = m.symbol.toLowerCase();
+    const active = testerFavorites.has(sym);
+    const dir = m.buyEnabled && m.sellEnabled ? '↕' : m.buyEnabled ? '↑' : '↓';
+    return `<span class="chip ${active ? 'active' : ''}" onclick="toggleAsset('${sym}')">
+      <span class="star">${active ? '★' : '☆'}</span>${escHtml(m.symbol)}<span class="chip-dir">${dir}</span>
+    </span>`;
+  }).join('') || '<div style="color:var(--muted);font-size:12px">No markets match the filter.</div>';
+  updateAssetCount();
+}
+
+function toggleAsset(sym) {
+  if (testerFavorites.has(sym)) testerFavorites.delete(sym);
+  else testerFavorites.add(sym);
+  renderTesterAssets();
+  saveTesterPrefs();
+}
+
+function testerSelectShown() {
+  const q = (document.getElementById('tAssetSearch').value || '').toLowerCase().trim();
+  marginMarkets
+    .filter(m => !q || m.symbol.toLowerCase().includes(q))
+    .forEach(m => testerFavorites.add(m.symbol.toLowerCase()));
+  renderTesterAssets();
+  saveTesterPrefs();
+}
+
+function testerClearAssets() {
+  testerFavorites.clear();
+  renderTesterAssets();
+  saveTesterPrefs();
+}
+
+function updateAssetCount() {
+  const el = document.getElementById('tAssetCount');
+  if (el) el.textContent = testerFavorites.size;
+  updateRunNote();
+}
+
+// ── Strategy / timeframe toggles ──────────────────────────────────────────────
+function renderTesterStrategies() {
+  const grid = document.getElementById('tStrategyGrid');
+  grid.innerHTML = (testerConfig.available_strategies || []).map(s => {
+    const checked = testerStrategies.has(s.value) ? 'checked' : '';
+    return `<div class="opt-toggle">
+      <input type="checkbox" id="ts-${s.value}" ${checked} onchange="toggleStrategy('${s.value}')">
+      <label for="ts-${s.value}">${escHtml(s.label)}</label>
+    </div>`;
+  }).join('');
+}
+
+function toggleStrategy(v) {
+  if (testerStrategies.has(v)) testerStrategies.delete(v); else testerStrategies.add(v);
+  updateRunNote(); saveTesterPrefs();
+}
+
+function renderTesterTimeframes() {
+  const grid = document.getElementById('tTimeframeGrid');
+  grid.innerHTML = (testerConfig.available_timeframes || []).map(t => {
+    const checked = testerTimeframes.has(t.value) ? 'checked' : '';
+    return `<div class="opt-toggle">
+      <input type="checkbox" id="tt-${t.value}" ${checked} onchange="toggleTimeframe('${t.value}')">
+      <label for="tt-${t.value}">${escHtml(t.label)}</label>
+    </div>`;
+  }).join('');
+}
+
+function toggleTimeframe(v) {
+  if (testerTimeframes.has(v)) testerTimeframes.delete(v); else testerTimeframes.add(v);
+  updateRunNote(); saveTesterPrefs();
+}
+
+function updateRunNote() {
+  const note = document.getElementById('tRunNote');
+  if (!note) return;
+  const a = testerFavorites.size, s = testerStrategies.size, t = testerTimeframes.size;
+  const combos = a * s * t;
+  const fetches = a * t;   // candle data is shared across strategies
+  const fpm = testerConfig.fetches_per_minute || 30;
+  if (!combos) { note.textContent = 'Select assets, strategies and timeframes to begin.'; return; }
+  const secs = Math.round(fetches * 60 / fpm);
+  const eta = secs >= 60 ? `~${Math.ceil(secs / 60)} min` : `~${secs}s`;
+  note.innerHTML = `<strong>${combos}</strong> backtests · <strong>${fetches}</strong> data fetch${fetches === 1 ? '' : 'es'} (throttled to ${fpm}/min, ${eta})`;
+}
+
+// ── Persistence ───────────────────────────────────────────────────────────────
+function saveTesterPrefs() {
+  updateAssetCount();
+  clearTimeout(_testerPrefsTimer);
+  _testerPrefsTimer = setTimeout(() => {
+    const payload = {
+      favorites:  [...testerFavorites],
+      strategies: [...testerStrategies],
+      timeframes: [...testerTimeframes],
+      credit:   parseFloat(document.getElementById('tCredit').value) || 100,
+      leverage: parseInt(document.getElementById('tLeverage').value) || 5,
+    };
+    fetch('/api/tester/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).catch(() => {});
+  }, 600);
+}
+
+// ── Run ───────────────────────────────────────────────────────────────────────
+async function runTester() {
+  if (!testerFavorites.size)  { showToast('Select at least one asset', 'error'); return; }
+  if (!testerStrategies.size) { showToast('Select at least one strategy', 'error'); return; }
+  if (!testerTimeframes.size) { showToast('Select at least one timeframe', 'error'); return; }
+  const payload = {
+    symbols:    [...testerFavorites],
+    strategies: [...testerStrategies],
+    timeframes: [...testerTimeframes],
+    credit:   parseFloat(document.getElementById('tCredit').value) || 100,
+    leverage: parseInt(document.getElementById('tLeverage').value) || 5,
+  };
+  try {
+    const res  = await fetch('/api/tester/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (!res.ok) { showToast('Error: ' + (data.error || 'run failed'), 'error'); return; }
+    testerJobId = data.job_id;
+    document.getElementById('tResults').innerHTML = '';
+    _setTesterRunning(true);
+    pollTester();
+  } catch (e) { showToast('Network error: ' + e, 'error'); }
+}
+
+function _setTesterRunning(running) {
+  document.getElementById('tRunBtn').style.display    = running ? 'none' : '';
+  document.getElementById('tCancelBtn').style.display = running ? '' : 'none';
+  if (running) document.getElementById('tProgressWrap').style.display = '';
+}
+
+async function cancelTester() {
+  if (!testerJobId) return;
+  try { await fetch(`/api/tester/run/${testerJobId}/cancel`, { method: 'POST' }); } catch (_) {}
+  showToast('Cancelling…', 'info');
+}
+
+async function pollTester() {
+  if (!testerJobId) return;
+  try {
+    const res = await fetch(`/api/tester/run/${testerJobId}`);
+    if (!res.ok) { stopTesterPolling(); _setTesterRunning(false); return; }
+    const job = await res.json();
+    renderTesterProgress(job);
+    renderTesterResults(job);
+    if (['done', 'cancelled', 'error'].includes(job.status)) {
+      stopTesterPolling();
+      _setTesterRunning(false);
+      if (job.status === 'done')           showToast(`Backtests complete (${job.total})`, 'success');
+      else if (job.status === 'cancelled') showToast('Backtests cancelled', 'info');
+      else                                 showToast('Run error: ' + (job.error || 'unknown'), 'error');
+    } else {
+      testerPollTimer = setTimeout(pollTester, 1000);
+    }
+  } catch (e) {
+    testerPollTimer = setTimeout(pollTester, 1500);
+  }
+}
+
+function stopTesterPolling() {
+  clearTimeout(testerPollTimer);
+  testerPollTimer = null;
+}
+
+function renderTesterProgress(job) {
+  const pct = job.total ? Math.round(job.completed / job.total * 100) : 0;
+  document.getElementById('tProgressWrap').style.display = '';
+  const fill = document.getElementById('tProgressFill');
+  fill.style.width = pct + '%';
+  fill.style.background = job.status === 'error' ? 'var(--red)' : job.status === 'done' ? 'var(--green)' : 'var(--accent)';
+  document.getElementById('tProgressCount').textContent = `${job.completed} / ${job.total}`;
+  const cur = job.status === 'running' ? (job.current || '…')
+            : job.status === 'done' ? '✓ Complete'
+            : job.status === 'cancelled' ? 'Cancelled'
+            : 'Error';
+  document.getElementById('tProgressCurrent').textContent = cur;
+}
+
+function renderTesterResults(job) {
+  const wrap = document.getElementById('tResults');
+  const results = job.results || [];
+  if (!results.length) { wrap.innerHTML = ''; return; }
+
+  const tfOrder = (testerConfig.available_timeframes || []).map(t => t.value);
+  const tfLabel = {};
+  (testerConfig.available_timeframes || []).forEach(t => { tfLabel[t.value] = t.label; });
+
+  const groups = {};
+  results.forEach(r => { (groups[r.timeframe] = groups[r.timeframe] || []).push(r); });
+  const tfs = Object.keys(groups).sort((a, b) => {
+    const ia = tfOrder.indexOf(a), ib = tfOrder.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  });
+  const medals = ['🥇', '🥈', '🥉'];
+
+  wrap.innerHTML = tfs.map(tf => {
+    const rows = groups[tf].slice().sort((a, b) => {
+      if (a.error && !b.error) return 1;
+      if (!a.error && b.error) return -1;
+      return b.total_pnl - a.total_pnl;
+    });
+    const okCount = rows.filter(r => !r.error).length;
+    let rank = 0;
+    const body = rows.map(r => {
+      if (r.error) {
+        return `<tr><td class="rank">–</td><td style="font-weight:700">${escHtml(r.symbol)}</td>
+          <td>${escHtml(r.strategy_label || r.strategy)}</td>
+          <td class="err-cell" colspan="5">${escHtml(r.error)}</td></tr>`;
+      }
+      rank++;
+      const medal  = rank <= 3 ? `<span class="medal">${medals[rank - 1]}</span>` : rank;
+      const pnlCls = r.total_pnl > 0 ? 'pnl-pos' : r.total_pnl < 0 ? 'pnl-neg' : '';
+      const pnlStr = (r.total_pnl >= 0 ? '+' : '') + '$' + r.total_pnl.toFixed(2);
+      const wrColor = r.win_rate >= 60 ? 'var(--green)' : r.win_rate >= 45 ? 'var(--yellow)' : 'var(--red)';
+      const prof = r.profitable === true ? '<span style="color:var(--green)">✓</span>'
+                 : r.profitable === false ? '<span style="color:var(--red)">✗</span>'
+                 : '<span style="color:var(--muted)">—</span>';
+      return `<tr class="${rank === 1 ? 'best' : ''}">
+        <td class="rank">${medal}</td>
+        <td style="font-weight:700">${escHtml(r.symbol)}</td>
+        <td>${escHtml(r.strategy_label || r.strategy)}</td>
+        <td class="${pnlCls}">${pnlStr}</td>
+        <td style="color:${wrColor};font-weight:700">${r.win_rate.toFixed(1)}%</td>
+        <td>${r.trade_count}</td>
+        <td>${r.candle_count}</td>
+        <td>${prof}</td>
+      </tr>`;
+    }).join('');
+    return `<div class="tf-result">
+      <div class="tf-result-head">
+        <span class="tf-name">${escHtml(tfLabel[tf] || fmtTF(tf))}</span>
+        <span class="tf-sub">${okCount} of ${rows.length} combos · sorted by net P&amp;L</span>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="result-table">
+          <thead><tr><th>#</th><th>Asset</th><th>Strategy</th><th>Net P&amp;L</th><th>Win Rate</th><th>Trades</th><th>Candles</th><th>Profit?</th></tr></thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════ OPTIMIZER TAB ═══════════════════
+let optimizerConfig = {};
+let _optimizerConfigLoaded = false;
+let optimizerJobId = null;
+let optimizerPollTimer = null;
+let _optimizerPrefsTimer = null;
+let _candleWarnShown = false;
+let _optCharts = []; // lightweight-charts instances; destroyed on each new run
+let _candleWarnContext = 'optimizer'; // 'optimizer' | 'tester' — routes modal buttons
+
+async function initOptimizerTab() {
+  if (!marginMarkets.length) { try { await loadMarginMarkets(); } catch (_) {} }
+  if (!_optimizerConfigLoaded) {
+    try {
+      const res = await fetch('/api/optimizer/config');
+      optimizerConfig = await res.json();
+      _optimizerConfigLoaded = true;
+    } catch (_) { return; }
+  }
+  populateOptimizerControls();
+  onOptimizerStrategyChange();
+  updateOptimizerNote();
+}
+
+function populateOptimizerControls() {
+  // Symbol select from margin markets.
+  const symSel = document.getElementById('oSymbol');
+  const savedSym = (optimizerConfig.symbol || '').toLowerCase();
+  symSel.innerHTML = marginMarkets.map(m => {
+    const sym = m.symbol.toLowerCase();
+    return `<option value="${sym}" ${sym === savedSym ? 'selected' : ''}>${escHtml(m.symbol)}</option>`;
+  }).join('') || '<option value="">No markets available</option>';
+
+  // Strategy select.
+  const stratSel = document.getElementById('oStrategy');
+  stratSel.innerHTML = (optimizerConfig.available_strategies || []).map(s =>
+    `<option value="${s.value}" ${s.value === optimizerConfig.strategy ? 'selected' : ''}>${escHtml(s.label)}</option>`
+  ).join('');
+
+  // Timeframe select.
+  const tfSel = document.getElementById('oTimeframe');
+  tfSel.innerHTML = (optimizerConfig.available_timeframes || []).map(t =>
+    `<option value="${t.value}" ${t.value === optimizerConfig.timeframe ? 'selected' : ''}>${escHtml(t.label)}</option>`
+  ).join('');
+
+  if (optimizerConfig.candles  != null) document.getElementById('oCandles').value  = optimizerConfig.candles;
+  if (optimizerConfig.credit   != null) document.getElementById('oCredit').value   = optimizerConfig.credit;
+  if (optimizerConfig.leverage != null) document.getElementById('oLeverage').value = optimizerConfig.leverage;
+  if (optimizerConfig.maxiter  != null) document.getElementById('oMaxiter').value  = optimizerConfig.maxiter;
+
+  // Restore saved objective
+  const savedObj = optimizerConfig.objective || 'profit';
+  const objEl = document.querySelector(`input[name="oObjective"][value="${savedObj}"]`);
+  if (objEl) objEl.checked = true;
+  if (optimizerConfig.min_price_change != null) document.getElementById('oMinPriceChange').value = optimizerConfig.min_price_change;
+  _onObjectiveChange();
+
+  // CPU-cores select: "Auto" (0) plus 1..max_cores. Auto shows what it resolves to.
+  const coresSel = document.getElementById('oCores');
+  const maxCores = optimizerConfig.max_cores || 1;
+  const autoCores = optimizerConfig.default_cores || maxCores;
+  const savedCores = optimizerConfig.cores || 0;
+  let opts = `<option value="0" ${savedCores === 0 ? 'selected' : ''}>Auto (${autoCores})</option>`;
+  for (let n = 1; n <= maxCores; n++) {
+    const label = n === maxCores ? `${n} (all)` : `${n}`;
+    opts += `<option value="${n}" ${n === savedCores ? 'selected' : ''}>${label}</option>`;
+  }
+  coresSel.innerHTML = opts;
+}
+
+function _optimizerStrategySpec() {
+  const v = document.getElementById('oStrategy').value;
+  return (optimizerConfig.available_strategies || []).find(s => s.value === v);
+}
+
+function onOptimizerStrategyChange() {
+  const spec = _optimizerStrategySpec();
+  const section = document.getElementById('oParamSection');
+  const grid = document.getElementById('oParamSpace');
+  if (!spec || !spec.params) { section.style.display = 'none'; saveOptimizerPrefs(); return; }
+  const savedBounds = optimizerConfig.custom_bounds || {};
+  grid.innerHTML = spec.params.map(p => {
+    const saved = savedBounds[p.name];
+    const lo = (saved && saved[0] != null) ? saved[0] : p.low;
+    const hi = (saved && saved[1] != null) ? saved[1] : p.high;
+    return `<div class="opt-param-row">
+      <span class="pname">${escHtml(p.name)}</span>
+      <span class="pcontrols">
+        <input type="number" class="opt-range-input" id="op-lo-${p.name}" value="${lo}" min="1" max="9999" onchange="saveOptimizerPrefs()">
+        <span>–</span>
+        <input type="number" class="opt-range-input" id="op-hi-${p.name}" value="${hi}" min="1" max="9999" onchange="saveOptimizerPrefs()">
+        <span class="pdef">· def ${p.default}</span>
+      </span>
+    </div>`;
+  }).join('');
+  section.style.display = '';
+  updateOptimizerNote();
+  saveOptimizerPrefs();
+}
+
+function _getCustomBounds() {
+  const spec = _optimizerStrategySpec();
+  if (!spec || !spec.params) return null;
+  const bounds = {};
+  spec.params.forEach(p => {
+    const loRaw = parseInt(document.getElementById(`op-lo-${p.name}`)?.value);
+    const hiRaw = parseInt(document.getElementById(`op-hi-${p.name}`)?.value);
+    bounds[p.name] = [Number.isNaN(loRaw) ? p.low : loRaw, Number.isNaN(hiRaw) ? p.high : hiRaw];
+  });
+  return bounds;
+}
+
+function resetOptimizerBounds() {
+  const spec = _optimizerStrategySpec();
+  if (!spec || !spec.params) return;
+  spec.params.forEach(p => {
+    const loEl = document.getElementById(`op-lo-${p.name}`);
+    const hiEl = document.getElementById(`op-hi-${p.name}`);
+    if (loEl) loEl.value = p.low;
+    if (hiEl) hiEl.value = p.high;
+  });
+  saveOptimizerPrefs();
+  showToast('Bounds reset to defaults', 'info');
+}
+
+function updateOptimizerNote() {
+  const note = document.getElementById('oRunNote');
+  if (!note) return;
+  const spec = _optimizerStrategySpec();
+  const n = spec && spec.params ? spec.params.length : 0;
+  if (!n) { note.textContent = ''; return; }
+  note.innerHTML = `Searching <strong>${n}</strong> inputs via Differential Evolution · one data fetch, then pure-CPU backtests.`;
+}
+
+function saveOptimizerPrefs() {
+  clearTimeout(_optimizerPrefsTimer);
+  _optimizerPrefsTimer = setTimeout(() => {
+    fetch('/api/optimizer/prefs', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(_optimizerPayload()),
+    }).catch(() => {});
+  }, 600);
+}
+
+function _onObjectiveChange() {
+  const isLargeMove = document.querySelector('input[name="oObjective"]:checked')?.value === 'large_move';
+  const row = document.getElementById('oLargeMoveRow');
+  if (row) row.style.display = isLargeMove ? 'flex' : 'none';
+}
+
+function _optimizerPayload() {
+  return {
+    symbol:           document.getElementById('oSymbol').value || '',
+    strategy:         document.getElementById('oStrategy').value || '',
+    timeframe:        document.getElementById('oTimeframe').value || '240',
+    candles:          parseInt(document.getElementById('oCandles').value) || 1000,
+    credit:           parseFloat(document.getElementById('oCredit').value) || 100,
+    leverage:         parseInt(document.getElementById('oLeverage').value) || 5,
+    cores:            parseInt(document.getElementById('oCores').value) || 0,
+    maxiter:          parseInt(document.getElementById('oMaxiter')?.value) || 30,
+    objective:        document.querySelector('input[name="oObjective"]:checked')?.value || 'profit',
+    min_price_change: parseFloat(document.getElementById('oMinPriceChange')?.value) || 5,
+    custom_bounds:    _getCustomBounds(),
+  };
+}
+
+async function runOptimizer() {
+  const payload = _optimizerPayload();
+  if (!payload.symbol)   { showToast('Select a symbol', 'error'); return; }
+  if (!payload.strategy) { showToast('Select a strategy', 'error'); return; }
+  if (payload.custom_bounds) {
+    for (const [name, [lo, hi]] of Object.entries(payload.custom_bounds)) {
+      if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo >= hi) {
+        showToast(`"${name}": min (${lo}) must be less than max (${hi})`, 'error');
+        return;
+      }
+    }
+  }
+  try {
+    const res  = await fetch('/api/optimizer/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (!res.ok) {
+      const msg = data.error || (Array.isArray(data.detail) ? data.detail.map(d => d.msg).join('; ') : data.detail) || 'run failed';
+      showToast('Error: ' + msg, 'error');
+      return;
+    }
+    optimizerJobId = data.job_id;
+    _candleWarnShown = false;
+    document.getElementById('oResults').innerHTML = '';
+    destroyOptCharts();
+    _setOptimizerRunning(true);
+    pollOptimizer();
+  } catch (e) { showToast('Network error: ' + e, 'error'); }
+}
+
+function _setOptimizerRunning(running) {
+  document.getElementById('oRunBtn').style.display    = running ? 'none' : '';
+  document.getElementById('oCancelBtn').style.display = running ? '' : 'none';
+  if (running) document.getElementById('oProgressWrap').style.display = '';
+}
+
+function renderOptimizerProgress(job) {
+  const wrap = document.getElementById('oProgressWrap');
+  wrap.style.display = '';
+  const pct = job.maxiter ? Math.min(100, Math.round(job.iteration / job.maxiter * 100)) : 0;
+  const fill = document.getElementById('oProgressFill');
+  fill.style.width = (job.status === 'done' ? 100 : pct) + '%';
+  fill.style.background = job.status === 'error' ? 'var(--red)' : job.status === 'done' ? 'var(--green)' : 'var(--accent)';
+  let bestInfo = '';
+  if (job.best_pnl != null) bestInfo += ` · P&L $${job.best_pnl.toFixed(2)}`;
+  if (job.best_summary?.win_rate != null) bestInfo += ` · WR ${job.best_summary.win_rate.toFixed(1)}%`;
+  const cur = job.status === 'running' ? `Searching…${bestInfo}`
+            : job.status === 'pending' ? 'Starting…'
+            : job.status === 'done' ? '✓ Complete'
+            : job.status === 'cancelled' ? 'Cancelled'
+            : 'Error';
+  document.getElementById('oProgressCurrent').textContent = cur;
+  const cores = job.workers > 1 ? ` · ${job.workers} cores` : '';
+  const objLabel = {profit:'profit',winrate:'win rate',balanced:'balanced'}[job.objective] || 'profit';
+  document.getElementById('oProgressCount').textContent = `${job.evaluations} backtests · gen ${job.iteration}/${job.maxiter}${cores} · goal: ${objLabel}`;
+}
+
+async function cancelOptimizer() {
+  if (!optimizerJobId) return;
+  try { await fetch(`/api/optimizer/run/${optimizerJobId}/cancel`, { method: 'POST' }); } catch (_) {}
+  showToast('Cancelling…', 'info');
+}
+
+async function pollOptimizer() {
+  if (!optimizerJobId) return;
+  try {
+    const res = await fetch(`/api/optimizer/run/${optimizerJobId}`);
+    if (!res.ok) { stopOptimizerPolling(); _setOptimizerRunning(false); return; }
+    const job = await res.json();
+    renderOptimizerProgress(job);
+    renderOptimizerResults(job);
+    if (['done', 'cancelled', 'error'].includes(job.status)) {
+      stopOptimizerPolling();
+      _setOptimizerRunning(false);
+      if (job.status === 'done')           showToast('Optimization complete', 'success');
+      else if (job.status === 'cancelled') showToast('Optimization cancelled', 'info');
+      else                                 showToast('Run error: ' + (job.error || 'unknown'), 'error');
+    } else {
+      if (!_candleWarnShown && job.candle_count > 0 && job.candle_count < job.candles - 1) {
+        _candleWarnShown = true;
+        _candleWarnContext = 'optimizer';
+        document.getElementById('candleWarnMsg').textContent =
+          `The API returned ${job.candle_count} candles instead of the ${job.candles} you requested. ` +
+          `The optimizer is running with fewer data points, which may reduce result quality.`;
+        document.getElementById('candleWarnModal').classList.add('open');
+      }
+      optimizerPollTimer = setTimeout(pollOptimizer, 1000);
+    }
+  } catch (e) {
+    optimizerPollTimer = setTimeout(pollOptimizer, 1500);
+  }
+}
+
+function stopOptimizerPolling() {
+  clearTimeout(optimizerPollTimer);
+  optimizerPollTimer = null;
+}
+
+function _candleWarnContinue() {
+  closeModal('candleWarnModal');
+}
+
+async function _candleWarnRetry() {
+  closeModal('candleWarnModal');
+  if (_candleWarnContext === 'tester') {
+    await cancelOptimizerTester();
+    await runOptimizerTester();
+  } else {
+    await cancelOptimizer();
+    await runOptimizer();
+  }
+}
+
+async function _candleWarnCancel() {
+  closeModal('candleWarnModal');
+  if (_candleWarnContext === 'tester') {
+    await cancelOptimizerTester();
+  } else {
+    await cancelOptimizer();
+  }
+}
+
+
+function renderOptimizerResults(job) {
+  const wrap = document.getElementById('oResults');
+  if (job.status === 'error') {
+    wrap.innerHTML = `<div class="tester-section"><div class="err-cell" style="color:var(--yellow)">${escHtml(job.error || 'error')}</div></div>`;
+    return;
+  }
+
+  let histHtml = '';
+
+  if (job.best_trades && job.best_trades.length > 0) {
+    const tradeRows = job.best_trades.map(t => {
+      const pnl = parseFloat(t['P&L ($)'] || 0);
+      const pnlCls = pnl > 0 ? 'pnl-pos' : pnl < 0 ? 'pnl-neg' : '';
+      const pnlStr = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
+      const posColor = t['Position'] === 'Long' ? 'var(--green)' : 'var(--red)';
+      const liqMark = t['Liquidated'] ? ' <span style="color:var(--red);font-size:0.75em">LIQ</span>' : '';
+      return `<tr class="${t['Liquidated'] ? 'liq-row' : ''}">
+        <td style="color:var(--muted)">#${t['Trade #']}</td>
+        <td style="color:${posColor}">${escHtml(t['Position'] || '')}</td>
+        <td style="color:var(--muted);font-size:0.82em">${escHtml(String(t['Start Time'] || ''))}</td>
+        <td style="color:var(--muted);font-size:0.82em">${escHtml(String(t['End Time'] || ''))}</td>
+        <td class="${pnlCls}">${pnlStr}${liqMark}</td>
+        <td style="color:var(--muted)">${escHtml(String(t['Balance ($)'] || ''))}</td>
+      </tr>`;
+    }).join('');
+    histHtml = `
+      <div class="tester-section">
+        <h3>Best Backtest History</h3>
+        <div class="hint">Individual trades from the best parameter set found. Liquidated trades are marked LIQ.</div>
+        <div style="overflow-x:auto;max-height:260px;overflow-y:auto">
+          <table class="opt-history-table">
+            <thead><tr><th>#</th><th>Side</th><th>Entry Time</th><th>Exit Time</th><th>P&amp;L</th><th>Balance</th></tr></thead>
+            <tbody>${tradeRows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  }
+
+  if (!job.best_summary || !job.params || !job.params.length) {
+    wrap.innerHTML = histHtml;
+    return;
+  }
+
+  const s = job.best_summary;
+  const base = job.baseline || {};
+  const bestPnl = job.best_pnl != null ? job.best_pnl : (s.total_pnl || 0);
+  const basePnl = base.total_pnl != null ? base.total_pnl : 0;
+  const delta = bestPnl - basePnl;
+  const pnlCls = bestPnl > 0 ? 'pnl-pos' : bestPnl < 0 ? 'pnl-neg' : '';
+  const deltaStr = (delta >= 0 ? '+' : '') + '$' + delta.toFixed(2);
+  const wrColor = (s.win_rate || 0) >= 60 ? 'var(--green)' : (s.win_rate || 0) >= 45 ? 'var(--yellow)' : 'var(--red)';
+
+  const paramRows = job.params.map(p => {
+    const changed = String(p.value) !== String(p.default);
+    return `<tr class="${changed ? 'changed' : ''}">
+      <td>${escHtml(p.name)}</td>
+      <td class="tuned-val">${p.value}</td>
+      <td style="color:var(--muted)">${p.default}</td>
+      <td style="color:var(--muted)">${p.low}–${p.high}</td>
+    </tr>`;
+  }).join('');
+
+  const isDone = job.status === 'done' || job.status === 'cancelled';
+  const applyBtn = isDone
+    ? `<button class="btn btn-success btn-sm" onclick="applyOptimizerToBot()" style="margin-top:12px">→ Apply to New Bot</button>`
+    : '';
+
+  wrap.innerHTML = histHtml + `
+    <div class="tester-section">
+      <h3>Best Inputs Found</h3>
+      <div class="hint">${escHtml(job.symbol)} · ${escHtml(job.strategy_label || job.strategy)} · ${escHtml(fmtTF(job.timeframe))} · ${job.candle_count} candles · goal: ${escHtml({profit:'highest profit',winrate:'highest win rate',balanced:'balanced'}[job.objective] || job.objective)}</div>
+      <div class="opt-summary">
+        <div class="opt-stat"><div class="lbl">Optimized P&amp;L</div><div class="val ${pnlCls}">${bestPnl >= 0 ? '+' : ''}$${bestPnl.toFixed(2)}</div></div>
+        <div class="opt-stat"><div class="lbl">vs. Defaults</div><div class="val" style="color:${delta >= 0 ? 'var(--green)' : 'var(--red)'}">${deltaStr}</div></div>
+        <div class="opt-stat"><div class="lbl">Win Rate</div><div class="val" style="color:${wrColor}">${(s.win_rate || 0).toFixed(1)}%</div></div>
+        <div class="opt-stat"><div class="lbl">Trades</div><div class="val">${s.trade_count || 0}</div></div>
+        <div class="opt-stat"><div class="lbl">Backtests Run</div><div class="val">${job.evaluations}</div></div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="opt-result-table">
+          <thead><tr><th>Input</th><th>Tuned</th><th>Default</th><th>Range</th></tr></thead>
+          <tbody>${paramRows}</tbody>
+        </table>
+      </div>
+      <div class="hint" style="margin-top:10px">Baseline (default inputs): net P&amp;L $${basePnl.toFixed(2)} · ${(base.win_rate || 0).toFixed(1)}% win · ${base.trade_count || 0} trades. Highlighted rows changed from the default.</div>
+      ${applyBtn}
+    </div>`;
+
+  // Store current job for the Apply button.
+  window._lastOptimizerJob = job;
+
+  // Render chart once data is available (only when job is finished)
+  if (job.chart_data) renderOptChart(job);
+}
+
+// ── Optimizer chart ───────────────────────────────────────────────────────────
+
+function destroyOptCharts() {
+  _optCharts.forEach(c => { try { c.remove(); } catch (_) {} });
+  _optCharts = [];
+  const oChart = document.getElementById('oChart');
+  oChart.innerHTML = '';
+  oChart.dataset.sig = '';
+}
+
+// ── Shared 3-panel chart builder ─────────────────────────────────────────────
+// Renders a price + StochRSI + RSI/MACD chart into `outerEl`.
+// `idSuffix` must be unique per chart instance (prevents duplicate DOM IDs).
+// `chartsArr` receives the 3 LightweightCharts instances for later cleanup.
+function _buildOptChart(outerEl, chartData, trades, title, chartsArr, idSuffix) {
+  const ind     = chartData.indicators || {};
+  const candles = chartData.candles;
+  const priceId = `_ocp_${idSuffix}`;
+  const stochId = `_ocs_${idSuffix}`;
+  const ind2Id  = `_oci_${idSuffix}`;
+
+  outerEl.innerHTML = `
+    <div class="tester-section" style="margin-top:16px;padding-bottom:8px">
+      <h3 style="margin-bottom:8px">${escHtml(title)}</h3>
+      <div id="${priceId}" style="height:340px;border-radius:4px;overflow:hidden"></div>
+      <div style="color:var(--muted);font-size:0.75em;margin:4px 0 2px 4px">STOCH RSI</div>
+      <div id="${stochId}" style="height:150px;border-radius:4px;overflow:hidden"></div>
+      <div style="color:var(--muted);font-size:0.75em;margin:4px 0 2px 4px">${ind.macd_hist ? 'MACD HISTOGRAM' : 'RSI'}</div>
+      <div id="${ind2Id}"  style="height:120px;border-radius:4px;overflow:hidden"></div>
+    </div>`;
+
+  const theme = {
+    layout:   { background: { color: 'transparent' }, textColor: '#8b949e' },
+    grid:     { vertLines: { color: '#1e2029' }, horzLines: { color: '#1e2029' } },
+    timeScale:{ timeVisible: true, secondsVisible: false, borderColor: '#2a3447' },
+    crosshair:{ mode: 0 },
+    rightPriceScale: { borderColor: '#2a3447', minimumWidth: 64 },
+  };
+
+  const toSeries = (arr) => candles.map((c, i) =>
+    (arr && arr[i] != null) ? { time: c.time, value: arr[i] } : { time: c.time });
+
+  // Price chart
+  const priceDiv  = document.getElementById(priceId);
+  const priceChart = LightweightCharts.createChart(priceDiv, { ...theme, autoSize: true, height: 340 });
+  chartsArr.push(priceChart);
+
+  const candleSeries = priceChart.addCandlestickSeries({
+    upColor: '#4ade80', downColor: '#f87171',
+    borderUpColor: '#4ade80', borderDownColor: '#f87171',
+    wickUpColor: '#4ade80', wickDownColor: '#f87171',
+  });
+  candleSeries.setData(candles);
+
+  if (ind.ema) {
+    const emaSeries = priceChart.addLineSeries({ color: '#fbbf24', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'EMA' });
+    emaSeries.setData(toSeries(ind.ema));
+  }
+
+  const markers = [];
+  trades.forEach(t => {
+    const isLong = t.Position === 'Long';
+    if (t._start_ts) markers.push({ time: t._start_ts, position: isLong ? 'belowBar' : 'aboveBar', color: isLong ? '#4ade80' : '#f87171', shape: isLong ? 'arrowUp' : 'arrowDown', size: 1 });
+    if (t._end_ts)   markers.push({ time: t._end_ts,   position: isLong ? 'aboveBar' : 'belowBar', color: t.Liquidated ? '#f97316' : (isLong ? '#86efac' : '#fca5a5'), shape: t.Liquidated ? 'square' : 'circle', size: 1 });
+  });
+  markers.sort((a, b) => a.time - b.time);
+  candleSeries.setMarkers(markers);
+
+  // StochRSI panel
+  const stochDiv  = document.getElementById(stochId);
+  const stochChart = LightweightCharts.createChart(stochDiv, { ...theme, autoSize: true, height: 150 });
+  chartsArr.push(stochChart);
+
+  if (ind.stoch_k) {
+    const kSeries = stochChart.addLineSeries({ color: '#38bdf8', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'K' });
+    kSeries.setData(toSeries(ind.stoch_k));
+    const dSeries = stochChart.addLineSeries({ color: '#f97316', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'D' });
+    dSeries.setData(toSeries(ind.stoch_d));
+    if (ind.oversold   != null) kSeries.createPriceLine({ price: ind.oversold,   color: '#4ade8055', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'OS' });
+    if (ind.overbought != null) kSeries.createPriceLine({ price: ind.overbought, color: '#f8717155', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'OB' });
+  }
+
+  // RSI or MACD panel
+  const ind2Div  = document.getElementById(ind2Id);
+  const ind2Chart = LightweightCharts.createChart(ind2Div, { ...theme, autoSize: true, height: 120 });
+  chartsArr.push(ind2Chart);
+
+  if (ind.macd_hist) {
+    const macdSeries = ind2Chart.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false, title: 'MACD' });
+    macdSeries.setData(candles.map((c, i) => {
+      const v = ind.macd_hist[i];
+      return v != null ? { time: c.time, value: v, color: v >= 0 ? '#4ade8088' : '#f8717188' } : { time: c.time };
+    }));
+  } else if (ind.rsi) {
+    const rsiSeries = ind2Chart.addLineSeries({ color: '#a78bfa', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'RSI' });
+    rsiSeries.setData(toSeries(ind.rsi));
+    if (ind.rsi_ma) {
+      const rsiMaSeries = ind2Chart.addLineSeries({ color: '#f97316', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'MA' });
+      rsiMaSeries.setData(toSeries(ind.rsi_ma));
+    }
+    rsiSeries.createPriceLine({ price: 50, color: '#ffffff22', lineWidth: 1, lineStyle: 1 });
+  }
+
+  // Sync time-scale across all three panels
+  const panels = [priceChart, stochChart, ind2Chart];
+  panels.forEach((src, si) => {
+    src.timeScale().subscribeVisibleLogicalRangeChange(range => {
+      if (!range) return;
+      panels.forEach((tgt, ti) => { if (ti !== si) tgt.timeScale().setVisibleLogicalRange(range); });
+    });
+  });
+
+  priceChart.timeScale().fitContent();
+}
+
+function renderOptChart(job) {
+  const container = document.getElementById('oChart');
+  if (!job?.chart_data?.candles?.length) { destroyOptCharts(); return; }
+  const cd  = job.chart_data;
+  const sig = cd.candles[0]?.time + ':' + cd.candles[cd.candles.length - 1]?.time + ':' + cd.strategy;
+  if (container.dataset.sig === sig) return;
+  destroyOptCharts();
+  container.dataset.sig = sig;
+  _buildOptChart(container, cd, job.best_trades || [], 'BEST BACKTEST CHART', _optCharts, 'main');
+}
+
+function applyOptimizerToBot() {
+  const job = window._lastOptimizerJob;
+  if (!job || !job.best_params) { showToast('No optimization result to apply', 'error'); return; }
+
+  // Store the optimized params — submitCreate() will include them.
+  _pendingOptParams = job.best_params;
+
+  // Pre-fill the Create Bot modal with the optimizer's settings.
+  populateSymbolSelect('f');
+  setTimeout(() => {
+    // Find and select the matching symbol.
+    const symSel = document.getElementById('fSymbol');
+    const target = (job.symbol || '').toLowerCase().replace('/', '');
+    for (const opt of symSel.options) {
+      if (opt.value.toLowerCase().replace('/', '') === target) { opt.selected = true; break; }
+    }
+    document.getElementById('fStrategy').value = job.strategy || '';
+    const tfSel = document.getElementById('fTimeframe');
+    for (const opt of tfSel.options) { if (opt.value === String(job.timeframe)) { opt.selected = true; break; } }
+    document.getElementById('fCredit').value  = job.credit  || 100;
+    document.getElementById('fLeverage').value = job.leverage || 5;
+    document.getElementById('fName').value = `${job.symbol?.toUpperCase() || ''} ${job.strategy || ''} (Optimized)`;
+    document.getElementById('createModal').classList.add('open');
+  }, 50);
+}
+
+// ═══════════════════ OPTIMIZER TESTER TAB ═══════════════════
+let optimizerTesterJobId = null;
+let optimizerTesterPollTimer = null;
+let _candleWarnTesterShown = false;
+let _optTesterCharts = [];
+let _testerControlsInitialized = false; // prevent form reset on every tab switch
+
+function switchOptimizerSubTab(name) {
+  const isOpt = name === 'optimizer';
+  document.getElementById('optimizerPane').style.display      = isOpt ? '' : 'none';
+  document.getElementById('optimizerTesterPane').style.display = isOpt ? 'none' : '';
+  const optBtn = document.getElementById('subTabOptimizer');
+  const tstBtn = document.getElementById('subTabTester');
+  optBtn.style.borderBottomColor = isOpt ? 'var(--accent)' : 'transparent';
+  optBtn.style.color             = isOpt ? 'var(--fg)' : 'var(--muted)';
+  optBtn.style.fontWeight        = isOpt ? '500' : 'normal';
+  tstBtn.style.borderBottomColor = isOpt ? 'transparent' : 'var(--accent)';
+  tstBtn.style.color             = isOpt ? 'var(--muted)' : 'var(--fg)';
+  tstBtn.style.fontWeight        = isOpt ? 'normal' : '500';
+  if (!isOpt) {
+    initOptimizerTesterTab();
+    // Re-fit charts in case they were rendered while this tab was hidden.
+    _optTesterCharts.forEach(c => { try { c.timeScale().fitContent(); } catch (_) {} });
+  }
+}
+
+async function initOptimizerTesterTab() {
+  if (!marginMarkets.length) { try { await loadMarginMarkets(); } catch (_) {} }
+  if (!_optimizerConfigLoaded) {
+    try {
+      const res = await fetch('/api/optimizer/config');
+      optimizerConfig = await res.json();
+      _optimizerConfigLoaded = true;
+    } catch (_) { return; }
+  }
+  // Only populate on first visit — prevents form values from resetting when the user
+  // switches away and back (unlike the regular optimizer, the tester has no server-side
+  // prefs endpoint to persist its settings between tab switches).
+  if (!_testerControlsInitialized) {
+    populateOptimizerTesterControls();
+    onOptimizerTesterStrategyChange();
+    _testerControlsInitialized = true;
+  }
+}
+
+function populateOptimizerTesterControls() {
+  const symSel = document.getElementById('otSymbol');
+  const savedSym = (optimizerConfig.symbol || '').toLowerCase();
+  symSel.innerHTML = marginMarkets.map(m => {
+    const sym = m.symbol.toLowerCase();
+    return `<option value="${sym}" ${sym === savedSym ? 'selected' : ''}>${escHtml(m.symbol)}</option>`;
+  }).join('') || '<option value="">No markets available</option>';
+
+  const stratSel = document.getElementById('otStrategy');
+  stratSel.innerHTML = (optimizerConfig.available_strategies || []).map(s =>
+    `<option value="${s.value}" ${s.value === optimizerConfig.strategy ? 'selected' : ''}>${escHtml(s.label)}</option>`
+  ).join('');
+
+  const tfSel = document.getElementById('otTimeframe');
+  tfSel.innerHTML = (optimizerConfig.available_timeframes || []).map(t =>
+    `<option value="${t.value}" ${t.value === optimizerConfig.timeframe ? 'selected' : ''}>${escHtml(t.label)}</option>`
+  ).join('');
+
+  if (optimizerConfig.candles  != null) document.getElementById('otCandles').value  = optimizerConfig.candles;
+  if (optimizerConfig.credit   != null) document.getElementById('otCredit').value   = optimizerConfig.credit;
+  if (optimizerConfig.leverage != null) document.getElementById('otLeverage').value = optimizerConfig.leverage;
+  if (optimizerConfig.maxiter  != null) document.getElementById('otMaxiter').value  = optimizerConfig.maxiter;
+
+  const coresSel = document.getElementById('otCores');
+  const maxCores  = optimizerConfig.max_cores   || 1;
+  const autoCores = optimizerConfig.default_cores || maxCores;
+  let opts = `<option value="0">Auto (${autoCores})</option>`;
+  for (let n = 1; n <= maxCores; n++) {
+    opts += `<option value="${n}">${n === maxCores ? n + ' (all)' : n}</option>`;
+  }
+  coresSel.innerHTML = opts;
+
+  _updateTrainPctLabel();
+}
+
+function _optimizerTesterStrategySpec() {
+  const v = document.getElementById('otStrategy').value;
+  return (optimizerConfig.available_strategies || []).find(s => s.value === v);
+}
+
+function onOptimizerTesterStrategyChange() {
+  const spec    = _optimizerTesterStrategySpec();
+  const section = document.getElementById('otParamSection');
+  const grid    = document.getElementById('otParamSpace');
+  if (!spec || !spec.params) { section.style.display = 'none'; return; }
+  grid.innerHTML = spec.params.map(p =>
+    `<div class="opt-param-row">
+      <span class="pname">${escHtml(p.name)}</span>
+      <span class="pcontrols">
+        <input type="number" class="opt-range-input" id="otp-lo-${p.name}" value="${p.low}" min="1" max="9999">
+        <span>–</span>
+        <input type="number" class="opt-range-input" id="otp-hi-${p.name}" value="${p.high}" min="1" max="9999">
+        <span class="pdef">· def ${p.default}</span>
+      </span>
+    </div>`
+  ).join('');
+  section.style.display = '';
+  _updateTesterRunNote();
+}
+
+function _getOptimizerTesterCustomBounds() {
+  const spec = _optimizerTesterStrategySpec();
+  if (!spec || !spec.params) return null;
+  const bounds = {};
+  spec.params.forEach(p => {
+    const lo = parseInt(document.getElementById(`otp-lo-${p.name}`)?.value);
+    const hi = parseInt(document.getElementById(`otp-hi-${p.name}`)?.value);
+    bounds[p.name] = [Number.isNaN(lo) ? p.low : lo, Number.isNaN(hi) ? p.high : hi];
+  });
+  return bounds;
+}
+
+function resetOptimizerTesterBounds() {
+  const spec = _optimizerTesterStrategySpec();
+  if (!spec || !spec.params) return;
+  spec.params.forEach(p => {
+    const loEl = document.getElementById(`otp-lo-${p.name}`);
+    const hiEl = document.getElementById(`otp-hi-${p.name}`);
+    if (loEl) loEl.value = p.low;
+    if (hiEl) hiEl.value = p.high;
+  });
+  showToast('Bounds reset to defaults', 'info');
+}
+
+function _updateTrainPctLabel() {
+  const pct = parseInt(document.getElementById('otTrainPct')?.value) || 70;
+  const el  = document.getElementById('otTrainPctLabel');
+  if (el) el.textContent = `Train ${pct}% · Test ${100 - pct}%`;
+}
+
+function _otObjectiveChange() {
+  const isLargeMove = document.querySelector('input[name="otObjective"]:checked')?.value === 'large_move';
+  const row = document.getElementById('otLargeMoveRow');
+  if (row) row.style.display = isLargeMove ? 'flex' : 'none';
+}
+
+function _updateTesterRunNote() {
+  const note = document.getElementById('otRunNote');
+  if (!note) return;
+  const spec = _optimizerTesterStrategySpec();
+  const n = spec && spec.params ? spec.params.length : 0;
+  if (!n) { note.textContent = ''; return; }
+  note.innerHTML = `Optimizes <strong>${n}</strong> inputs on the training window, then evaluates on the held-out test window.`;
+}
+
+function _optimizerTesterPayload() {
+  return {
+    symbol:           document.getElementById('otSymbol').value || '',
+    strategy:         document.getElementById('otStrategy').value || '',
+    timeframe:        document.getElementById('otTimeframe').value || '240',
+    candles:          parseInt(document.getElementById('otCandles').value) || 1000,
+    train_pct:        parseInt(document.getElementById('otTrainPct')?.value) || 70,
+    credit:           parseFloat(document.getElementById('otCredit').value) || 100,
+    leverage:         parseInt(document.getElementById('otLeverage').value) || 5,
+    cores:            parseInt(document.getElementById('otCores').value) || 0,
+    maxiter:          parseInt(document.getElementById('otMaxiter')?.value) || 30,
+    objective:        document.querySelector('input[name="otObjective"]:checked')?.value || 'profit',
+    min_price_change: parseFloat(document.getElementById('otMinPriceChange')?.value) || 5,
+    custom_bounds:    _getOptimizerTesterCustomBounds(),
+  };
+}
+
+async function runOptimizerTester() {
+  const payload = _optimizerTesterPayload();
+  if (!payload.symbol)   { showToast('Select a symbol', 'error'); return; }
+  if (!payload.strategy) { showToast('Select a strategy', 'error'); return; }
+  if (payload.custom_bounds) {
+    for (const [name, [lo, hi]] of Object.entries(payload.custom_bounds)) {
+      if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo >= hi) {
+        showToast(`"${name}": min (${lo}) must be less than max (${hi})`, 'error');
+        return;
+      }
+    }
+  }
+  try {
+    const res  = await fetch('/api/optimizer/tester/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const data = await res.json();
+    if (!res.ok) {
+      const msg = data.error || (Array.isArray(data.detail) ? data.detail.map(d => d.msg).join('; ') : data.detail) || 'run failed';
+      showToast('Error: ' + msg, 'error');
+      return;
+    }
+    optimizerTesterJobId = data.job_id;
+    _candleWarnTesterShown = false;
+    document.getElementById('otResults').innerHTML = '';
+    destroyOptTesterCharts();
+    _setOptimizerTesterRunning(true);
+    pollOptimizerTester();
+  } catch (e) { showToast('Network error: ' + e, 'error'); }
+}
+
+function _setOptimizerTesterRunning(running) {
+  document.getElementById('otRunBtn').style.display    = running ? 'none' : '';
+  document.getElementById('otCancelBtn').style.display = running ? '' : 'none';
+  if (running) document.getElementById('otProgressWrap').style.display = '';
+}
+
+function renderOptimizerTesterProgress(job) {
+  const wrap = document.getElementById('otProgressWrap');
+  if (!wrap) return;
+  wrap.style.display = '';
+  const pct  = job.maxiter ? Math.min(100, Math.round(job.iteration / job.maxiter * 100)) : 0;
+  const fill = document.getElementById('otProgressFill');
+  fill.style.width      = (job.status === 'done' ? 100 : pct) + '%';
+  fill.style.background = job.status === 'error' ? 'var(--red)' : job.status === 'done' ? 'var(--green)' : 'var(--accent)';
+  const trainPct = job.train_pct || 70;
+  let bestInfo = '';
+  if (job.best_pnl != null) bestInfo += ` · P&L $${job.best_pnl.toFixed(2)}`;
+  if (job.best_summary?.win_rate != null) bestInfo += ` · WR ${job.best_summary.win_rate.toFixed(1)}%`;
+  const cur = job.status === 'running' ? `Optimizing training window…${bestInfo}`
+            : job.status === 'pending' ? 'Starting…'
+            : job.status === 'done'    ? '✓ Complete — train & test results ready'
+            : job.status === 'cancelled' ? 'Cancelled'
+            : 'Error';
+  document.getElementById('otProgressCurrent').textContent = cur;
+  const cores = job.workers > 1 ? ` · ${job.workers} cores` : '';
+  const split = `${trainPct}/${100 - trainPct} split`;
+  document.getElementById('otProgressCount').textContent =
+    `${job.evaluations} backtests · gen ${job.iteration}/${job.maxiter}${cores} · ${split} · ${job.train_candle_count || 0} train / ${job.test_candle_count || 0} test candles`;
+}
+
+async function cancelOptimizerTester() {
+  if (!optimizerTesterJobId) return;
+  try { await fetch(`/api/optimizer/tester/run/${optimizerTesterJobId}/cancel`, { method: 'POST' }); } catch (_) {}
+  showToast('Cancelling…', 'info');
+}
+
+async function pollOptimizerTester() {
+  if (!optimizerTesterJobId) return;
+  try {
+    const res = await fetch(`/api/optimizer/tester/run/${optimizerTesterJobId}`);
+    if (!res.ok) { stopOptimizerTesterPolling(); _setOptimizerTesterRunning(false); return; }
+    const job = await res.json();
+    renderOptimizerTesterProgress(job);
+    renderOptimizerTesterResults(job);
+    if (['done', 'cancelled', 'error'].includes(job.status)) {
+      stopOptimizerTesterPolling();
+      _setOptimizerTesterRunning(false);
+      if (job.status === 'done')           showToast('Optimizer Tester complete', 'success');
+      else if (job.status === 'cancelled') showToast('Optimizer Tester cancelled', 'info');
+      else                                 showToast('Run error: ' + (job.error || 'unknown'), 'error');
+    } else {
+      if (!_candleWarnTesterShown && job.candle_count > 0 && job.candle_count < job.candles - 1) {
+        _candleWarnTesterShown = true;
+        _candleWarnContext = 'tester';
+        const trainN = job.train_candle_count || Math.round(job.candle_count * (job.train_pct || 70) / 100);
+        const testN  = job.test_candle_count  || (job.candle_count - trainN);
+        document.getElementById('candleWarnMsg').textContent =
+          `The API returned ${job.candle_count} candles instead of the ${job.candles} you requested. ` +
+          `With a ${job.train_pct || 70}/${100 - (job.train_pct || 70)} split this gives ${trainN} train / ${testN} test candles, ` +
+          `which may reduce result quality.`;
+        document.getElementById('candleWarnModal').classList.add('open');
+      }
+      optimizerTesterPollTimer = setTimeout(pollOptimizerTester, 1000);
+    }
+  } catch (e) {
+    optimizerTesterPollTimer = setTimeout(pollOptimizerTester, 1500);
+  }
+}
+
+function stopOptimizerTesterPolling() {
+  clearTimeout(optimizerTesterPollTimer);
+  optimizerTesterPollTimer = null;
+}
+
+function _tradeTableHtml(trades) {
+  if (!trades || !trades.length) return '';
+  const rows = trades.map(t => {
+    const pnl    = parseFloat(t['P&L ($)'] || 0);
+    const pnlCls = pnl > 0 ? 'pnl-pos' : pnl < 0 ? 'pnl-neg' : '';
+    const pnlStr = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
+    const posColor = t['Position'] === 'Long' ? 'var(--green)' : 'var(--red)';
+    const liqMark  = t['Liquidated'] ? ' <span style="color:var(--red);font-size:0.75em">LIQ</span>' : '';
+    return `<tr class="${t['Liquidated'] ? 'liq-row' : ''}">
+      <td style="color:var(--muted)">#${t['Trade #']}</td>
+      <td style="color:${posColor}">${escHtml(t['Position'] || '')}</td>
+      <td style="color:var(--muted);font-size:0.82em">${escHtml(String(t['Start Time'] || ''))}</td>
+      <td style="color:var(--muted);font-size:0.82em">${escHtml(String(t['End Time'] || ''))}</td>
+      <td class="${pnlCls}">${pnlStr}${liqMark}</td>
+      <td style="color:var(--muted)">${escHtml(String(t['Balance ($)'] || ''))}</td>
+    </tr>`;
+  }).join('');
+  return `<div style="overflow-x:auto;max-height:260px;overflow-y:auto">
+    <table class="opt-history-table">
+      <thead><tr><th>#</th><th>Side</th><th>Entry Time</th><th>Exit Time</th><th>P&amp;L</th><th>Balance</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+function renderOptimizerTesterResults(job) {
+  const wrap = document.getElementById('otResults');
+  if (!wrap) return;
+
+  if (job.status === 'error') {
+    wrap.innerHTML = `<div class="tester-section"><div class="err-cell" style="color:var(--yellow)">${escHtml(job.error || 'error')}</div></div>`;
+    return;
+  }
+  if (!job.best_summary) { wrap.innerHTML = ''; return; }
+
+  // ── Train trades ──────────────────────────────────────────────────────────
+  const trainTradesHtml = job.best_trades?.length
+    ? `<div class="tester-section">
+        <h3>Training Trades</h3>
+        <div class="hint">Trades from the optimized parameters over the <strong>training</strong> window (${job.train_candle_count || 0} candles).</div>
+        ${_tradeTableHtml(job.best_trades)}
+      </div>`
+    : '';
+
+  // ── Best inputs summary ───────────────────────────────────────────────────
+  const s       = job.best_summary;
+  const base    = job.baseline || {};
+  const bestPnl = job.best_pnl != null ? job.best_pnl : (s.total_pnl || 0);
+  const basePnl = base.total_pnl != null ? base.total_pnl : 0;
+  const delta   = bestPnl - basePnl;
+  const pnlCls  = bestPnl > 0 ? 'pnl-pos' : bestPnl < 0 ? 'pnl-neg' : '';
+  const wrColor = (s.win_rate || 0) >= 60 ? 'var(--green)' : (s.win_rate || 0) >= 45 ? 'var(--yellow)' : 'var(--red)';
+
+  const paramRows = (job.params || []).map(p => {
+    const changed = String(p.value) !== String(p.default);
+    return `<tr class="${changed ? 'changed' : ''}">
+      <td>${escHtml(p.name)}</td><td class="tuned-val">${p.value}</td>
+      <td style="color:var(--muted)">${p.default}</td>
+      <td style="color:var(--muted)">${p.low}–${p.high}</td>
+    </tr>`;
+  }).join('');
+
+  const trainSummaryHtml = `
+    <div class="tester-section">
+      <h3>Best Inputs Found · Training Window</h3>
+      <div class="hint">${escHtml(job.symbol)} · ${escHtml(job.strategy_label || job.strategy)} · ${escHtml(fmtTF(job.timeframe))} · ${job.train_candle_count || job.candle_count} training candles · goal: ${escHtml({profit:'highest profit',winrate:'highest win rate',balanced:'balanced',large_move:'large move'}[job.objective] || job.objective)}</div>
+      <div class="opt-summary">
+        <div class="opt-stat"><div class="lbl">P&amp;L (train)</div><div class="val ${pnlCls}">${bestPnl >= 0 ? '+' : ''}$${bestPnl.toFixed(2)}</div></div>
+        <div class="opt-stat"><div class="lbl">vs. Defaults</div><div class="val" style="color:${delta >= 0 ? 'var(--green)' : 'var(--red)'}">${(delta >= 0 ? '+' : '') + '$' + delta.toFixed(2)}</div></div>
+        <div class="opt-stat"><div class="lbl">Win Rate (train)</div><div class="val" style="color:${wrColor}">${(s.win_rate || 0).toFixed(1)}%</div></div>
+        <div class="opt-stat"><div class="lbl">Trades (train)</div><div class="val">${s.trade_count || 0}</div></div>
+        <div class="opt-stat"><div class="lbl">Backtests Run</div><div class="val">${job.evaluations}</div></div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="opt-result-table">
+          <thead><tr><th>Input</th><th>Tuned</th><th>Default</th><th>Range</th></tr></thead>
+          <tbody>${paramRows}</tbody>
+        </table>
+      </div>
+      <div class="hint" style="margin-top:10px">Baseline (defaults on train): P&amp;L $${basePnl.toFixed(2)} · ${(base.win_rate || 0).toFixed(1)}% win · ${base.trade_count || 0} trades. Highlighted rows changed from default.</div>
+    </div>`;
+
+  // ── Test results ──────────────────────────────────────────────────────────
+  let testHtml = '';
+  if (job.test_summary) {
+    const ts = job.test_summary;
+    const tb = job.test_baseline || {};
+    const testPnl     = ts.total_pnl || 0;
+    const testBasePnl = tb.total_pnl || 0;
+    const testPnlCls  = testPnl     > 0 ? 'pnl-pos' : testPnl     < 0 ? 'pnl-neg' : '';
+    const tbPnlCls    = testBasePnl > 0 ? 'pnl-pos' : testBasePnl < 0 ? 'pnl-neg' : '';
+    const testWrColor = (ts.win_rate || 0) >= 60 ? 'var(--green)' : (ts.win_rate || 0) >= 45 ? 'var(--yellow)' : 'var(--red)';
+
+    let cautionHtml = '';
+    if (job.status === 'done' && bestPnl > 0 && testPnl < bestPnl * 0.3) {
+      cautionHtml = `<div style="color:var(--yellow);font-size:0.88em;margin-top:10px;padding:6px 10px;background:rgba(251,191,36,0.08);border-radius:4px;border-left:3px solid var(--yellow)">⚠ Large gap between training P&amp;L ($${bestPnl.toFixed(2)}) and test P&amp;L ($${testPnl.toFixed(2)}) — the parameters may be overfitted to the training window.</div>`;
+    }
+
+    const testTradesHtml = job.test_trades?.length
+      ? `<div style="margin-top:14px"><div class="hint" style="margin-bottom:6px">Test trades (${job.test_trades.length}):</div>${_tradeTableHtml(job.test_trades)}</div>`
+      : (job.status === 'done' ? '<div class="hint" style="margin-top:10px">No closed trades in the test window.</div>' : '');
+
+    testHtml = `
+      <div class="tester-section">
+        <h3>Out-of-Sample Performance · Test Window</h3>
+        <div class="hint">How the optimized parameters perform on the <strong>${job.test_candle_count || 0} unseen test candles</strong> — data the optimizer never saw.</div>
+        <div class="opt-summary">
+          <div class="opt-stat"><div class="lbl">P&amp;L · optimized</div><div class="val ${testPnlCls}">${testPnl >= 0 ? '+' : ''}$${testPnl.toFixed(2)}</div></div>
+          <div class="opt-stat"><div class="lbl">P&amp;L · defaults</div><div class="val ${tbPnlCls}">${testBasePnl >= 0 ? '+' : ''}$${testBasePnl.toFixed(2)}</div></div>
+          <div class="opt-stat"><div class="lbl">Win Rate · optimized</div><div class="val" style="color:${testWrColor}">${(ts.win_rate || 0).toFixed(1)}%</div></div>
+          <div class="opt-stat"><div class="lbl">Win Rate · defaults</div><div class="val">${(tb.win_rate || 0).toFixed(1)}%</div></div>
+          <div class="opt-stat"><div class="lbl">Trades · optimized</div><div class="val">${ts.trade_count || 0}</div></div>
+          <div class="opt-stat"><div class="lbl">Trades · defaults</div><div class="val">${tb.trade_count || 0}</div></div>
+        </div>
+        ${cautionHtml}
+        ${testTradesHtml}
+      </div>`;
+  }
+
+  wrap.innerHTML = trainTradesHtml + trainSummaryHtml + testHtml;
+
+  if (job.chart_data || job.test_chart_data) renderOptTesterCharts(job);
+}
+
+function destroyOptTesterCharts() {
+  _optTesterCharts.forEach(c => { try { c.remove(); } catch (_) {} });
+  _optTesterCharts = [];
+  ['otTrainChart', 'otTestChart'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.innerHTML = ''; el.dataset.sig = ''; }
+  });
+}
+
+function renderOptTesterCharts(job) {
+  const trainEl = document.getElementById('otTrainChart');
+  const testEl  = document.getElementById('otTestChart');
+  const trainCd = job.chart_data;
+  const testCd  = job.test_chart_data;
+  const trainSig = trainCd?.candles?.length ? `${trainCd.candles[0]?.time}:${trainCd.candles[trainCd.candles.length - 1]?.time}:train` : '';
+  const testSig  = testCd?.candles?.length  ? `${testCd.candles[0]?.time}:${testCd.candles[testCd.candles.length - 1]?.time}:test`   : '';
+  const combined = trainSig + '|' + testSig;
+  if (!trainEl || !testEl || !combined.replace('|', '')) return;
+  if (trainEl.dataset.sig === combined) return;
+  destroyOptTesterCharts();
+  trainEl.dataset.sig = combined;
+  if (trainCd?.candles?.length) _buildOptChart(trainEl, trainCd, job.best_trades  || [], 'TRAINING PERIOD CHART',     _optTesterCharts, 'train');
+  if (testCd?.candles?.length)  _buildOptChart(testEl,  testCd,  job.test_trades  || [], 'OUT-OF-SAMPLE TEST CHART',  _optTesterCharts, 'test');
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+// Request notification permission
+if ('Notification' in window) {
+  Notification.requestPermission().then(p => { notifPermission = p; });
+}
+
+connectWS();
+fetchWallet();
+loadMarginMarkets();
+setInterval(fetchWallet, 30000);
+</script>
+</body>
+</html>

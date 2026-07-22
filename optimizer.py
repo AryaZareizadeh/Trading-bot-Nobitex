@@ -107,7 +107,7 @@ _DEFAULT_CANDLES = 1000
 _DE_POPSIZE = 15
 _DE_MAXITER = 30
 _DE_TOL = 0.01
-_DE_SEED = 42
+_DE_SEED = None
 
 # Cores used when the user leaves the selector on "Auto" (capped to the machine's
 # CPU count, and overridable with the OPTIMIZER_WORKERS env var).
@@ -350,6 +350,7 @@ class OptimizerJob:
         self.workers = 1                 # CPU cores used by the search (set when DE starts)
         self.iteration = 0
         self.evaluations = 0
+        self.current_delta: float | None = None  # DE population convergence metric (stops when <= _DE_TOL)
         self.best_pnl: float | None = None
         self.best_params: dict | None = None
         self.best_summary: dict | None = None
@@ -447,6 +448,11 @@ class OptimizerJob:
 
         def callback(intermediate_result=None, convergence=None):
             self.iteration += 1
+            # SciPy passes `convergence` = tol / (raw_convergence + eps), a ratio that
+            # hits 1.0 at the stopping point. Invert it back to the raw population
+            # convergence metric so the UI can show it against _DE_TOL directly.
+            if convergence:
+                self.current_delta = _DE_TOL / convergence
             self.best_pnl = best["pnl"] if best["params"] is not None else None
             self.best_params = best["params"]
             self.best_summary = best["summary"]
@@ -456,6 +462,7 @@ class OptimizerJob:
                     "pnl": best["pnl"],
                     "win_rate": best["summary"].get("win_rate", 0) if best["summary"] else 0,
                     "trade_count": best["summary"].get("trade_count", 0) if best["summary"] else 0,
+                    "delta": self.current_delta,
                 })
             if self._cancel:
                 return True   # signal DE to stop
@@ -507,6 +514,10 @@ class OptimizerJob:
             # also tolerates newer SciPy passing an OptimizeResult instead.
             if intermediate_result is not None:
                 record(getattr(intermediate_result, "x", intermediate_result))
+            # Same inversion as the serial path: turn SciPy's stopping ratio back
+            # into the raw population convergence metric, compared against _DE_TOL.
+            if convergence:
+                self.current_delta = _DE_TOL / convergence
             self.evaluations = pop_per_gen * (self.iteration + 1)   # approximate
             self.best_pnl = best["pnl"]
             self.best_params = best["params"]
@@ -517,6 +528,7 @@ class OptimizerJob:
                     "pnl": best["pnl"],
                     "win_rate": best["summary"].get("win_rate", 0) if best["summary"] else 0,
                     "trade_count": best["summary"].get("trade_count", 0) if best["summary"] else 0,
+                    "delta": self.current_delta,
                 })
             if self._cancel:
                 return True   # signal DE to stop (takes effect after this generation)
@@ -839,6 +851,8 @@ class OptimizerJob:
             "maxiter": self.maxiter,
             "workers": self.workers,
             "evaluations": self.evaluations,
+            "current_delta": self.current_delta,
+            "delta_tol": _DE_TOL,
             "best_pnl": self.best_pnl,
             "best_params": self.best_params,
             "best_summary": self.best_summary,

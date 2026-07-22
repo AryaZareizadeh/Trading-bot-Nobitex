@@ -13,7 +13,7 @@ _TEHRAN = ZoneInfo("Asia/Tehran")
 # longer than this many calendar days, regardless of what the strategy's own
 # exit signal says. Measured against the position's entry timestamp so it holds
 # across every timeframe (1-minute candles through daily candles) the same way.
-MAX_HOLD_DAYS = 14
+MAX_HOLD_DAYS = 30
 
 
 def _fmt_time(ts: pd.Timestamp) -> str:

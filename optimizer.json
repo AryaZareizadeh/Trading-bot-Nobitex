@@ -1,13 +1,13 @@
 {
-  "symbol": "zecusdt",
+  "symbol": "xrpusdt",
   "strategy": "AdvRSI",
-  "timeframe": "60",
-  "candles": 7300,
+  "timeframe": "240",
+  "candles": 3636,
   "credit": 10.0,
   "leverage": 3,
-  "cores": 6,
+  "cores": 10,
   "maxiter": 500,
-  "objective": "balanced",
+  "objective": "large_move",
   "custom_bounds": {
     "rsi_length": [
       6,

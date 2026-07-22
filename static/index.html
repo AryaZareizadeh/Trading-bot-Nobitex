@@ -351,6 +351,17 @@
   .opt-param { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 6px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; font-size: 11px; }
   .opt-param .pname { color: var(--text); font-weight: 600; }
   .opt-param .prange { color: var(--muted); font-variant-numeric: tabular-nums; }
+  /* ── Delta convergence chart card ── */
+  .delta-card-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; gap: 6px; }
+  .delta-card-head .val { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .delta-card-head .sub { font-size: 11px; color: var(--muted); margin-left: 8px; }
+  .delta-scale-toggle { display: flex; gap: 4px; }
+  .btn-scale { font-size: 10px; padding: 3px 9px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); cursor: pointer; text-transform: uppercase; letter-spacing: .5px; font-family: inherit; }
+  .btn-scale:hover:not(.active) { color: var(--text); }
+  .btn-scale.active { background: var(--accent); color: #0b0f1a; border-color: var(--accent); font-weight: 700; }
+  .delta-chart-empty { font-size: 11px; color: var(--muted); padding: 20px 0; text-align: center; }
+  .delta-chart-svg { display: block; width: 100%; height: auto; aspect-ratio: 600 / 260; }
+  .delta-chart-svg text { fill: var(--muted); font-size: 9px; font-family: 'Consolas','Menlo',monospace; }
   .opt-summary { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 14px; }
   .opt-stat { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; min-width: 120px; }
   .opt-stat .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
@@ -673,6 +684,12 @@
       </div>
     </div>
 
+    <div class="tester-section" id="oDeltaSection" style="display:none">
+      <h3>Convergence</h3>
+      <div class="hint">DE population convergence (delta) by generation. Search stops once delta drops to or below the target.</div>
+      <div id="oDeltaChart"></div>
+    </div>
+
     <div id="oResults"></div>
     <div id="oChart"></div>
 
@@ -782,6 +799,12 @@
             <span id="otProgressCount"></span>
           </div>
         </div>
+      </div>
+
+      <div class="tester-section" id="otDeltaSection" style="display:none">
+        <h3>Convergence</h3>
+        <div class="hint">DE population convergence (delta) by generation. Search stops once delta drops to or below the target.</div>
+        <div id="otDeltaChart"></div>
       </div>
 
       <div id="otResults"></div>
@@ -2762,6 +2785,103 @@ function _setOptimizerRunning(running) {
   if (running) document.getElementById('oProgressWrap').style.display = '';
 }
 
+// ── Delta convergence chart (shared by Optimizer + Optimizer Tester tabs) ──────
+const _deltaScale = { oDeltaChart: 'linear', otDeltaChart: 'linear' };   // per-chart scale state
+const _deltaLastJob = { oDeltaChart: null, otDeltaChart: null };        // cache so the toggle can re-render without a poll
+
+function deltaColorFor(delta, tol) {
+  if (delta == null) return 'var(--muted)';
+  return delta <= tol ? 'var(--green)' : delta <= tol * 3 ? 'var(--yellow)' : 'var(--red)';
+}
+
+function fmtDelta(v) {
+  if (v == null) return '—';
+  if (v >= 1) return v.toFixed(2);
+  if (v >= 0.001) return v.toFixed(4);
+  return v.toExponential(1);
+}
+
+function buildDeltaChartSVG(history, tol, scale) {
+  const isLog = scale === 'log';
+  const pts = (history || []).filter(h => h.delta != null && (!isLog || h.delta > 0));
+  if (pts.length < 2) return null;
+
+  const W = 600, H = 260, padL = 46, padR = 12, padT = 12, padB = 22;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+
+  const xMin = pts[0].iteration, xMax = pts[pts.length - 1].iteration;
+  const xSpan = (xMax - xMin) || 1;
+
+  const valueOf = p => isLog ? Math.log10(p.delta) : p.delta;
+  const tolValue = isLog ? Math.log10(tol) : tol;
+  const values = pts.map(valueOf);
+  let yMin = Math.min(...values, tolValue);
+  let yMax = Math.max(...values, tolValue);
+  const spanPad = (yMax - yMin) * 0.12 || (isLog ? 0.5 : tol);
+  yMin -= spanPad; yMax += spanPad;
+  const ySpan = (yMax - yMin) || 1;
+
+  const xAt = i => padL + ((i - xMin) / xSpan) * plotW;
+  const yAt = v => padT + (1 - (v - yMin) / ySpan) * plotH;
+  const toAxisVal = v => isLog ? Math.pow(10, v) : v;
+
+  const linePts = pts.map(p => `${xAt(p.iteration).toFixed(1)},${yAt(valueOf(p)).toFixed(1)}`).join(' ');
+
+  const last = pts[pts.length - 1];
+  const lastColor = deltaColorFor(last.delta, tol);
+  const tolY = yAt(tolValue);
+  const dataMax = Math.max(...values), dataMin = Math.min(...values);
+
+  const dots = pts.map(p =>
+    `<circle cx="${xAt(p.iteration).toFixed(1)}" cy="${yAt(valueOf(p)).toFixed(1)}" r="2" fill="var(--accent)" />`
+  ).join('');
+
+  return `
+    <svg class="delta-chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+      <rect x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" fill="none" stroke="var(--border)" />
+      <line x1="${padL.toFixed(1)}" y1="${tolY.toFixed(1)}" x2="${(padL + plotW).toFixed(1)}" y2="${tolY.toFixed(1)}"
+            stroke="var(--green)" stroke-width="1" stroke-dasharray="4,3" opacity="0.7" />
+      <text x="${(padL + plotW - 2).toFixed(1)}" y="${(tolY - 4).toFixed(1)}" text-anchor="end" fill="var(--green)">target ${fmtDelta(tol)}</text>
+      <polyline points="${linePts}" fill="none" stroke="var(--accent)" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" />
+      ${dots}
+      <circle cx="${xAt(last.iteration).toFixed(1)}" cy="${yAt(valueOf(last)).toFixed(1)}" r="4" fill="${lastColor}" stroke="var(--surface)" stroke-width="1.5" />
+      <text x="${(padL - 4).toFixed(1)}" y="${(yAt(dataMax) + 3).toFixed(1)}" text-anchor="end">${fmtDelta(toAxisVal(dataMax))}</text>
+      <text x="${(padL - 4).toFixed(1)}" y="${(yAt(dataMin) + 3).toFixed(1)}" text-anchor="end">${fmtDelta(toAxisVal(dataMin))}</text>
+      <text x="${padL.toFixed(1)}" y="${(H - 6).toFixed(1)}" text-anchor="start">gen ${xMin}</text>
+      <text x="${(padL + plotW).toFixed(1)}" y="${(H - 6).toFixed(1)}" text-anchor="end">gen ${xMax}</text>
+    </svg>`;
+}
+
+function setDeltaScale(chartId, scale) {
+  _deltaScale[chartId] = scale;
+  renderDeltaCard(chartId.replace('Chart', 'Section'), chartId, _deltaLastJob[chartId]);
+}
+
+function renderDeltaCard(sectionId, chartId, job) {
+  const section = document.getElementById(sectionId);
+  const chart = document.getElementById(chartId);
+  if (!section || !chart) return;
+  if (job) _deltaLastJob[chartId] = job;
+  if (!job || job.status == null) { section.style.display = 'none'; return; }
+  section.style.display = '';
+  const tol = job.delta_tol != null ? job.delta_tol : 0.01;
+  const scale = _deltaScale[chartId] || 'linear';
+  const svg = buildDeltaChartSVG(job.history, tol, scale);
+  const curColor = deltaColorFor(job.current_delta, tol);
+  chart.innerHTML = `
+    <div class="delta-card-head">
+      <div>
+        <span class="val" style="color:${curColor}">${fmtDelta(job.current_delta)}</span>
+        <span class="sub">gen ${job.iteration}/${job.maxiter} · target ≤ ${fmtDelta(tol)}</span>
+      </div>
+      <div class="delta-scale-toggle">
+        <button class="btn-scale ${scale === 'linear' ? 'active' : ''}" onclick="setDeltaScale('${chartId}','linear')">Linear</button>
+        <button class="btn-scale ${scale === 'log' ? 'active' : ''}" onclick="setDeltaScale('${chartId}','log')">Log</button>
+      </div>
+    </div>
+    ${svg || '<div class="delta-chart-empty">Waiting for enough generations to plot…</div>'}`;
+}
+
 function renderOptimizerProgress(job) {
   const wrap = document.getElementById('oProgressWrap');
   wrap.style.display = '';
@@ -2781,6 +2901,7 @@ function renderOptimizerProgress(job) {
   const cores = job.workers > 1 ? ` · ${job.workers} cores` : '';
   const objLabel = {profit:'profit',winrate:'win rate',balanced:'balanced'}[job.objective] || 'profit';
   document.getElementById('oProgressCount').textContent = `${job.evaluations} backtests · gen ${job.iteration}/${job.maxiter}${cores} · goal: ${objLabel}`;
+  renderDeltaCard('oDeltaSection', 'oDeltaChart', job);
 }
 
 async function cancelOptimizer() {
@@ -2903,6 +3024,12 @@ function renderOptimizerResults(job) {
   const longPctStr = (s.long_pct || 0).toFixed(1) + '%';
   const sumProfitsStr = '+$' + (s.sum_profits || 0).toFixed(2);
   const sumLossesStr = (s.sum_losses || 0) < 0 ? '-$' + Math.abs(s.sum_losses).toFixed(2) : '$0.00';
+  const deltaTol = job.delta_tol != null ? job.delta_tol : 0.01;
+  const deltaStr = job.current_delta != null ? job.current_delta.toFixed(4) : '—';
+  const deltaColor = job.current_delta == null ? 'var(--muted)'
+                    : job.current_delta <= deltaTol ? 'var(--green)'
+                    : job.current_delta <= deltaTol * 3 ? 'var(--yellow)'
+                    : 'var(--red)';
 
   const paramRows = job.params.map(p => {
     const changed = String(p.value) !== String(p.default);
@@ -2929,6 +3056,7 @@ function renderOptimizerResults(job) {
         <div class="opt-stat"><div class="lbl">Profit Share</div><div class="val">${profShareStr}</div></div>
         <div class="opt-stat"><div class="lbl">Trades</div><div class="val">${s.trade_count || 0}</div></div>
         <div class="opt-stat"><div class="lbl">Backtests Run</div><div class="val">${job.evaluations}</div></div>
+        <div class="opt-stat"><div class="lbl">Current Delta</div><div class="val" style="color:${deltaColor}">${deltaStr}</div></div>
         <div class="opt-stat"><div class="lbl">% Long Trades</div><div class="val">${longPctStr}</div></div>
         <div class="opt-stat"><div class="lbl">Sum of Profits</div><div class="val" style="color:var(--green)">${sumProfitsStr}</div></div>
         <div class="opt-stat"><div class="lbl">Sum of Losses</div><div class="val" style="color:var(--red)">${sumLossesStr}</div></div>
@@ -2939,7 +3067,7 @@ function renderOptimizerResults(job) {
           <tbody>${paramRows}</tbody>
         </table>
       </div>
-      <div class="hint" style="margin-top:10px">Baseline (default inputs): net P&amp;L $${basePnl.toFixed(2)} · ${(base.win_rate || 0).toFixed(1)}% win · ${base.trade_count || 0} trades. Highlighted rows changed from the default.</div>
+      <div class="hint" style="margin-top:10px">Baseline (default inputs): net P&amp;L $${basePnl.toFixed(2)} · ${(base.win_rate || 0).toFixed(1)}% win · ${base.trade_count || 0} trades. Highlighted rows changed from the default. Delta converges below ${deltaTol}.</div>
       ${applyBtn}
     </div>`;
 
@@ -3326,6 +3454,7 @@ function renderOptimizerTesterProgress(job) {
   const split = `${trainPct}/${100 - trainPct} split`;
   document.getElementById('otProgressCount').textContent =
     `${job.evaluations} backtests · gen ${job.iteration}/${job.maxiter}${cores} · ${split} · ${job.train_candle_count || 0} train / ${job.test_candle_count || 0} test candles`;
+  renderDeltaCard('otDeltaSection', 'otDeltaChart', job);
 }
 
 async function cancelOptimizerTester() {
@@ -3428,6 +3557,12 @@ function renderOptimizerTesterResults(job) {
   const longPctStr = (s.long_pct || 0).toFixed(1) + '%';
   const sumProfitsStr = '+$' + (s.sum_profits || 0).toFixed(2);
   const sumLossesStr = (s.sum_losses || 0) < 0 ? '-$' + Math.abs(s.sum_losses).toFixed(2) : '$0.00';
+  const deltaTol = job.delta_tol != null ? job.delta_tol : 0.01;
+  const deltaStr = job.current_delta != null ? job.current_delta.toFixed(4) : '—';
+  const deltaColor = job.current_delta == null ? 'var(--muted)'
+                    : job.current_delta <= deltaTol ? 'var(--green)'
+                    : job.current_delta <= deltaTol * 3 ? 'var(--yellow)'
+                    : 'var(--red)';
 
   const paramRows = (job.params || []).map(p => {
     const changed = String(p.value) !== String(p.default);
@@ -3448,6 +3583,7 @@ function renderOptimizerTesterResults(job) {
         <div class="opt-stat"><div class="lbl">Profit Share</div><div class="val">${profShareStr}</div></div>
         <div class="opt-stat"><div class="lbl">Trades (train)</div><div class="val">${s.trade_count || 0}</div></div>
         <div class="opt-stat"><div class="lbl">Backtests Run</div><div class="val">${job.evaluations}</div></div>
+        <div class="opt-stat"><div class="lbl">Current Delta</div><div class="val" style="color:${deltaColor}">${deltaStr}</div></div>
         <div class="opt-stat"><div class="lbl">% Long Trades</div><div class="val">${longPctStr}</div></div>
         <div class="opt-stat"><div class="lbl">Sum of Profits</div><div class="val" style="color:var(--green)">${sumProfitsStr}</div></div>
         <div class="opt-stat"><div class="lbl">Sum of Losses</div><div class="val" style="color:var(--red)">${sumLossesStr}</div></div>

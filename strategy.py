@@ -100,7 +100,17 @@ class Strategy(ABC):
         self.params = params
 
     @abstractmethod
-    def run(self, df: pd.DataFrame, indicators: Indicators, live_start_idx: int = 0) -> pd.DataFrame:
+    def run(
+        self, df: pd.DataFrame, indicators: Indicators, live_start_idx: int = 0,
+        seed_positions: list[dict] | None = None,
+    ) -> pd.DataFrame:
+        """`seed_positions` lets a caller adopt positions that are already open
+        (e.g. reconnected on the exchange after a restart) directly into the
+        strategy's tracked state, bypassing entry detection entirely. Each is a
+        dict with `direction` ("Long"/"Short"), `entry_price`, and `entry_time`.
+        They're evaluated by the same exit logic as any organically-entered
+        position and only close when a real exit condition (or liquidation /
+        max hold) fires."""
         ...
 
     def liquidation_price(self, direction: str, entry_price: float) -> float:
@@ -116,10 +126,9 @@ class Strategy(ABC):
         return entry_price * (L + 1.0) / (r * L)
 
     def _check_liquidation(
-        self, direction: str, entry_idx: int, current_idx: int, df: pd.DataFrame
+        self, direction: str, entry_price: float, current_idx: int, df: pd.DataFrame
     ) -> float | None:
         """Return the liquidation price if the current close crosses it, else None."""
-        entry_price = df["Close"].iloc[entry_idx]
         liq_p = self.liquidation_price(direction, entry_price)
         current_price = df["Close"].iloc[current_idx]
         if direction == "Long" and current_price <= liq_p:
@@ -128,14 +137,13 @@ class Strategy(ABC):
             return liq_p
         return None
 
-    def _max_hold_exceeded(self, entry_idx: int, current_idx: int, df: pd.DataFrame) -> bool:
+    def _max_hold_exceeded(self, entry_ts: pd.Timestamp, current_idx: int, df: pd.DataFrame) -> bool:
         """True once a position has been open for MAX_HOLD_DAYS calendar days or more.
 
-        Compares actual timestamps (df.index), not candle counts, so the same
-        30-day rule applies consistently whether the timeframe is 1-minute or
-        daily candles.
+        Compares actual timestamps, not candle counts, so the same 30-day rule
+        applies consistently whether the timeframe is 1-minute or daily candles,
+        and whether the entry came from a candle close or a real exchange fill.
         """
-        entry_ts = df.index[entry_idx]
         current_ts = df.index[current_idx]
         return (current_ts - entry_ts) >= pd.Timedelta(days=MAX_HOLD_DAYS)
 
@@ -149,8 +157,11 @@ class Strategy(ABC):
         balance: float,
         liquidated: bool = False,
         exit_price: float | None = None,
+        entry_price: float | None = None,
+        entry_ts: pd.Timestamp | None = None,
     ) -> tuple[dict, float]:
-        start_price = df["Close"].iloc[entry_idx]
+        start_price = entry_price if entry_price is not None else df["Close"].iloc[entry_idx]
+        start_ts = entry_ts if entry_ts is not None else df.index[entry_idx]
         end_price = exit_price if exit_price is not None else df["Close"].iloc[exit_idx]
         pct = (end_price - start_price) / start_price
         effective_size = max(0.0, min(self.config.trade_size + balance, self.config.trade_size))
@@ -163,7 +174,7 @@ class Strategy(ABC):
         record = {
             "Trade #": trade_idx,
             "Position": direction,
-            "Start Time": _fmt_time(df.index[entry_idx]),
+            "Start Time": _fmt_time(start_ts),
             "End Time": _fmt_time(df.index[exit_idx]),
             "Candle Count": exit_idx - entry_idx + 1,
             "Start Price": f"{start_price:.2f}",
@@ -195,7 +206,10 @@ class _StochRsiSwingStrategy(Strategy):
         """Return 'long', 'short', or None for candle i. Implemented by subclasses."""
         raise NotImplementedError
 
-    def run(self, df: pd.DataFrame, indicators: Indicators, live_start_idx: int = 0) -> pd.DataFrame:
+    def run(
+        self, df: pd.DataFrame, indicators: Indicators, live_start_idx: int = 0,
+        seed_positions: list[dict] | None = None,
+    ) -> pd.DataFrame:
         p = self.params
         srsi = indicators.stoch_rsi(p.rsi_length, p.stoch_length, p.k_smooth, p.d_smooth)
         k, d = srsi.k, srsi.d
@@ -204,12 +218,30 @@ class _StochRsiSwingStrategy(Strategy):
         oversold, overbought = p.oversold, p.overbought
         exit_oversold = getattr(p, 'exit_oversold', oversold)
         exit_overbought = getattr(p, 'exit_overbought', overbought)
-        open_longs: list[int] = []
-        open_shorts: list[int] = []
+        open_longs: list[dict] = []
+        open_shorts: list[dict] = []
         trade_idx = 0
         balance = 0.0
         log = []
         self._init_entry_state()
+
+        # Positions already open on the exchange (e.g. reconnected after a
+        # restart) are seeded in directly at their real entry price/time,
+        # skipping entry detection entirely. From here on they're tracked
+        # exactly like any other open position by the exit logic below, and
+        # only close when a genuine exit condition (or liquidation / max
+        # hold) fires.
+        for sp in (seed_positions or []):
+            entry_ts = pd.Timestamp(sp["entry_time"])
+            if entry_ts.tzinfo is not None:
+                entry_ts = entry_ts.tz_convert("UTC").tz_localize(None)
+            idx = int(df.index.searchsorted(entry_ts))
+            idx = max(0, min(idx, max(live_start_idx - 1, 0)))
+            pos = {"idx": idx, "price": float(sp["entry_price"]), "ts": entry_ts}
+            if sp["direction"] == "Long":
+                open_longs.append(pos)
+            else:
+                open_shorts.append(pos)
 
         for i in range(live_start_idx, len(df)):
             ki, di = k.iloc[i], d.iloc[i]
@@ -220,20 +252,20 @@ class _StochRsiSwingStrategy(Strategy):
 
             if open_longs:
                 surviving_longs = []
-                for entry_idx in open_longs:
-                    liq_p = self._check_liquidation("Long", entry_idx, i, df)
+                for pos in open_longs:
+                    liq_p = self._check_liquidation("Long", pos["price"], i, df)
                     if liq_p is not None:
-                        record, pnl = self._make_trade_record(trade_idx, "Long", df, entry_idx, i, balance, liquidated=True, exit_price=liq_p)
+                        record, pnl = self._make_trade_record(trade_idx, "Long", df, pos["idx"], i, balance, liquidated=True, exit_price=liq_p, entry_price=pos["price"], entry_ts=pos["ts"])
                         balance += pnl
                         log.append(record)
                         trade_idx += 1
-                    elif self._max_hold_exceeded(entry_idx, i, df):
-                        record, pnl = self._make_trade_record(trade_idx, "Long", df, entry_idx, i, balance)
+                    elif self._max_hold_exceeded(pos["ts"], i, df):
+                        record, pnl = self._make_trade_record(trade_idx, "Long", df, pos["idx"], i, balance, entry_price=pos["price"], entry_ts=pos["ts"])
                         balance += pnl
                         log.append(record)
                         trade_idx += 1
                     else:
-                        surviving_longs.append(entry_idx)
+                        surviving_longs.append(pos)
                 open_longs = surviving_longs
 
                 if open_longs:
@@ -241,8 +273,8 @@ class _StochRsiSwingStrategy(Strategy):
                     mid_long = ki < exit_overbought and diff < -0.08 * ki and pd.notna(ri) and 45 < ri < 55
                     k_crossed_below_oversold = prev_k >= exit_oversold and ki < exit_oversold
                     if d_dropped or mid_long or k_crossed_below_oversold:
-                        for entry_idx in open_longs:
-                            record, pnl = self._make_trade_record(trade_idx, "Long", df, entry_idx, i, balance)
+                        for pos in open_longs:
+                            record, pnl = self._make_trade_record(trade_idx, "Long", df, pos["idx"], i, balance, entry_price=pos["price"], entry_ts=pos["ts"])
                             balance += pnl
                             log.append(record)
                             trade_idx += 1
@@ -250,20 +282,20 @@ class _StochRsiSwingStrategy(Strategy):
 
             if open_shorts:
                 surviving_shorts = []
-                for entry_idx in open_shorts:
-                    liq_p = self._check_liquidation("Short", entry_idx, i, df)
+                for pos in open_shorts:
+                    liq_p = self._check_liquidation("Short", pos["price"], i, df)
                     if liq_p is not None:
-                        record, pnl = self._make_trade_record(trade_idx, "Short", df, entry_idx, i, balance, liquidated=True, exit_price=liq_p)
+                        record, pnl = self._make_trade_record(trade_idx, "Short", df, pos["idx"], i, balance, liquidated=True, exit_price=liq_p, entry_price=pos["price"], entry_ts=pos["ts"])
                         balance += pnl
                         log.append(record)
                         trade_idx += 1
-                    elif self._max_hold_exceeded(entry_idx, i, df):
-                        record, pnl = self._make_trade_record(trade_idx, "Short", df, entry_idx, i, balance)
+                    elif self._max_hold_exceeded(pos["ts"], i, df):
+                        record, pnl = self._make_trade_record(trade_idx, "Short", df, pos["idx"], i, balance, entry_price=pos["price"], entry_ts=pos["ts"])
                         balance += pnl
                         log.append(record)
                         trade_idx += 1
                     else:
-                        surviving_shorts.append(entry_idx)
+                        surviving_shorts.append(pos)
                 open_shorts = surviving_shorts
 
                 if open_shorts:
@@ -271,8 +303,8 @@ class _StochRsiSwingStrategy(Strategy):
                     mid_short = ki > exit_oversold and diff > 0.08 * ki and pd.notna(ri) and 45 < ri < 55
                     k_crossed_above_overbought = prev_k <= exit_overbought and ki > exit_overbought
                     if d_rose or mid_short or k_crossed_above_overbought:
-                        for entry_idx in open_shorts:
-                            record, pnl = self._make_trade_record(trade_idx, "Short", df, entry_idx, i, balance)
+                        for pos in open_shorts:
+                            record, pnl = self._make_trade_record(trade_idx, "Short", df, pos["idx"], i, balance, entry_price=pos["price"], entry_ts=pos["ts"])
                             balance += pnl
                             log.append(record)
                             trade_idx += 1
@@ -280,26 +312,26 @@ class _StochRsiSwingStrategy(Strategy):
 
             signal = self._entry_signal(i, k, d, rsi, rsi_ma, kd_diff)
             if signal == "long":
-                open_longs.append(i)
+                open_longs.append({"idx": i, "price": float(df["Close"].iloc[i]), "ts": df.index[i]})
             elif signal == "short":
-                open_shorts.append(i)
+                open_shorts.append({"idx": i, "price": float(df["Close"].iloc[i]), "ts": df.index[i]})
 
         self.open_positions = [
-            {"direction": "Long", "entry_price": float(df["Close"].iloc[idx]), "entry_time": str(df.index[idx])}
-            for idx in open_longs
+            {"direction": "Long", "entry_price": pos["price"], "entry_time": str(pos["ts"])}
+            for pos in open_longs
         ] + [
-            {"direction": "Short", "entry_price": float(df["Close"].iloc[idx]), "entry_time": str(df.index[idx])}
-            for idx in open_shorts
+            {"direction": "Short", "entry_price": pos["price"], "entry_time": str(pos["ts"])}
+            for pos in open_shorts
         ]
 
         last_i = len(df) - 1
-        for entry_idx in open_longs:
-            record, pnl = self._make_trade_record(trade_idx, "Long", df, entry_idx, last_i, balance)
+        for pos in open_longs:
+            record, pnl = self._make_trade_record(trade_idx, "Long", df, pos["idx"], last_i, balance, entry_price=pos["price"], entry_ts=pos["ts"])
             balance += pnl
             log.append(record)
             trade_idx += 1
-        for entry_idx in open_shorts:
-            record, pnl = self._make_trade_record(trade_idx, "Short", df, entry_idx, last_i, balance)
+        for pos in open_shorts:
+            record, pnl = self._make_trade_record(trade_idx, "Short", df, pos["idx"], last_i, balance, entry_price=pos["price"], entry_ts=pos["ts"])
             balance += pnl
             log.append(record)
             trade_idx += 1
@@ -427,7 +459,10 @@ class TrendFilteredMomentumStrategy(Strategy):
 
     params_class = TrendMomentumParams
 
-    def run(self, df: pd.DataFrame, indicators: Indicators, live_start_idx: int = 0) -> pd.DataFrame:
+    def run(
+        self, df: pd.DataFrame, indicators: Indicators, live_start_idx: int = 0,
+        seed_positions: list[dict] | None = None,
+    ) -> pd.DataFrame:
         p = self.params
         srsi = indicators.stoch_rsi(p.rsi_length, p.stoch_length, p.k_smooth, p.d_smooth)
         k, d = srsi.k, srsi.d
@@ -440,12 +475,30 @@ class TrendFilteredMomentumStrategy(Strategy):
 
         position = 0
         entry_idx = None
+        entry_price = None
+        entry_ts = None
         trade_idx = 0
         balance = 0.0
         log = []
         waiting_long = False
         waiting_short = False
         touched_extreme = False  # whether the open position has reached its target zone
+
+        # Adopt an already-open exchange position (e.g. reconnected after a
+        # restart) directly, at its real entry price/time, skipping entry
+        # detection entirely. It's evaluated by the same exit logic below and
+        # only closes when a genuine exit condition (or liquidation / max
+        # hold) fires.
+        seed = (seed_positions or [None])[0]
+        if seed:
+            ts = pd.Timestamp(seed["entry_time"])
+            if ts.tzinfo is not None:
+                ts = ts.tz_convert("UTC").tz_localize(None)
+            idx = int(df.index.searchsorted(ts))
+            entry_idx = max(0, min(idx, max(live_start_idx - 1, 0)))
+            entry_price = float(seed["entry_price"])
+            entry_ts = ts
+            position = 1 if seed["direction"] == "Long" else -1
 
         for i in range(live_start_idx, len(df)):
             ki, di = k.iloc[i], d.iloc[i]
@@ -458,19 +511,19 @@ class TrendFilteredMomentumStrategy(Strategy):
 
             # ── Exit logic ────────────────────────────────────────────────
             if position == 1:
-                liq_p = self._check_liquidation("Long", entry_idx, i, df)
+                liq_p = self._check_liquidation("Long", entry_price, i, df)
                 if liq_p is not None:
-                    record, pnl = self._make_trade_record(trade_idx, "Long", df, entry_idx, i, balance, liquidated=True, exit_price=liq_p)
+                    record, pnl = self._make_trade_record(trade_idx, "Long", df, entry_idx, i, balance, liquidated=True, exit_price=liq_p, entry_price=entry_price, entry_ts=entry_ts)
                     balance += pnl
                     log.append(record)
                     trade_idx += 1
-                    position, entry_idx, touched_extreme = 0, None, False
-                elif self._max_hold_exceeded(entry_idx, i, df):
-                    record, pnl = self._make_trade_record(trade_idx, "Long", df, entry_idx, i, balance)
+                    position, entry_idx, entry_price, entry_ts, touched_extreme = 0, None, None, None, False
+                elif self._max_hold_exceeded(entry_ts, i, df):
+                    record, pnl = self._make_trade_record(trade_idx, "Long", df, entry_idx, i, balance, entry_price=entry_price, entry_ts=entry_ts)
                     balance += pnl
                     log.append(record)
                     trade_idx += 1
-                    position, entry_idx, touched_extreme = 0, None, False
+                    position, entry_idx, entry_price, entry_ts, touched_extreme = 0, None, None, None, False
                 else:
                     if ki >= overbought:
                         touched_extreme = True
@@ -478,26 +531,26 @@ class TrendFilteredMomentumStrategy(Strategy):
                     trend_exit = has_all and close_i < ema_i
                     macd_flip  = has_all and prev_hist >= 0 and hist_i < 0
                     if kd_exit or trend_exit or macd_flip:
-                        record, pnl = self._make_trade_record(trade_idx, "Long", df, entry_idx, i, balance)
+                        record, pnl = self._make_trade_record(trade_idx, "Long", df, entry_idx, i, balance, entry_price=entry_price, entry_ts=entry_ts)
                         balance += pnl
                         log.append(record)
                         trade_idx += 1
-                        position, entry_idx, touched_extreme = 0, None, False
+                        position, entry_idx, entry_price, entry_ts, touched_extreme = 0, None, None, None, False
 
             elif position == -1:
-                liq_p = self._check_liquidation("Short", entry_idx, i, df)
+                liq_p = self._check_liquidation("Short", entry_price, i, df)
                 if liq_p is not None:
-                    record, pnl = self._make_trade_record(trade_idx, "Short", df, entry_idx, i, balance, liquidated=True, exit_price=liq_p)
+                    record, pnl = self._make_trade_record(trade_idx, "Short", df, entry_idx, i, balance, liquidated=True, exit_price=liq_p, entry_price=entry_price, entry_ts=entry_ts)
                     balance += pnl
                     log.append(record)
                     trade_idx += 1
-                    position, entry_idx, touched_extreme = 0, None, False
-                elif self._max_hold_exceeded(entry_idx, i, df):
-                    record, pnl = self._make_trade_record(trade_idx, "Short", df, entry_idx, i, balance)
+                    position, entry_idx, entry_price, entry_ts, touched_extreme = 0, None, None, None, False
+                elif self._max_hold_exceeded(entry_ts, i, df):
+                    record, pnl = self._make_trade_record(trade_idx, "Short", df, entry_idx, i, balance, entry_price=entry_price, entry_ts=entry_ts)
                     balance += pnl
                     log.append(record)
                     trade_idx += 1
-                    position, entry_idx, touched_extreme = 0, None, False
+                    position, entry_idx, entry_price, entry_ts, touched_extreme = 0, None, None, None, False
                 else:
                     if ki <= oversold:
                         touched_extreme = True
@@ -505,11 +558,11 @@ class TrendFilteredMomentumStrategy(Strategy):
                     trend_exit = has_all and close_i > ema_i
                     macd_flip  = has_all and prev_hist <= 0 and hist_i > 0
                     if kd_exit or trend_exit or macd_flip:
-                        record, pnl = self._make_trade_record(trade_idx, "Short", df, entry_idx, i, balance)
+                        record, pnl = self._make_trade_record(trade_idx, "Short", df, entry_idx, i, balance, entry_price=entry_price, entry_ts=entry_ts)
                         balance += pnl
                         log.append(record)
                         trade_idx += 1
-                        position, entry_idx, touched_extreme = 0, None, False
+                        position, entry_idx, entry_price, entry_ts, touched_extreme = 0, None, None, None, False
 
             # ── Entry logic ───────────────────────────────────────────────
             if position == 0:
@@ -520,11 +573,13 @@ class TrendFilteredMomentumStrategy(Strategy):
 
                 if waiting_long and ki >= oversold:
                     if has_all and ki > di and close_i > ema_i and hist_i > 0:
-                        position, entry_idx, touched_extreme = 1, i, False
+                        position, entry_idx = 1, i
+                        entry_price, entry_ts, touched_extreme = float(close_i), df.index[i], False
                     waiting_long = False
                 elif waiting_short and ki <= overbought:
                     if has_all and ki < di and close_i < ema_i and hist_i < 0:
-                        position, entry_idx, touched_extreme = -1, i, False
+                        position, entry_idx = -1, i
+                        entry_price, entry_ts, touched_extreme = float(close_i), df.index[i], False
                     waiting_short = False
 
         self.open_positions = []
@@ -532,10 +587,10 @@ class TrendFilteredMomentumStrategy(Strategy):
             direction = "Long" if position == 1 else "Short"
             self.open_positions = [{
                 "direction": direction,
-                "entry_price": float(df["Close"].iloc[entry_idx]),
-                "entry_time": str(df.index[entry_idx]),
+                "entry_price": entry_price,
+                "entry_time": str(entry_ts),
             }]
-            record, pnl = self._make_trade_record(trade_idx, direction, df, entry_idx, len(df) - 1, balance)
+            record, pnl = self._make_trade_record(trade_idx, direction, df, entry_idx, len(df) - 1, balance, entry_price=entry_price, entry_ts=entry_ts)
             balance += pnl
             log.append(record)
 

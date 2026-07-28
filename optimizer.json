@@ -1,21 +1,21 @@
 {
-  "symbol": "xrpusdt",
+  "symbol": "zecusdt",
   "strategy": "AdvRSI",
   "timeframe": "240",
-  "candles": 3636,
+  "candles": 1800,
   "credit": 10.0,
   "leverage": 3,
   "cores": 10,
-  "maxiter": 500,
-  "objective": "large_move",
+  "maxiter": 5000,
+  "objective": "balanced",
   "custom_bounds": {
     "rsi_length": [
       6,
-      160
+      80
     ],
     "stoch_length": [
       6,
-      160
+      80
     ],
     "k_smooth": [
       4,
@@ -27,7 +27,7 @@
     ],
     "rsi_fast_length": [
       6,
-      80
+      50
     ],
     "rsi_ma_length": [
       2,
@@ -35,10 +35,10 @@
     ],
     "oversold": [
       1,
-      45
+      35
     ],
     "overbought": [
-      55,
+      65,
       99
     ],
     "exit_oversold": [
@@ -51,8 +51,10 @@
     ],
     "entry_wait_candles": [
       0,
-      15
+      12
     ]
   },
-  "min_price_change": 3.0
+  "min_price_change": 3.0,
+  "balanced_cap": 250.0,
+  "balanced_weight": 0.7
 }

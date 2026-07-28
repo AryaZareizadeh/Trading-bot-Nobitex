@@ -361,7 +361,7 @@
   .btn-scale.active { background: var(--accent); color: #0b0f1a; border-color: var(--accent); font-weight: 700; }
   .delta-chart-empty { font-size: 11px; color: var(--muted); padding: 20px 0; text-align: center; }
   .delta-chart-svg { display: block; width: 100%; height: auto; aspect-ratio: 600 / 260; }
-  .delta-chart-svg text { fill: var(--muted); font-size: 9px; font-family: 'Consolas','Menlo',monospace; }
+  .delta-chart-svg text { fill: var(--muted); font-size: 7px; font-family: 'Consolas','Menlo',monospace; }
   .opt-summary { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 14px; }
   .opt-stat { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; min-width: 120px; }
   .opt-stat .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
@@ -626,7 +626,7 @@
         </div>
         <div class="form-group">
           <label>Generations</label>
-          <input type="number" id="oMaxiter" value="30" min="5" max="500" step="5" onchange="saveOptimizerPrefs()">
+          <input type="number" id="oMaxiter" value="30" min="5" max="1000" step="5" onchange="saveOptimizerPrefs()">
         </div>
       </div>
     </div>
@@ -645,7 +645,7 @@
         </div>
         <div class="opt-obj-option">
           <input type="radio" name="oObjective" id="oObjBalanced" value="balanced" onchange="saveOptimizerPrefs(); _onObjectiveChange()">
-          <label for="oObjBalanced">Balanced<span class="obj-sub">Profit % + Win Rate weighted equally</span></label>
+          <label for="oObjBalanced">Balanced<span class="obj-sub">Weighted geometric mean of capped profit and win rate</span></label>
         </div>
         <div class="opt-obj-option">
           <input type="radio" name="oObjective" id="oObjLargeMove" value="large_move" onchange="saveOptimizerPrefs(); _onObjectiveChange()">
@@ -656,6 +656,21 @@
         <label style="font-size:12px; color:var(--muted);">Min price change (%):</label>
         <input type="number" id="oMinPriceChange" value="5" min="0.1" max="100" step="0.5"
                style="width:70px;" onchange="saveOptimizerPrefs()">
+      </div>
+      <div id="oBalancedRow" style="display:none; margin-top:12px; align-items:center; gap:8px; flex-wrap:wrap;">
+        <label style="font-size:12px; color:var(--muted);">Balanced cap ($):</label>
+        <input type="number" id="oBalancedCap" value="100" min="0.1" max="5000" step="1"
+               style="width:70px;" onchange="saveOptimizerPrefs()">
+        <span class="obj-sub" style="font-size:11px;">Profit ($) treated as "maxed out" when scoring</span>
+      </div>
+      <div id="oBalancedWeightRow" style="display:none; margin-top:12px; flex-direction:column; gap:6px;">
+        <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--muted);">
+          <span>Win Rate</span>
+          <span id="oBalancedWeightLabel">Win Rate 50% · PnL 50%</span>
+          <span>PnL</span>
+        </div>
+        <input type="range" id="oBalancedWeight" min="5" max="95" step="5" value="50"
+               style="width:100%;" oninput="_updateBalancedWeightLabel('o')" onchange="saveOptimizerPrefs()">
       </div>
     </div>
 
@@ -744,7 +759,7 @@
           </div>
           <div class="form-group">
             <label>Generations</label>
-            <input type="number" id="otMaxiter" value="30" min="5" max="500" step="5">
+            <input type="number" id="otMaxiter" value="30" min="5" max="1000" step="5">
           </div>
         </div>
       </div>
@@ -763,7 +778,7 @@
           </div>
           <div class="opt-obj-option">
             <input type="radio" name="otObjective" id="otObjBalanced" value="balanced" onchange="_otObjectiveChange()">
-            <label for="otObjBalanced">Balanced<span class="obj-sub">Profit % + Win Rate weighted equally</span></label>
+            <label for="otObjBalanced">Balanced<span class="obj-sub">Weighted geometric mean of capped profit and win rate</span></label>
           </div>
           <div class="opt-obj-option">
             <input type="radio" name="otObjective" id="otObjLargeMove" value="large_move" onchange="_otObjectiveChange()">
@@ -773,6 +788,20 @@
         <div id="otLargeMoveRow" style="display:none;margin-top:12px;align-items:center;gap:8px;flex-wrap:wrap;">
           <label style="font-size:12px;color:var(--muted);">Min price change (%):</label>
           <input type="number" id="otMinPriceChange" value="5" min="0.1" max="100" step="0.5" style="width:70px;">
+        </div>
+        <div id="otBalancedRow" style="display:none;margin-top:12px;align-items:center;gap:8px;flex-wrap:wrap;">
+          <label style="font-size:12px;color:var(--muted);">Balanced cap ($):</label>
+          <input type="number" id="otBalancedCap" value="100" min="0.1" max="5000" step="1" style="width:70px;">
+          <span class="obj-sub" style="font-size:11px;">Profit ($) treated as "maxed out" when scoring</span>
+        </div>
+        <div id="otBalancedWeightRow" style="display:none;margin-top:12px;flex-direction:column;gap:6px;">
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);">
+            <span>Win Rate</span>
+            <span id="otBalancedWeightLabel">Win Rate 50% · PnL 50%</span>
+            <span>PnL</span>
+          </div>
+          <input type="range" id="otBalancedWeight" min="5" max="95" step="5" value="50"
+                 style="width:100%;" oninput="_updateBalancedWeightLabel('ot')">
         </div>
       </div>
 
@@ -1700,6 +1729,35 @@ function fmtDate(s) {
     const d = new Date(s.replace(' ', 'T') + 'Z');
     return d.toLocaleString('en-GB', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', timeZone:'UTC' });
   } catch { return s; }
+}
+// Short "Xm Ys" / "Xh Ym" style duration, for optimizer run ETAs (seconds-level precision).
+function fmtEta(seconds) {
+  if (seconds == null || !isFinite(seconds) || seconds < 0) return null;
+  seconds = Math.round(seconds);
+  if (seconds < 5)   return 'a few seconds';
+  if (seconds < 60)  return `${seconds}s`;
+  const m = Math.floor(seconds / 60), s = seconds % 60;
+  if (m < 60) return s > 0 ? `${m}m ${s}s` : `${m}m`;
+  const h = Math.floor(m / 60), mm = m % 60;
+  return mm > 0 ? `${h}h ${mm}m` : `${h}h`;
+}
+// Estimates seconds remaining for a running optimizer job from its own pace so far:
+// (elapsed time / generations completed) × generations left. Requires `created_at`
+// from the server and at least one completed generation to have a rate to project.
+// The estimate is cached per job+iteration so it only recomputes once a new
+// generation actually finishes, rather than drifting on every 1s poll tick.
+const _etaCache = {}; // jobId -> { iteration, eta }
+function estimateOptimizerEta(job) {
+  if (!job || job.status !== 'running' || !job.created_at || !job.iteration) return null;
+  const cached = _etaCache[job.id];
+  if (cached && cached.iteration === job.iteration) return cached.eta;
+  const elapsed = (Date.now() / 1000) - job.created_at;
+  if (elapsed <= 0) return null;
+  const secsPerGen = elapsed / job.iteration;
+  const remainingGens = Math.max(0, (job.maxiter || 0) - job.iteration);
+  const eta = secsPerGen * remainingGens;
+  _etaCache[job.id] = { iteration: job.iteration, eta };
+  return eta;
 }
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -2639,6 +2697,9 @@ function populateOptimizerControls() {
   const objEl = document.querySelector(`input[name="oObjective"][value="${savedObj}"]`);
   if (objEl) objEl.checked = true;
   if (optimizerConfig.min_price_change != null) document.getElementById('oMinPriceChange').value = optimizerConfig.min_price_change;
+  if (optimizerConfig.balanced_cap     != null) document.getElementById('oBalancedCap').value     = optimizerConfig.balanced_cap;
+  if (optimizerConfig.balanced_weight  != null) document.getElementById('oBalancedWeight').value   = Math.round(optimizerConfig.balanced_weight * 100);
+  _updateBalancedWeightLabel('o');
   _onObjectiveChange();
 
   // CPU-cores select: "Auto" (0) plus 1..max_cores. Auto shows what it resolves to.
@@ -2729,9 +2790,22 @@ function saveOptimizerPrefs() {
 }
 
 function _onObjectiveChange() {
-  const isLargeMove = document.querySelector('input[name="oObjective"]:checked')?.value === 'large_move';
+  const checked = document.querySelector('input[name="oObjective"]:checked')?.value;
   const row = document.getElementById('oLargeMoveRow');
-  if (row) row.style.display = isLargeMove ? 'flex' : 'none';
+  if (row) row.style.display = checked === 'large_move' ? 'flex' : 'none';
+  const balRow = document.getElementById('oBalancedRow');
+  if (balRow) balRow.style.display = checked === 'balanced' ? 'flex' : 'none';
+  const weightRow = document.getElementById('oBalancedWeightRow');
+  if (weightRow) weightRow.style.display = checked === 'balanced' ? 'flex' : 'none';
+}
+
+function _updateBalancedWeightLabel(prefix) {
+  const slider = document.getElementById(prefix + 'BalancedWeight');
+  const label = document.getElementById(prefix + 'BalancedWeightLabel');
+  if (!slider || !label) return;
+  const pnlPct = parseInt(slider.value, 10) || 50;
+  const wrPct = 100 - pnlPct;
+  label.textContent = `Win Rate ${wrPct}% \u00b7 PnL ${pnlPct}%`;
 }
 
 function _optimizerPayload() {
@@ -2746,6 +2820,8 @@ function _optimizerPayload() {
     maxiter:          parseInt(document.getElementById('oMaxiter')?.value) || 30,
     objective:        document.querySelector('input[name="oObjective"]:checked')?.value || 'profit',
     min_price_change: parseFloat(document.getElementById('oMinPriceChange')?.value) || 5,
+    balanced_cap:     parseFloat(document.getElementById('oBalancedCap')?.value) || 100,
+    balanced_weight:  (parseFloat(document.getElementById('oBalancedWeight')?.value) || 50) / 100,
     custom_bounds:    _getCustomBounds(),
   };
 }
@@ -2832,18 +2908,26 @@ function buildDeltaChartSVG(history, tol, scale) {
   const tolY = yAt(tolValue);
   const dataMax = Math.max(...values), dataMin = Math.min(...values);
 
-  const dots = pts.map(p =>
-    `<circle cx="${xAt(p.iteration).toFixed(1)}" cy="${yAt(valueOf(p)).toFixed(1)}" r="2" fill="var(--accent)" />`
-  ).join('');
+  // Light background grid: a handful of evenly-spaced rows/columns behind the data.
+  const GRID_ROWS = 4, GRID_COLS = 6;
+  const hGrid = Array.from({ length: GRID_ROWS + 1 }, (_, i) => {
+    const y = padT + (plotH / GRID_ROWS) * i;
+    return `<line x1="${padL.toFixed(1)}" y1="${y.toFixed(1)}" x2="${(padL + plotW).toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--border)" stroke-width="0.5" opacity="0.5" />`;
+  }).join('');
+  const vGrid = Array.from({ length: GRID_COLS + 1 }, (_, i) => {
+    const x = padL + (plotW / GRID_COLS) * i;
+    return `<line x1="${x.toFixed(1)}" y1="${padT.toFixed(1)}" x2="${x.toFixed(1)}" y2="${(padT + plotH).toFixed(1)}" stroke="var(--border)" stroke-width="0.5" opacity="0.5" />`;
+  }).join('');
 
   return `
     <svg class="delta-chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
       <rect x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" fill="none" stroke="var(--border)" />
+      ${hGrid}
+      ${vGrid}
       <line x1="${padL.toFixed(1)}" y1="${tolY.toFixed(1)}" x2="${(padL + plotW).toFixed(1)}" y2="${tolY.toFixed(1)}"
             stroke="var(--green)" stroke-width="1" stroke-dasharray="4,3" opacity="0.7" />
       <text x="${(padL + plotW - 2).toFixed(1)}" y="${(tolY - 4).toFixed(1)}" text-anchor="end" fill="var(--green)">target ${fmtDelta(tol)}</text>
-      <polyline points="${linePts}" fill="none" stroke="var(--accent)" stroke-width="1.75" stroke-linejoin="round" stroke-linecap="round" />
-      ${dots}
+      <polyline points="${linePts}" fill="none" stroke="var(--accent)" stroke-width="1" stroke-linejoin="round" stroke-linecap="round" />
       <circle cx="${xAt(last.iteration).toFixed(1)}" cy="${yAt(valueOf(last)).toFixed(1)}" r="4" fill="${lastColor}" stroke="var(--surface)" stroke-width="1.5" />
       <text x="${(padL - 4).toFixed(1)}" y="${(yAt(dataMax) + 3).toFixed(1)}" text-anchor="end">${fmtDelta(toAxisVal(dataMax))}</text>
       <text x="${(padL - 4).toFixed(1)}" y="${(yAt(dataMin) + 3).toFixed(1)}" text-anchor="end">${fmtDelta(toAxisVal(dataMin))}</text>
@@ -2892,7 +2976,9 @@ function renderOptimizerProgress(job) {
   let bestInfo = '';
   if (job.best_pnl != null) bestInfo += ` · P&L $${job.best_pnl.toFixed(2)}`;
   if (job.best_summary?.win_rate != null) bestInfo += ` · WR ${job.best_summary.win_rate.toFixed(1)}%`;
-  const cur = job.status === 'running' ? `Searching…${bestInfo}`
+  const etaSecs = estimateOptimizerEta(job);
+  const etaText = job.status !== 'running' ? '' : (etaSecs != null ? ` · ~${fmtEta(etaSecs)} left` : ' · estimating time…');
+  const cur = job.status === 'running' ? `Searching…${bestInfo}${etaText}`
             : job.status === 'pending' ? 'Starting…'
             : job.status === 'done' ? '✓ Complete'
             : job.status === 'cancelled' ? 'Cancelled'
@@ -3366,9 +3452,13 @@ function _updateTrainPctLabel() {
 }
 
 function _otObjectiveChange() {
-  const isLargeMove = document.querySelector('input[name="otObjective"]:checked')?.value === 'large_move';
+  const checked = document.querySelector('input[name="otObjective"]:checked')?.value;
   const row = document.getElementById('otLargeMoveRow');
-  if (row) row.style.display = isLargeMove ? 'flex' : 'none';
+  if (row) row.style.display = checked === 'large_move' ? 'flex' : 'none';
+  const balRow = document.getElementById('otBalancedRow');
+  if (balRow) balRow.style.display = checked === 'balanced' ? 'flex' : 'none';
+  const weightRow = document.getElementById('otBalancedWeightRow');
+  if (weightRow) weightRow.style.display = checked === 'balanced' ? 'flex' : 'none';
 }
 
 function _updateTesterRunNote() {
@@ -3393,6 +3483,8 @@ function _optimizerTesterPayload() {
     maxiter:          parseInt(document.getElementById('otMaxiter')?.value) || 30,
     objective:        document.querySelector('input[name="otObjective"]:checked')?.value || 'profit',
     min_price_change: parseFloat(document.getElementById('otMinPriceChange')?.value) || 5,
+    balanced_cap:     parseFloat(document.getElementById('otBalancedCap')?.value) || 100,
+    balanced_weight:  (parseFloat(document.getElementById('otBalancedWeight')?.value) || 50) / 100,
     custom_bounds:    _getOptimizerTesterCustomBounds(),
   };
 }
@@ -3444,7 +3536,9 @@ function renderOptimizerTesterProgress(job) {
   let bestInfo = '';
   if (job.best_pnl != null) bestInfo += ` · P&L $${job.best_pnl.toFixed(2)}`;
   if (job.best_summary?.win_rate != null) bestInfo += ` · WR ${job.best_summary.win_rate.toFixed(1)}%`;
-  const cur = job.status === 'running' ? `Optimizing training window…${bestInfo}`
+  const etaSecs = estimateOptimizerEta(job);
+  const etaText = job.status !== 'running' ? '' : (etaSecs != null ? ` · ~${fmtEta(etaSecs)} left` : ' · estimating time…');
+  const cur = job.status === 'running' ? `Optimizing training window…${bestInfo}${etaText}`
             : job.status === 'pending' ? 'Starting…'
             : job.status === 'done'    ? '✓ Complete — train & test results ready'
             : job.status === 'cancelled' ? 'Cancelled'

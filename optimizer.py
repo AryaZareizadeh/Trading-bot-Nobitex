@@ -104,7 +104,7 @@ _MAX_CANDLES = 30000
 _DEFAULT_CANDLES = 1000
 
 # Differential-Evolution budget. Total backtests ≈ popsize · n_params · (maxiter+1).
-_DE_POPSIZE = 15
+_DE_POPSIZE = 20
 _DE_MAXITER = 30
 _DE_TOL = 0.01
 _DE_SEED = None
@@ -146,7 +146,8 @@ def _build_params(strategy_name: str, names: list[str], vector) -> object:
     return PARAMS_CLASS[strategy_name](**kwargs)
 
 
-def _compute_score(summary: dict, objective: str, credit: float, min_price_change: float = 5.0) -> float:
+def _compute_score(summary: dict, objective: str, credit: float, min_price_change: float = 5.0,
+                    balanced_cap: float = 100.0, balanced_weight: float = 0.5) -> float:
     """Return the value DE minimizes for the given objective (lower = better)."""
     pnl = summary.get("total_pnl", 0.0)
     wr = summary.get("win_rate", 0.0)
@@ -155,9 +156,34 @@ def _compute_score(summary: dict, objective: str, credit: float, min_price_chang
         tc = summary.get("trade_count", 0)
         return -wr if tc > 0 else 100.0
     if objective == "balanced":
-        # Maximize both: normalize pnl to percentage-of-credit, then sum with win rate.
-        pnl_pct = (pnl / credit * 100) if credit > 0 else 0.0
-        return -(pnl_pct + wr)
+        # Maximize both, but on a common 0-1 scale instead of just adding raw
+        # units (which let a large pnl figure swamp a small win-rate%, or vice
+        # versa, depending on how the two happen to be scaled).
+        #
+        # pnl_norm: pnl as a fraction of *balanced_cap* dollars of profit,
+        # floored at 0 (a losing strategy scores 0 on this axis, not a
+        # negative number) and capped at 1 (so blowing past the cap doesn't
+        # keep inflating the score). balanced_cap is a flat dollar amount
+        # (e.g. 20 on a $10 account = "$20 profit counts as maxed out"),
+        # not a % of credit, so it means the same thing regardless of how
+        # much credit the run happens to use.
+        # wr_norm: win rate as a fraction of 100%, same floor/cap.
+        cap = balanced_cap if balanced_cap and balanced_cap > 0 else 100.0
+        pnl_norm = min(1.0, max(0.0, pnl) / cap)
+        wr_norm = min(1.0, max(0.0, wr) / 100.0)
+        # Weighted geometric mean instead of a sum: a strategy now has to do
+        # reasonably well on *both* metrics to score well — a high win rate
+        # can no longer paper over a losing (or barely-profitable) strategy,
+        # since pnl_norm = 0 zeroes the whole score regardless of weight.
+        # balanced_weight is pnl's share of the exponent (0-1); win rate gets
+        # the remainder. 0.5 (the default) reduces to the plain, evenly
+        # weighted geometric mean used before this was tunable. Clamped away
+        # from the extremes so a 0 exponent can't turn a losing pnl_norm of 0
+        # into a free pass (0 ** 0 == 1 in Python, which would defeat the
+        # "losers always score 0" rule above).
+        w = balanced_weight if balanced_weight is not None else 0.5
+        w = min(0.95, max(0.05, w))
+        return -((pnl_norm ** w) * (wr_norm ** (1 - w)))
     if objective == "large_move":
         # Maximize the % of trades where |price change| >= threshold.
         changes = summary.get("price_changes", [])
@@ -276,12 +302,14 @@ def _expand_cpu_affinity() -> None:
             pass
 
 
-def _worker_init(df, strategy_name, credit, leverage, names, objective, min_price_change) -> None:
+def _worker_init(df, strategy_name, credit, leverage, names, objective, min_price_change,
+                  balanced_cap=100.0, balanced_weight=0.5) -> None:
     """Pool initializer: runs once per worker process, caching the shared context."""
     _expand_cpu_affinity()
     _WORKER.update(df=df, strategy=strategy_name, credit=credit,
                    leverage=leverage, names=names, objective=objective,
-                   min_price_change=min_price_change)
+                   min_price_change=min_price_change, balanced_cap=balanced_cap,
+                   balanced_weight=balanced_weight)
 
 
 def _worker_objective(vector) -> float:
@@ -294,7 +322,8 @@ def _worker_objective(vector) -> float:
     params = _build_params(_WORKER["strategy"], _WORKER["names"], vector)
     summary = evaluate(_WORKER["df"], _WORKER["strategy"], params,
                        _WORKER["credit"], _WORKER["leverage"])
-    return _compute_score(summary, _WORKER["objective"], _WORKER["credit"], _WORKER["min_price_change"])
+    return _compute_score(summary, _WORKER["objective"], _WORKER["credit"], _WORKER["min_price_change"],
+                          _WORKER.get("balanced_cap", 100.0), _WORKER.get("balanced_weight", 0.5))
 
 
 def _resolve_workers() -> int:
@@ -329,6 +358,8 @@ class OptimizerJob:
                  custom_bounds: dict | None = None,
                  objective: str = "profit",
                  min_price_change: float = 5.0,
+                 balanced_cap: float = 100.0,
+                 balanced_weight: float = 0.5,
                  train_pct: float | None = None):
         self.id = uuid.uuid4().hex[:8]
         self.symbol = symbol
@@ -340,6 +371,8 @@ class OptimizerJob:
         self.requested_cores = cores     # 0 = Auto; else the user-picked core count
         self.objective = objective
         self.min_price_change = float(min_price_change) if min_price_change else 5.0
+        self.balanced_cap = float(balanced_cap) if balanced_cap else 100.0
+        self.balanced_weight = min(0.95, max(0.05, float(balanced_weight))) if balanced_weight is not None else 0.5
         self.custom_bounds = custom_bounds or {}
 
         self.status = "pending"          # pending | running | done | cancelled | error
@@ -402,6 +435,12 @@ class OptimizerJob:
             recombination=0.7,
             callback=callback,
             init="sobol",        # space-filling start for better global coverage
+            # rand1bin builds trial vectors from random population members rather
+            # than mutating around the current best (best1bin, SciPy's default).
+            # That keeps the population diverse for longer instead of collapsing
+            # toward the first decent region it finds, at the cost of slightly
+            # slower convergence — worth it given maxiter now goes up to 1000.
+            strategy="rand1bin",
         )
 
     def _run_de(self, df: pd.DataFrame) -> None:
@@ -437,7 +476,7 @@ class OptimizerJob:
         def objective(vector) -> float:
             params = _build_params(self.strategy, names, vector)
             summary = evaluate(df, self.strategy, params, self.credit, self.leverage)
-            score = _compute_score(summary, self.objective, self.credit, self.min_price_change)
+            score = _compute_score(summary, self.objective, self.credit, self.min_price_change, self.balanced_cap, self.balanced_weight)
             self.evaluations += 1
             if score < best["score"]:
                 best["score"] = score
@@ -498,7 +537,7 @@ class OptimizerJob:
             """Re-score one DE vector in the parent and keep it if it's the best."""
             params = _build_params(self.strategy, names, vector)
             summary = evaluate(df, self.strategy, params, self.credit, self.leverage)
-            score = _compute_score(summary, self.objective, self.credit, self.min_price_change)
+            score = _compute_score(summary, self.objective, self.credit, self.min_price_change, self.balanced_cap, self.balanced_weight)
             if best["score"] is None or score < best["score"]:
                 best["score"] = score
                 best["pnl"] = summary["total_pnl"]
@@ -540,7 +579,8 @@ class OptimizerJob:
         pool = ctx.Pool(
             processes=workers,
             initializer=_worker_init,
-            initargs=(df, self.strategy, self.credit, self.leverage, names, self.objective, self.min_price_change),
+            initargs=(df, self.strategy, self.credit, self.leverage, names, self.objective, self.min_price_change,
+                      self.balanced_cap, self.balanced_weight),
         )
         try:
             result = differential_evolution(
@@ -838,6 +878,7 @@ class OptimizerJob:
             "id": self.id,
             "status": self.status,
             "error": self.error,
+            "created_at": self.created_at,
             "symbol": self.symbol.upper(),
             "strategy": self.strategy,
             "strategy_label": STRATEGY_LABELS.get(self.strategy, self.strategy),
@@ -860,7 +901,7 @@ class OptimizerJob:
             "chart_data": self.chart_data,
             "params": self._params_view(),
             "baseline": self.baseline,
-            "history": self.history[-60:],   # cap to last 60 generations
+            "history": self.history,  # full run, so the chart can plot start-to-finish
             # Tester-mode fields
             "train_pct": self.train_pct,
             "train_candle_count": self.train_candle_count,
@@ -885,6 +926,8 @@ class OptimizerManager:
             "symbol": "", "strategy": "", "timeframe": "240",
             "candles": _DEFAULT_CANDLES, "credit": 100.0, "leverage": 5,
             "min_price_change": 5.0,
+            "balanced_cap": 100.0,
+            "balanced_weight": 0.5,
             "cores": 0,       # 0 = Auto
             "maxiter": _DE_MAXITER,
             "objective": "profit",
@@ -907,7 +950,8 @@ class OptimizerManager:
 
     def save_prefs(self, symbol, strategy, timeframe, candles, credit, leverage,
                    cores=0, maxiter=_DE_MAXITER, objective="profit",
-                   custom_bounds=None, min_price_change=5.0) -> None:
+                   custom_bounds=None, min_price_change=5.0, balanced_cap=100.0,
+                   balanced_weight=0.5) -> None:
         self._prefs = {
             "symbol": (symbol or "").lower().replace("/", "").strip(),
             "strategy": strategy if strategy in STRATEGY_MAP else "",
@@ -916,10 +960,12 @@ class OptimizerManager:
             "credit": float(credit),
             "leverage": int(leverage),
             "cores": _clamp_cores(cores),
-            "maxiter": max(5, min(500, int(maxiter))) if maxiter else _DE_MAXITER,
+            "maxiter": max(5, min(5000, int(maxiter))) if maxiter else _DE_MAXITER,
             "objective": objective if objective in ("profit", "winrate", "balanced", "large_move") else "profit",
             "custom_bounds": custom_bounds if isinstance(custom_bounds, dict) else None,
             "min_price_change": max(0.1, float(min_price_change)) if min_price_change else 5.0,
+            "balanced_cap": max(0.1, float(balanced_cap)) if balanced_cap else 100.0,
+            "balanced_weight": min(0.95, max(0.05, float(balanced_weight))) if balanced_weight is not None else 0.5,
         }
         self._save_prefs()
 
@@ -949,13 +995,15 @@ class OptimizerManager:
     # ── Jobs ─────────────────────────────────────────────────────────────────
     def start_job(self, symbol, strategy, timeframe, candles, credit, leverage,
                   cores=0, maxiter=_DE_MAXITER, objective="profit",
-                  custom_bounds=None, min_price_change=5.0, train_pct=None) -> OptimizerJob:
+                  custom_bounds=None, min_price_change=5.0, balanced_cap=100.0,
+                  balanced_weight=0.5, train_pct=None) -> OptimizerJob:
         self._prune()
         job = OptimizerJob(
             symbol.lower().replace("/", "").strip(), strategy, timeframe,
             _clamp_candles(candles), float(credit), int(leverage), _clamp_cores(cores),
             maxiter=maxiter, custom_bounds=custom_bounds, objective=objective,
-            min_price_change=min_price_change, train_pct=train_pct,
+            min_price_change=min_price_change, balanced_cap=balanced_cap,
+            balanced_weight=balanced_weight, train_pct=train_pct,
         )
         self._jobs[job.id] = job
         job._task = asyncio.create_task(job.run())

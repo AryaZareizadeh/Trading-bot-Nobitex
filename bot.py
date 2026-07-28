@@ -130,6 +130,12 @@ class Bot:
         self._pending_order: Optional[dict] = None
         self._wallet_cache: Optional[dict] = None
         self._wallet_cache_ts: float = 0.0
+        # A position reconnected from the exchange after a restart, not yet
+        # rediscovered by the strategy's own entry logic. Fed into the
+        # strategy's `run()` every call as `seed_positions` so it's evaluated
+        # by the normal exit logic like any other open position; cleared once
+        # the strategy reports it closed. See _sync_exchange / _run_strategy.
+        self._seed_position: Optional[dict] = None
 
     # ── Logging ───────────────────────────────────────────────────────────────
 
@@ -168,6 +174,7 @@ class Bot:
         self._pending_order = None
         self._wallet_cache = None
         self._wallet_cache_ts = 0.0
+        self._seed_position = None
         self.status = BotStatus.IDLE
         self._log_event(
             "reconfigured",
@@ -197,6 +204,16 @@ class Bot:
         raise ValueError(f"Cannot infer currency pair from symbol {sym!r}")
 
     def _strategy_signal(self) -> str:
+        # A reconnected position's real entry_time predates this run's
+        # _live_from_ts by design (we don't replay the offline gap — see
+        # _sync_exchange), so it needs to be recognized directly rather than
+        # via the entry >= _live_from_ts check below. _run_strategy clears
+        # _seed_position once the strategy reports it actually closed.
+        if self._seed_position is not None:
+            direction = self._seed_position["direction"]
+            if any(p["direction"] == direction for p in self.open_positions):
+                return "long" if direction == "Long" else "short"
+
         if self._live_from_ts is None:
             return "none"
         for pos in self.open_positions:
@@ -634,6 +651,7 @@ class Bot:
                         )
                         self._exchange_position_id = None
                         self._real_state = "none"
+                        self._seed_position = None
                         # Fall through: _real_state != signal now, so the open/adopt path below runs.
                     else:
                         return  # position confirmed open; nothing to do
@@ -653,62 +671,24 @@ class Bot:
                     pos_side = reconnect_pos.get("side", "")
                     direction = "Long" if pos_side == "buy" else "Short"
                     state_val = "long" if pos_side == "buy" else "short"
-                    # Prefer positions the current warmup backtest already knows about:
-                    # back-date _live_from_ts so the matching entry becomes a live signal.
-                    strategy_entries = [p for p in self.open_positions if p.get("direction") == direction]
-                    if strategy_entries:
-                        self._live_from_ts = min(pd.Timestamp(p["entry_time"]) for p in strategy_entries)
-                        self._exchange_position_id = reconnect_pos["id"]
-                        self._real_state = state_val
-                        self._log_event(
-                            "reconnected",
-                            f"Reconnected to existing {direction} position {reconnect_pos['id']} after restart",
-                        )
-                        return
 
-                    # Not visible in the current window — either its entry predates our
-                    # fetched candles, or the strategy's own exit condition already fired
-                    # for it while the server was down. Replay from its real exchange
-                    # entry time forward (fetching more history if needed) to find out
-                    # which, instead of guessing — and only close it if it should be.
-                    resolved = await self._resolve_reconnected_position(reconnect_pos, direction)
+                    # Adopt it directly as a normal open position — no replay or
+                    # verification. It's fed to the strategy as a seed position
+                    # (see _run_strategy) and evaluated by the same exit logic as
+                    # any other open position, closing only when a real exit
+                    # condition (or liquidation / max hold) actually fires.
                     self._exchange_position_id = reconnect_pos["id"]
                     self._real_state = state_val
-                    if resolved is None:
-                        # Couldn't verify (missing/unparseable entry time, or not enough
-                        # history available) — adopt as live rather than risk closing a
-                        # position we can't actually evaluate.
-                        self._live_from_ts = self.df.index[-1] + pd.Timedelta(
-                            seconds=RESOLUTION_SECONDS[self.cfg.timeframe]
-                        )
-                        self.open_positions = [{
-                            "direction": direction,
-                            "entry_price": float(reconnect_pos.get("entryPrice") or 0),
-                            "entry_time": str(self._live_from_ts),
-                        }]
-                        self._log_event(
-                            "warning",
-                            f"Reconnected to {direction} position {reconnect_pos['id']} but couldn't verify "
-                            f"its exit history — adopting as live without a confirmed entry time.",
-                        )
-                        return
-
-                    still_open, entry_ts = resolved
-                    if still_open:
-                        self._live_from_ts = entry_ts
-                        self._log_event(
-                            "reconnected",
-                            f"Reconnected to {direction} position {reconnect_pos['id']} (opened {entry_ts}) — "
-                            f"no exit condition triggered while offline, resuming live tracking.",
-                        )
-                    else:
-                        self._log_event(
-                            "reconnected",
-                            f"Reconnected to {direction} position {reconnect_pos['id']} (opened {entry_ts}) — "
-                            f"exit conditions were met while offline; closing now.",
-                        )
-                        price_str = f"{self.current_price:.2f}"
-                        await self._close_exchange_position(client, price_str)
+                    self._seed_position = {
+                        "direction": direction,
+                        "entry_price": float(reconnect_pos.get("entryPrice") or 0),
+                        "entry_time": reconnect_pos.get("openedAt"),
+                    }
+                    self._log_event(
+                        "reconnected",
+                        f"Reconnected to existing {direction} position {reconnect_pos['id']} after restart — "
+                        f"adopted as a normal open position; will close on the strategy's own exit signal.",
+                    )
                     return
 
             src, dst = self._parse_symbol()
@@ -720,6 +700,7 @@ class Bot:
                     # State was reset; let the next loop recover cleanly.
                     self._real_positions = self._normalize_positions(client.positions("active"))
                     return
+                self._seed_position = None
 
             # ── Open / go flat ─────────────────────────────────────────────────
             if signal != "none":
@@ -793,11 +774,29 @@ class Bot:
         old_closed_count = self.closed_trade_count
         old_pos_keys = {(p["direction"], p["entry_time"]) for p in self.open_positions}
 
-        trades_df = strategy.run(self.df, indicators, live_start_idx)
+        seed_positions = [self._seed_position] if self._seed_position else None
+        trades_df = strategy.run(self.df, indicators, live_start_idx, seed_positions=seed_positions)
 
         self.completed_trades = trades_df.to_dict("records") if not trades_df.empty else []
         self.open_positions = strategy.open_positions
         self.current_price = float(self.df["Close"].iloc[-1])
+
+        # If a reconnected position was seeded in, check whether the strategy
+        # still carries it forward as open. Once its real exit condition (or
+        # liquidation / max hold) has fired and it drops out of open_positions,
+        # stop seeding it — it's now a normal closed trade in the log, and
+        # _sync_exchange will close it on the exchange like any other exit.
+        if self._seed_position is not None:
+            seed_ts = pd.Timestamp(self._seed_position["entry_time"])
+            if seed_ts.tzinfo is not None:
+                seed_ts = seed_ts.tz_convert("UTC").tz_localize(None)
+            still_seeded = any(
+                p["direction"] == self._seed_position["direction"]
+                and pd.Timestamp(p["entry_time"]) == seed_ts
+                for p in self.open_positions
+            )
+            if not still_seeded:
+                self._seed_position = None
 
         # Each strategy appends one pending record per open position at the END of its log.
         # So the first `closed_trade_count` records are real closed trades; the rest are pending.

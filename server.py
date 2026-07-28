@@ -135,7 +135,7 @@ async def _exchange_sync_loop() -> None:
             _exchange_state["error"] = "no_credentials"
         except Exception as exc:
             _exchange_state["error"] = str(exc)
-        await asyncio.sleep(30)
+        await asyncio.sleep(120)
 
 
 async def _broadcast_loop() -> None:
@@ -257,10 +257,12 @@ class OptimizerPrefsRequest(BaseModel):
     credit: float = 100.0
     leverage: int = Field(default=5, ge=1, le=100)
     cores: int = Field(default=0, ge=0)   # 0 = Auto
-    maxiter: int = Field(default=30, ge=5, le=500)
+    maxiter: int = Field(default=30, ge=5, le=5000)
     objective: str = "profit"             # profit | winrate | balanced | large_move
     custom_bounds: Optional[dict] = None  # param_name -> [low, high]
     min_price_change: float = Field(default=5.0, gt=0, le=100)
+    balanced_cap: float = Field(default=100.0, gt=0, le=5000)
+    balanced_weight: float = Field(default=0.5, ge=0.05, le=0.95)
 
 
 class OptimizerRunRequest(BaseModel):
@@ -271,10 +273,12 @@ class OptimizerRunRequest(BaseModel):
     credit: float = Field(default=100.0, gt=0)
     leverage: int = Field(default=5, ge=1, le=100)
     cores: int = Field(default=0, ge=0)   # 0 = Auto
-    maxiter: int = Field(default=30, ge=5, le=500)
+    maxiter: int = Field(default=30, ge=5, le=5000)
     objective: str = "profit"             # profit | winrate | balanced | large_move
     custom_bounds: Optional[dict] = None  # param_name -> [low, high]
     min_price_change: float = Field(default=5.0, gt=0, le=100)
+    balanced_cap: float = Field(default=100.0, gt=0, le=5000)
+    balanced_weight: float = Field(default=0.5, ge=0.05, le=0.95)
 
 
 class OptimizerTesterRunRequest(OptimizerRunRequest):
@@ -533,7 +537,7 @@ async def optimizer_config():
 async def optimizer_save_prefs(req: OptimizerPrefsRequest):
     optimizer_manager.save_prefs(
         req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
-        req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change,
+        req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change, req.balanced_cap, req.balanced_weight,
     )
     return {"ok": True}
 
@@ -559,11 +563,11 @@ async def optimizer_run(req: OptimizerRunRequest):
     # Persist the selection so the tab reopens where the user left off.
     optimizer_manager.save_prefs(
         req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
-        req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change,
+        req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change, req.balanced_cap, req.balanced_weight,
     )
     job = optimizer_manager.start_job(
         req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
-        req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change,
+        req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change, req.balanced_cap, req.balanced_weight,
     )
     return {"job_id": job.id}
 
@@ -606,7 +610,7 @@ async def optimizer_tester_run(req: OptimizerTesterRunRequest):
                 return JSONResponse(status_code=400, content={"error": f"Parameter '{name}': min ({lo}) must be less than max ({hi})."})
     job = optimizer_manager.start_job(
         req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
-        req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change,
+        req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change, req.balanced_cap, req.balanced_weight,
         train_pct=req.train_pct,
     )
     return {"job_id": job.id}

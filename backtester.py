@@ -12,22 +12,21 @@ Two design choices keep this within Nobitex's per-minute request budget:
 2. **Fetches are throttled** to at most `_FETCHES_PER_MINUTE` requests/minute.
    Strategy evaluation itself is pure CPU work and makes no API calls.
 
-Runs execute as in-memory background jobs (consistent with the rest of the
-dashboard: no DB, state lost on restart) that the frontend polls for progress.
+Job inputs and results are persisted by the parent process in SQLite.
 """
 
 import asyncio
-import json
 import time
 import uuid
-from pathlib import Path
 
 import pandas as pd
 
 from bot import STRATEGY_MAP
 from config import Config
 from data import DataFetcher
-from indicators import Indicators
+from execution_model import evaluate_research, execution_config, WARMUP_CANDLES
+from dataclasses import asdict
+from storage import get_store
 
 _BACKTEST_CANDLES = 500
 
@@ -39,7 +38,6 @@ _MIN_SECONDS_BETWEEN_FETCHES = 60.0 / _FETCHES_PER_MINUTE
 # Hard cap on combinations per run, to bound runtime and memory.
 _MAX_COMBOS = 240
 
-_PREFS_FILE = Path(__file__).parent / "tester.json"
 _MAX_JOBS_KEPT = 20
 
 # Display labels for the strategies registered in bot.STRATEGY_MAP.
@@ -70,8 +68,10 @@ def _fetch_df(symbol: str, timeframe: str) -> pd.DataFrame:
     cfg = Config()
     cfg.symbol = symbol
     cfg.interval = timeframe
-    cfg.limit = _BACKTEST_CANDLES
-    return DataFetcher(cfg).fetch()
+    cfg.limit = _BACKTEST_CANDLES + WARMUP_CANDLES
+    df = DataFetcher(cfg).fetch()
+    df.attrs["data_source"] = "nobitex"
+    return df
 
 
 # Candidate column names for a trade's direction. "Position" (values "Long" /
@@ -104,8 +104,7 @@ _EMPTY_SUMMARY_EXTRA = {
 def _summarize(trades_df: pd.DataFrame, open_count: int, candle_count: int) -> dict:
     """Reduce a strategy's trade log to a profitability summary.
 
-    Mirrors Bot.run_backtest: the first closed trade is dropped because the
-    indicators lack warmup data at the very start of the window.
+    Compatibility summary for closed logs. Warmup is managed by the evaluator.
     """
     if trades_df.empty:
         return {"profitable": None, "total_pnl": 0.0, "trade_count": 0, "win_rate": 0.0,
@@ -113,7 +112,7 @@ def _summarize(trades_df: pd.DataFrame, open_count: int, candle_count: int) -> d
 
     closed_count = max(0, len(trades_df) - open_count)
     records = trades_df.to_dict("records")
-    valid_records = records[1:closed_count]  # skip the first (no indicator warmup)
+    valid_records = records[:closed_count]  # warmup is an explicit evaluation boundary
     if not valid_records:
         return {"profitable": None, "total_pnl": 0.0, "trade_count": 0, "win_rate": 0.0,
                 "candle_count": candle_count, "price_changes": [], **_EMPTY_SUMMARY_EXTRA}
@@ -176,17 +175,11 @@ def _summarize(trades_df: pd.DataFrame, open_count: int, candle_count: int) -> d
     }
 
 
-def run_backtest_on_df(df: pd.DataFrame, strategy_name: str, credit: float, leverage: int) -> dict:
-    """Run one strategy over a pre-fetched DataFrame and summarize the result."""
-    cfg = Config()
-    cfg.leverage = leverage
-    cfg.trade_size = credit
-    cfg.initial_capital = credit
-
-    indicators = Indicators(df)
-    strategy = STRATEGY_MAP[strategy_name](cfg)
-    trades_df = strategy.run(df, indicators, live_start_idx=0)
-    return _summarize(trades_df, len(strategy.open_positions), len(df))
+def run_backtest_on_df(df: pd.DataFrame, strategy_name: str, credit: float, leverage: int,
+                       custom_params=None, execution=None, start_idx=None) -> dict:
+    """The same causal net-accounting engine used by bots and optimization."""
+    return evaluate_research(df, strategy_name, credit, leverage,
+                             custom_params, execution, start_idx)["summary"]
 
 
 # ── Background job ───────────────────────────────────────────────────────────────
@@ -194,11 +187,12 @@ def run_backtest_on_df(df: pd.DataFrame, strategy_name: str, credit: float, leve
 class TesterJob:
     """A single batch run over a list of (symbol, strategy, timeframe) combos."""
 
-    def __init__(self, combos: list[tuple[str, str, str]], credit: float, leverage: int):
+    def __init__(self, combos: list[tuple[str, str, str]], credit: float, leverage: int, execution=None):
         self.id = uuid.uuid4().hex[:8]
         self.combos = combos
         self.credit = credit
         self.leverage = leverage
+        self.execution = asdict(execution_config(execution))
         self.status = "pending"          # pending | running | done | cancelled | error
         self.total = len(combos)
         self.completed = 0
@@ -208,12 +202,15 @@ class TesterJob:
         self.created_at = time.time()
         self._cancel = False
         self._task: asyncio.Task | None = None
+        self._persist = lambda: None
 
     def cancel(self) -> None:
         self._cancel = True
+        self._persist()
 
     async def run(self) -> None:
         self.status = "running"
+        self._persist()
         df_cache: dict[tuple[str, str], pd.DataFrame] = {}
         last_fetch = 0.0  # time.monotonic() of the last API call
 
@@ -240,20 +237,20 @@ class TesterJob:
                         self.completed += 1
                         continue
                     last_fetch = time.monotonic()
-                    if df is None or df.empty or len(df) < 50:
+                    if df is None or df.empty or len(df) <= WARMUP_CANDLES:
                         df_cache[key] = df if df is not None else pd.DataFrame()
                         self.results.append(self._error_result(symbol, strategy, timeframe, "insufficient candle data"))
                         self.completed += 1
                         continue
                     df_cache[key] = df
-                elif df.empty or len(df) < 50:
+                elif df.empty or len(df) <= WARMUP_CANDLES:
                     self.results.append(self._error_result(symbol, strategy, timeframe, "insufficient candle data"))
                     self.completed += 1
                     continue
 
                 # Strategy evaluation — pure CPU, no API call.
                 try:
-                    summary = await asyncio.to_thread(run_backtest_on_df, df, strategy, self.credit, self.leverage)
+                    summary = await asyncio.to_thread(run_backtest_on_df, df, strategy, self.credit, self.leverage, None, self.execution, max(WARMUP_CANDLES, len(df)-_BACKTEST_CANDLES))
                     self.results.append({
                         "symbol": symbol.upper(),
                         "strategy": strategy,
@@ -266,6 +263,7 @@ class TesterJob:
                     self.results.append(self._error_result(symbol, strategy, timeframe, f"strategy error: {exc}"))
 
                 self.completed += 1
+                self._persist()
 
             self.status = "done"
         except asyncio.CancelledError:
@@ -274,6 +272,8 @@ class TesterJob:
         except Exception as exc:
             self.status = "error"
             self.error = str(exc)
+        finally:
+            self._persist()
 
     @staticmethod
     def _error_result(symbol: str, strategy: str, timeframe: str, msg: str) -> dict:
@@ -294,6 +294,9 @@ class TesterJob:
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "execution": self.execution,
+            "created_at": self.created_at,
+            "combos": [list(combo) for combo in self.combos],
             "status": self.status,
             "total": self.total,
             "completed": self.completed,
@@ -307,30 +310,90 @@ class TesterJob:
 
 # ── Manager / registry ───────────────────────────────────────────────────────────
 
-class TesterManager:
-    def __init__(self):
+class StoredResearchJob:
+    """Read-only recovered result; unfinished work is never silently resumed."""
+    def __init__(self, snapshot):
+        self.snapshot = snapshot
+        self.id = snapshot["id"]
+        self.created_at = snapshot["created_at"]
+        self.status = snapshot["status"]
+        self._task = None
+
+    def to_dict(self):
+        return self.snapshot
+
+    def cancel(self):
+        pass
+
+
+class ResearchPersistence:
+    """Lazy persistence avoids opening SQLite during optimizer worker imports."""
+    namespace = ""
+
+    def _ensure_store(self):
+        store = self._injected_store or get_store()
+        if self._loaded_path == store.path:
+            return store
+        self._jobs = {}
+        self._prefs = self._load_prefs()
+        self._prefs.update(store.get("prefs", self.namespace, {}))
+        for key, snapshot in store.list(self.namespace + "_jobs").items():
+            if snapshot["status"] in ("pending", "running"):
+                snapshot.update(status="interrupted", error="Application stopped before job completion; start a new run.")
+                store.put(self.namespace + "_jobs", key, snapshot)
+            self._jobs[key] = StoredResearchJob(snapshot)
+        self._loaded_path = store.path
+        return store
+
+    def load(self):
+        self._ensure_store()
+
+    def list_jobs(self):
+        self._ensure_store()
+        return [job.to_dict() for job in sorted(self._jobs.values(), key=lambda j: j.created_at, reverse=True)]
+
+    def _attach(self, job):
+        store = self._ensure_store()
+        def persist():
+            try:
+                store.put(self.namespace + "_jobs", job.id, job.to_dict())
+            except Exception:
+                job.status = "error"
+                job.error = "Research state could not be saved; check storage availability."
+                raise
+        job._persist = persist
+        job._persist()
+        self._jobs[job.id] = job
+
+    async def shutdown(self):
+        tasks = []
+        for job in self._jobs.values():
+            if job._task and not job._task.done():
+                job.cancel()
+                tasks.append(job._task)
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+
+class TesterManager(ResearchPersistence):
+    namespace = "tester"
+
+    def __init__(self, store=None):
+        self._injected_store = store
+        self._loaded_path = None
         self._jobs: dict[str, TesterJob] = {}
         self._prefs: dict = self._load_prefs()
 
     # ── Preferences persistence ──────────────────────────────────────────────
     def _load_prefs(self) -> dict:
         defaults = {"favorites": [], "strategies": [], "timeframes": [], "credit": 100.0, "leverage": 5}
-        if not _PREFS_FILE.exists():
-            return defaults
-        try:
-            data = json.loads(_PREFS_FILE.read_text(encoding="utf-8"))
-            defaults.update({k: data[k] for k in defaults if k in data})
-        except Exception:
-            pass
         return defaults
 
     def _save_prefs(self) -> None:
-        try:
-            _PREFS_FILE.write_text(json.dumps(self._prefs, indent=2), encoding="utf-8")
-        except Exception:
-            pass
+        self._ensure_store().put("prefs", self.namespace, self._prefs)
 
     def save_prefs(self, favorites, strategies, timeframes, credit, leverage) -> None:
+        self._ensure_store()
         self._prefs = {
             "favorites": [s.lower() for s in favorites],
             "strategies": [s for s in strategies if s in STRATEGY_MAP],
@@ -341,6 +404,7 @@ class TesterManager:
         self._save_prefs()
 
     def get_config(self) -> dict:
+        self._ensure_store()
         return {
             **self._prefs,
             "available_strategies": [
@@ -366,14 +430,16 @@ class TesterManager:
         ]
         return combos
 
-    def start_job(self, combos, credit, leverage) -> TesterJob:
+    def start_job(self, combos, credit, leverage, execution=None) -> TesterJob:
+        self._ensure_store()
         self._prune()
-        job = TesterJob(combos, float(credit), int(leverage))
-        self._jobs[job.id] = job
+        job = TesterJob(combos, float(credit), int(leverage), execution=execution)
+        self._attach(job)
         job._task = asyncio.create_task(job.run())
         return job
 
     def get_job(self, job_id: str) -> TesterJob | None:
+        self._ensure_store()
         return self._jobs.get(job_id)
 
     def _prune(self) -> None:
@@ -381,11 +447,13 @@ class TesterManager:
         if len(self._jobs) < _MAX_JOBS_KEPT:
             return
         finished = sorted(
-            (j for j in self._jobs.values() if j.status in ("done", "cancelled", "error")),
+            (j for j in self._jobs.values() if j.status in ("done", "cancelled", "error", "interrupted")),
             key=lambda j: j.created_at,
         )
         while len(self._jobs) >= _MAX_JOBS_KEPT and finished:
-            self._jobs.pop(finished.pop(0).id, None)
+            key = finished.pop(0).id
+            self._ensure_store().delete(self.namespace + "_jobs", key)
+            self._jobs.pop(key, None)
 
 
 tester_manager = TesterManager()

@@ -1,0 +1,2 @@
+# Optional desktop charts. The dashboard does not import matplotlib.
+matplotlib>=3.10.7

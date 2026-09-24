@@ -1,52 +1,52 @@
 {
-  "symbol": "zecusdt",
+  "symbol": "ethusdt",
   "strategy": "AdvRSI",
-  "timeframe": "240",
-  "candles": 1800,
+  "timeframe": "D",
+  "candles": 2100,
   "credit": 10.0,
-  "leverage": 3,
-  "cores": 10,
+  "leverage": 1,
+  "cores": 6,
   "maxiter": 5000,
   "objective": "balanced",
   "custom_bounds": {
     "rsi_length": [
       6,
-      80
+      160
     ],
     "stoch_length": [
       6,
-      80
+      160
     ],
     "k_smooth": [
       4,
-      50
+      80
     ],
     "d_smooth": [
       4,
-      50
+      80
     ],
     "rsi_fast_length": [
       6,
-      50
+      160
     ],
     "rsi_ma_length": [
       2,
-      50
+      80
     ],
     "oversold": [
       1,
-      35
+      30
     ],
     "overbought": [
-      65,
+      70,
       99
     ],
     "exit_oversold": [
       1,
-      40
+      35
     ],
     "exit_overbought": [
-      60,
+      65,
       99
     ],
     "entry_wait_candles": [
@@ -55,6 +55,6 @@
     ]
   },
   "min_price_change": 3.0,
-  "balanced_cap": 250.0,
-  "balanced_weight": 0.7
+  "balanced_cap": 300.0,
+  "balanced_weight": 0.8
 }

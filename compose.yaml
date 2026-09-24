@@ -1,0 +1,20 @@
+services:
+  dashboard:
+    build: .
+    restart: unless-stopped
+    init: true
+    env_file: docker.env
+    environment:
+      TRADER_MULTIUSER: "true"
+      TRADER_DATA_DIR: /data
+      TRADER_HOST: 0.0.0.0
+      TRADER_PORT: 8011
+      TRADER_MAX_OPTIMIZER_JOBS: 2
+    ports:
+      - "127.0.0.1:8011:8011"
+    volumes:
+      - trader_data:/data
+    stop_grace_period: 90s
+
+volumes:
+  trader_data:

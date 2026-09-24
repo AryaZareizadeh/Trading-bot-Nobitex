@@ -8,31 +8,43 @@
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --bg:       #0b0f1a;
-    --surface:  #141927;
-    --surface2: #1c2333;
-    --border:   #2a3447;
-    --accent:   #38bdf8;
-    --green:    #4ade80;
-    --red:      #f87171;
-    --yellow:   #fbbf24;
-    --purple:   #a78bfa;
-    --text:     #e2e8f0;
-    --muted:    #64748b;
-    --radius:   10px;
+    color-scheme: dark;
+    --bg:       #1b1d20;
+    --surface:  #242629;
+    --surface2: #2d3032;
+    --border:   #404246;
+    --accent:   #c8875a;
+    --accent-soft: #3c302a;
+    --green:    #80c4a5;
+    --red:      #eb978e;
+    --yellow:   #e2bc76;
+    --purple:   #bca5cf;
+    --text:     #f0eee9;
+    --muted:    #aaa8a3;
+    --radius:   8px;
   }
 
-  body { background: var(--bg); color: var(--text); font-family: 'Consolas','Menlo',monospace; font-size: 13px; min-height: 100vh; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; min-height: 100vh; line-height: 1.45; }
+  button, input, select, textarea { font: inherit; }
+  button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .summary-value, .wallet-amount, .stat-value, .clock-time, .opt-stat .val, .delta-card-head .val,
+  .bots-table td, .opt-result-table td, .opt-history-table td { font-variant-numeric: tabular-nums; }
+  .login-screen { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+  .login-panel { width: min(420px, 100%); padding: 32px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  .login-panel h1 { font-size: 20px; margin-bottom: 16px; }
+  .login-panel p { line-height: 1.6; margin-bottom: 20px; color: var(--muted); }
+  .login-panel input { display: block; width: 100%; margin: 8px 0 20px; padding: 12px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); }
+  .login-message { min-height: 24px; color: var(--red); margin-top: 16px; line-height: 1.5; }
 
   /* ── Top bar ── */
   .topbar {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 12px 24px; background: var(--surface);
+    padding: 14px 24px; background: var(--surface);
     border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100;
   }
   .topbar-left  { display: flex; align-items: center; gap: 14px; }
   .topbar-right { display: flex; align-items: center; gap: 8px; }
-  .topbar h1 { font-size: 15px; letter-spacing: 1px; color: var(--accent); font-weight: 700; }
+  .topbar h1 { font-size: 16px; letter-spacing: .2px; color: var(--text); font-weight: 650; padding-left: 12px; border-left: 3px solid var(--accent); }
   .ws-indicator { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); }
   .ws-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); transition: background .3s; }
   .ws-dot.connected { background: var(--green); box-shadow: 0 0 6px var(--green); }
@@ -41,11 +53,11 @@
   .btn { border: none; cursor: pointer; border-radius: 6px; font-family: inherit; font-size: 12px; font-weight: 600; padding: 7px 14px; transition: opacity .15s, transform .1s; }
   .btn:hover  { opacity: .85; }
   .btn:active { transform: scale(.97); }
-  .btn-primary { background: var(--accent);  color: #0b0f1a; }
-  .btn-success { background: var(--green);   color: #0b0f1a; }
-  .btn-danger  { background: var(--red);     color: #0b0f1a; }
+  .btn-primary { background: var(--accent);  color: var(--bg); }
+  .btn-success { background: var(--green);   color: var(--bg); }
+  .btn-danger  { background: var(--red);     color: var(--bg); }
   .btn-neutral { background: var(--border);  color: var(--text); }
-  .btn-purple  { background: #4c3a8a;        color: var(--purple); border: 1px solid #6d52cc; }
+  .btn-purple  { background: #39303f; color: var(--purple); border: 1px solid #67556f; }
   .btn-sm { padding: 4px 10px; font-size: 11px; }
   .btn-icon { padding: 6px 9px; font-size: 14px; }
 
@@ -66,7 +78,7 @@
   /* ── Wallet bar ── */
   .wallet-bar {
     display: flex; align-items: center; gap: 0;
-    background: #0e1520; border-bottom: 1px solid var(--border);
+    background: var(--surface); border-bottom: 1px solid var(--border);
     padding: 0 24px; overflow-x: auto; min-height: 42px;
   }
   .wallet-bar.hidden { display: none; }
@@ -79,8 +91,8 @@
     font-size: 10px; font-weight: 700; letter-spacing: .5px;
     padding: 2px 7px; border-radius: 4px;
   }
-  .wallet-tag.margin { background: #1a0d3a; color: var(--purple); border: 1px solid #4c3a8a; }
-  .wallet-tag.spot   { background: #0d2030; color: var(--accent);  border: 1px solid #1a4060; }
+  .wallet-tag.margin { background: #39303f; color: var(--purple); border: 1px solid #67556f; }
+  .wallet-tag.spot   { background: var(--accent-soft); color: var(--accent); border: 1px solid #78523d; }
   .wallet-currency { font-size: 11px; color: var(--muted); text-transform: uppercase; }
   .wallet-amount  { font-size: 13px; font-weight: 700; }
   .wallet-frozen  { font-size: 11px; color: var(--yellow); }
@@ -101,7 +113,7 @@
   }
   .bots-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
   .bots-table tr:last-child td { border-bottom: none; }
-  .bots-table tr.row-sim > td:first-child { border-left: 3px dashed #4a3800; }
+  .bots-table tr.row-sim > td:first-child { border-left: 3px dashed #8e724c; }
   .bots-table tr:hover td { background: rgba(255,255,255,.025); }
   .col-bot     { min-width: 160px; }
   .col-config  { min-width: 170px; }
@@ -125,17 +137,17 @@
   .mode-option label { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 12px 8px; border-radius: 8px; cursor: pointer; border: 2px solid var(--border); background: var(--surface2); transition: border-color .15s, background .15s; text-align: center; }
   .mode-option label .mode-title { font-size: 13px; font-weight: 700; color: var(--text); }
   .mode-option label .mode-sub   { font-size: 10px; color: var(--muted); }
-  .mode-option input:checked + label { border-color: var(--accent); background: #0e1e30; }
+  .mode-option input:checked + label { border-color: var(--accent); background: var(--accent-soft); }
   .mode-option.disabled label { cursor: not-allowed; opacity: .45; }
   .mode-option.disabled label .mode-sub { color: var(--yellow); }
 
-  .badge-sim  { background: #1a1400; color: var(--yellow); border: 1px solid #4a3800; }
-  .badge-real { background: #0d3320; color: var(--green);  border: 1px solid #1a5c35; }
+  .badge-sim  { background: #393328; color: var(--yellow); border: 1px solid #766343; }
+  .badge-real { background: #263a32; color: var(--green); border: 1px solid #47765f; }
 
   /* ── Bot card ── */
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column; transition: border-color .2s; }
-  .card:hover { border-color: #3a4a60; }
-  .card.sim-mode { border-left: 3px dashed #4a3800; }
+  .card:hover { border-color: #77604e; }
+  .card.sim-mode { border-left: 3px dashed #8e724c; }
 
   .card-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px 10px; border-bottom: 1px solid var(--border); }
   .card-header-left { display: flex; align-items: center; gap: 8px; }
@@ -143,7 +155,7 @@
   .status-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
   .status-dot.running { background: var(--green);  box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
   .status-dot.idle    { background: var(--muted); }
-  .status-dot.stopped { background: #3a4a60; }
+  .status-dot.stopped { background: #696b6b; }
   .status-dot.error   { background: var(--red); box-shadow: 0 0 8px var(--red); }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
 
@@ -151,10 +163,10 @@
   .card-id   { font-size: 10px; color: var(--muted); }
 
   .badge { display: inline-block; border-radius: 4px; padding: 2px 7px; font-size: 10px; font-weight: 700; letter-spacing: .5px; }
-  .badge-status-running { background: #0d3320; color: var(--green); }
-  .badge-status-idle    { background: #1c2333; color: var(--muted); }
-  .badge-status-stopped { background: #1c2333; color: #3a4a60; }
-  .badge-status-error   { background: #3a1010; color: var(--red); }
+  .badge-status-running { background: #263a32; color: var(--green); }
+  .badge-status-idle    { background: var(--surface2); color: var(--muted); }
+  .badge-status-stopped { background: var(--surface2); color: var(--muted); }
+  .badge-status-error   { background: #3e2a2a; color: var(--red); }
 
   .card-meta { display: flex; gap: 6px; flex-wrap: wrap; padding: 8px 14px; border-bottom: 1px solid var(--border); }
   .tag { background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px; font-size: 11px; color: var(--muted); }
@@ -163,8 +175,8 @@
   .card-body { padding: 12px 14px; flex: 1; }
 
   .pos-banner { display: flex; align-items: center; justify-content: space-between; border-radius: 6px; padding: 8px 12px; margin-bottom: 10px; font-weight: 700; }
-  .pos-banner.long  { background: #0d3320; color: var(--green); border: 1px solid #1a5c35; }
-  .pos-banner.short { background: #3a1010; color: var(--red);   border: 1px solid #6b1c1c; }
+  .pos-banner.long  { background: #263a32; color: var(--green); border: 1px solid #47765f; }
+  .pos-banner.short { background: #3e2a2a; color: var(--red); border: 1px solid #87504c; }
   .pos-banner.none  { background: var(--surface2); color: var(--muted); border: 1px solid var(--border); }
   .pos-banner .pos-label { font-size: 13px; letter-spacing: 1px; }
   .pos-banner .pos-price { font-size: 12px; }
@@ -183,7 +195,7 @@
   .sparkline-label { font-size: 10px; color: var(--muted); white-space: nowrap; }
   .sparkline-svg { flex: 1; overflow: hidden; }
 
-  .error-box { background: #3a1010; border: 1px solid #6b1c1c; border-radius: 6px; padding: 6px 10px; font-size: 11px; color: var(--red); margin-bottom: 8px; word-break: break-word; }
+  .error-box { background: #3e2a2a; border: 1px solid #87504c; border-radius: 6px; padding: 6px 10px; font-size: 11px; color: var(--red); margin-bottom: 8px; word-break: break-word; }
 
   .card-footer { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-top: 1px solid var(--border); background: var(--surface2); }
   .footer-meta { font-size: 10px; color: var(--muted); }
@@ -269,8 +281,8 @@
 
   /* ── Credential status ── */
   .cred-status { padding: 10px 12px; border-radius: 6px; font-size: 12px; margin-bottom: 14px; }
-  .cred-status.connected { background: #0d3320; border: 1px solid #1a5c35; color: var(--green); }
-  .cred-status.disconnected { background: #1a1400; border: 1px solid #4a3800; color: var(--yellow); }
+  .cred-status.connected { background: #263a32; border: 1px solid #47765f; color: var(--green); }
+  .cred-status.disconnected { background: #393328; border: 1px solid #766343; color: var(--yellow); }
 
   /* ── Market hint ── */
   .market-hint { font-size: 10px; color: var(--muted); margin-top: 5px; min-height: 14px; }
@@ -286,34 +298,41 @@
 
   /* ── Main view tabs ── */
   .main-tabs { display: flex; gap: 4px; padding: 0 24px; background: var(--surface); border-bottom: 1px solid var(--border); }
-  .main-tab-btn { background: none; border: none; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 700; color: var(--muted); padding: 12px 18px; border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; letter-spacing: .5px; }
+  .main-tab-btn { background: none; border: none; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 600; color: var(--muted); padding: 12px 18px; border-bottom: 2px solid transparent; transition: color .15s, border-color .15s; letter-spacing: .1px; }
   .main-tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
   .main-tab-btn:hover:not(.active) { color: var(--text); }
+  .portfolio-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(290px,1fr)); gap: 14px; padding: 18px 24px; }
+  .portfolio-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 18px; min-width: 0; }
+  .portfolio-panel h3 { margin: 0 0 12px; font-size: 15px; }
+  .portfolio-panel.wide { grid-column: 1 / -1; }
+  .portfolio-metrics { display: flex; flex-wrap: wrap; gap: 24px; }
+  .portfolio-metric strong { display: block; font-size: 21px; font-variant-numeric: tabular-nums; }
+  .portfolio-metric span { font-size: 11px; color: var(--muted); }
+  .portfolio-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  .portfolio-table th, .portfolio-table td { padding: 8px; border-bottom: 1px solid var(--border); text-align: right; }
+  .portfolio-table th:first-child, .portfolio-table td:first-child { text-align: left; }
+  .portfolio-table th { color: var(--muted); font-weight: 600; }
+  .portfolio-controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+  .portfolio-controls label { display: grid; gap: 4px; font-size: 11px; color: var(--muted); }
+  .portfolio-controls input, .portfolio-controls select { max-width: 150px; padding: 7px; background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 5px; }
+  .portfolio-note { font-size: 11px; line-height: 1.5; color: var(--muted); margin: 10px 0 0; }
   .view-pane { display: none; }
   .view-pane.active { display: block; }
 
-  /* ── Tester tab ── */
+  /* ── Research panels ── */
   .tester-wrap { padding: 18px 24px 40px; max-width: 1400px; }
   .tester-section { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 18px; margin-bottom: 16px; }
-  .tester-section h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .5px; color: var(--accent); margin-bottom: 4px; }
+  .tester-section h3 { font-size: 13px; letter-spacing: .1px; color: var(--text); margin-bottom: 4px; }
   .tester-section .hint { font-size: 11px; color: var(--muted); margin-bottom: 12px; }
   .tester-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
   .tester-toolbar input[type="text"] { flex: 1; min-width: 180px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; color: var(--text); font-family: inherit; font-size: 12px; outline: none; }
   .tester-toolbar input[type="text"]:focus { border-color: var(--accent); }
 
-  .chip-grid { display: flex; flex-wrap: wrap; gap: 7px; max-height: 230px; overflow-y: auto; }
-  .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--surface2); border: 1px solid var(--border); border-radius: 16px; padding: 5px 12px; font-size: 12px; color: var(--text); cursor: pointer; transition: border-color .15s, background .15s; white-space: nowrap; user-select: none; }
-  .chip:hover { border-color: #3a4a60; }
-  .chip.active { border-color: var(--accent); background: #0e1e30; color: var(--accent); }
-  .chip .star { color: var(--muted); font-size: 13px; }
-  .chip.active .star { color: var(--yellow); }
-  .chip .chip-dir { font-size: 9px; color: var(--muted); }
-
   .opt-grid { display: flex; flex-wrap: wrap; gap: 8px; }
   .opt-toggle { position: relative; }
   .opt-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
   .opt-toggle label { display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border-radius: 8px; cursor: pointer; border: 1px solid var(--border); background: var(--surface2); font-size: 12px; color: var(--text); transition: border-color .15s, background .15s; }
-  .opt-toggle input:checked + label { border-color: var(--accent); background: #0e1e30; color: var(--accent); }
+  .opt-toggle input:checked + label { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
   .opt-toggle input:focus-visible + label { outline: 2px solid var(--accent); }
 
   .tester-run-bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
@@ -326,58 +345,18 @@
   .progress-meta { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--muted); margin-top: 6px; gap: 12px; }
   .progress-current { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  .tf-result { margin-bottom: 18px; }
-  .tf-result-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
-  .tf-result-head .tf-name { font-size: 14px; font-weight: 700; color: var(--text); }
-  .tf-result-head .tf-sub { font-size: 11px; color: var(--muted); }
-  .result-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  .result-table th { text-align: left; padding: 7px 10px; background: var(--surface2); color: var(--muted); border-bottom: 1px solid var(--border); text-transform: uppercase; font-size: 10px; letter-spacing: .5px; white-space: nowrap; }
-  .result-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-  .result-table tr:last-child td { border-bottom: none; }
-  .result-table tr:hover td { background: rgba(255,255,255,.025); }
-  .result-table .rank { color: var(--muted); width: 28px; }
-  .result-table .pnl-pos { color: var(--green); font-weight: 700; }
-  .result-table .pnl-neg { color: var(--red); font-weight: 700; }
-  .result-table .err-cell { color: var(--yellow); font-style: italic; }
-  .result-table tr.best td { background: rgba(74,222,128,.06); }
-  .medal { font-size: 12px; }
-
-  /* ── Optimizer tab ── */
-  .opt-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px 16px; }
-  .opt-form .form-group { margin: 0; }
-  .opt-form select, .opt-form input { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 7px 10px; color: var(--text); font-family: inherit; font-size: 12px; outline: none; }
-  .opt-form select:focus, .opt-form input:focus { border-color: var(--accent); }
-  .opt-param-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 14px; }
-  .opt-param { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 6px 10px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; font-size: 11px; }
-  .opt-param .pname { color: var(--text); font-weight: 600; }
-  .opt-param .prange { color: var(--muted); font-variant-numeric: tabular-nums; }
-  /* ── Delta convergence chart card ── */
-  .delta-card-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; flex-wrap: wrap; gap: 6px; }
-  .delta-card-head .val { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .delta-card-head .sub { font-size: 11px; color: var(--muted); margin-left: 8px; }
-  .delta-scale-toggle { display: flex; gap: 4px; }
-  .btn-scale { font-size: 10px; padding: 3px 9px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--muted); cursor: pointer; text-transform: uppercase; letter-spacing: .5px; font-family: inherit; }
-  .btn-scale:hover:not(.active) { color: var(--text); }
-  .btn-scale.active { background: var(--accent); color: #0b0f1a; border-color: var(--accent); font-weight: 700; }
-  .delta-chart-empty { font-size: 11px; color: var(--muted); padding: 20px 0; text-align: center; }
-  .delta-chart-svg { display: block; width: 100%; height: auto; aspect-ratio: 600 / 260; }
-  .delta-chart-svg text { fill: var(--muted); font-size: 7px; font-family: 'Consolas','Menlo',monospace; }
-  .opt-summary { display: flex; flex-wrap: wrap; gap: 14px; margin-bottom: 14px; }
-  .opt-stat { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; min-width: 120px; }
-  .opt-stat .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
-  .opt-stat .val { font-size: 18px; font-weight: 700; margin-top: 2px; }
   .opt-result-table { width: 100%; border-collapse: collapse; font-size: 12px; }
   .opt-result-table th { text-align: left; padding: 7px 10px; background: var(--surface2); color: var(--muted); border-bottom: 1px solid var(--border); text-transform: uppercase; font-size: 10px; letter-spacing: .5px; }
   .opt-result-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
   .opt-result-table tr:last-child td { border-bottom: none; }
-  .opt-result-table .changed td { background: rgba(96,165,250,.07); }
+  .opt-result-table .changed td { background: rgba(200,135,90,.09); }
   .opt-result-table .tuned-val { font-weight: 700; color: var(--accent); }
 
   /* scrollbar */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: var(--surface); }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: #3a4a60; }
+  ::-webkit-scrollbar-thumb:hover { background: #77604e; }
 
   /* ── Clock & candle timer ── */
   .clock-widget { display: flex; flex-direction: column; align-items: flex-end; margin-right: 8px; }
@@ -400,7 +379,7 @@
   .opt-obj-option input[type="radio"] { position: absolute; opacity: 0; width: 0; height: 0; }
   .opt-obj-option label { display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 8px 14px; border-radius: 8px; cursor: pointer; border: 1px solid var(--border); background: var(--surface2); font-size: 12px; color: var(--text); transition: border-color .15s, background .15s; width: 100%; box-sizing: border-box; }
   .opt-obj-option label .obj-sub { font-size: 9px; color: var(--muted); text-align: center; max-width: 90px; }
-  .opt-obj-option input:checked + label { border-color: var(--accent); background: #0e1e30; color: var(--accent); }
+  .opt-obj-option input:checked + label { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
   .opt-obj-option input:checked + label .obj-sub { color: var(--accent); opacity: .7; }
 
   /* ── Optimizer history table ── */
@@ -408,13 +387,13 @@
   .opt-history-table th { text-align: left; padding: 5px 8px; background: var(--surface2); color: var(--muted); border-bottom: 1px solid var(--border); text-transform: uppercase; font-size: 9px; letter-spacing: .5px; }
   .opt-history-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
   .opt-history-table tr:last-child td { border-bottom: none; }
-  .opt-history-table .best-row td { background: rgba(56,189,248,.06); }
+  .opt-history-table .best-row td { background: rgba(200,135,90,.09); }
 
   /* ── Three-box layout ── */
-  .three-box-layout { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; padding: 16px 24px; }
+  .three-box-layout { display: grid; grid-template-columns: minmax(350px, 1.45fr) repeat(2, minmax(230px, 1fr)); gap: 16px; padding: 16px 24px; align-items: start; }
   .tri-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; max-height: calc(100vh - 180px); min-height: 220px; }
   .tri-box-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface2); border-radius: var(--radius) var(--radius) 0 0; flex-shrink: 0; }
-  .tri-box-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--accent); }
+  .tri-box-title { font-size: 13px; font-weight: 650; letter-spacing: .1px; color: var(--text); }
   .tri-box-count { font-size: 11px; color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 1px 8px; }
   .tri-box-body { flex: 1; overflow-y: auto; }
   .tri-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
@@ -422,15 +401,136 @@
   .tri-row:hover { background: rgba(255,255,255,.025); }
   .bot-color-pill { width: 3px; border-radius: 3px; align-self: stretch; min-height: 20px; flex-shrink: 0; }
   .tri-bot-tag { display: inline-block; font-size: 10px; font-weight: 700; border-radius: 4px; padding: 1px 6px; white-space: nowrap; }
+  .bot-box-header { display: block; padding: 12px 14px; }
+  .bot-box-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .bot-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) 122px; gap: 8px; }
+  .bot-toolbar input, .bot-toolbar select { width: 100%; min-width: 0; padding: 7px 9px; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; }
+  .bot-toolbar input::placeholder { color: var(--muted); }
+  .bot-card { display: block; border-left: 3px solid transparent; padding: 13px 14px; }
+  .bot-card.running { border-left-color: var(--green); }
+  .bot-card.error { border-left-color: var(--red); }
+  .bot-card-head, .bot-card-metrics, .bot-card-actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  .bot-card-head { margin-bottom: 8px; }
+  .bot-card-name { font-weight: 700; font-size: 13px; min-width: 0; overflow-wrap: anywhere; }
+  .bot-card-head .badge { margin-left: auto; }
+  .bot-card-metrics { color: var(--muted); font-size: 11px; }
+  .bot-card-metrics strong { color: var(--text); font-size: 12px; }
+  .bot-card-metrics .stat-value { margin-left: auto; }
+  .bot-card-meta { color: var(--muted); font-size: 11px; margin-top: 7px; }
+  .bot-card-error { margin-top: 9px; padding: 8px 10px; border-left: 2px solid var(--red); background: #392c2b; color: var(--red); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+  .bot-card-actions { margin-top: 11px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .bot-card-actions .btn-danger-subtle { margin-left: auto; }
+  .btn-danger-subtle { background: transparent; color: var(--red); border: 1px solid #78504d; }
+  .bot-status { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 650; color: var(--muted); }
+  .bot-status.running { color: var(--green); }
+  .bot-status.error { color: var(--red); }
+  .research-intro { display: flex; align-items: end; justify-content: space-between; gap: 16px; padding: 24px 24px 2px; max-width: 1400px; }
+  .research-intro h2 { font-size: 22px; font-weight: 650; letter-spacing: -.45px; }
+  .research-intro p { color: var(--muted); font-size: 12px; max-width: 620px; margin-top: 4px; }
+  .research-tabs { display: flex; gap: 5px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+  .research-tabs button { background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 10px 16px; cursor: pointer; font-weight: 600; }
+  .research-tabs button:hover { color: var(--text); }
+  .research-tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .opt-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px 14px; }
+  .opt-form .form-group { margin-bottom: 4px; }
+  .opt-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin: 14px 0; }
+  .opt-stat { padding: 10px 12px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; }
+  .opt-stat .lbl { color: var(--muted); font-size: 10px; }
+  .opt-stat .val { font-size: 17px; font-weight: 700; margin-top: 3px; }
+  .workload-preview { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0 14px; }
+  .workload-preview span { padding: 6px 9px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface2); color: var(--muted); font-size: 11px; }
+  .workload-preview strong { color: var(--text); }
+  .workload-hint { color: var(--muted); font-size: 11px; margin-bottom: 10px; }
+  .comparison-panel { border-color: #79563d; }
+  .comparison-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .comparison-table th, .comparison-table td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--border); }
+  .comparison-table th:first-child, .comparison-table td:first-child { text-align: left; color: var(--muted); }
+  .comparison-table th { color: var(--muted); font-size: 11px; }
+  .comparison-table tr:last-child td { border-bottom: none; }
+  @media (max-width: 1120px) {
+    .three-box-layout { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .three-box-layout > .tri-box:first-child { grid-column: 1 / -1; }
+  }
+  @media (max-width: 720px) {
+    .topbar { position: static; align-items: start; gap: 12px; flex-wrap: wrap; padding: 12px 16px; }
+    .topbar-right { flex-wrap: wrap; }
+    .three-box-layout { grid-template-columns: 1fr; padding: 12px 16px; }
+    .three-box-layout > .tri-box:first-child { grid-column: auto; }
+    .tri-box { max-height: none; }
+    .activity-feed-bar { padding: 0 16px 16px !important; }
+    .opt-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .opt-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .tester-wrap { padding: 16px; }
+    .research-intro { padding: 20px 16px 0; }
+  }
+  @media (max-width: 440px) {
+    .bot-toolbar, .opt-form { grid-template-columns: 1fr; }
+    .opt-summary { grid-template-columns: 1fr 1fr; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .status-dot.running { animation: none; }
+  }
   .wallet-locked { font-size: 11px; color: var(--yellow); }
 </style>
 </head>
 <body>
+<section id="loginScreen" class="login-screen">
+  <div class="login-panel">
+    <h1>Trading dashboard</h1>
+    <p id="loginDescription">Sign in to manage your bots and exchange account.</p>
+    <form id="loginForm" onsubmit="signIn(event)">
+      <label id="loginUsernameLabel" for="loginUsername">Username</label>
+      <input id="loginUsername" type="text" autocomplete="username" required maxlength="40">
+      <label for="operatorPassword">Password</label>
+      <input id="operatorPassword" type="password" autocomplete="current-password" required maxlength="1024">
+      <button id="loginButton" class="btn btn-primary" type="submit">Sign in</button>
+    </form>
+    <form id="registerForm" onsubmit="registerAccount(event)" hidden>
+      <label for="registerUsername">Username</label>
+      <input id="registerUsername" type="text" autocomplete="username" required maxlength="40">
+      <label for="registerEmail">Email</label>
+      <input id="registerEmail" type="email" autocomplete="email" required maxlength="254">
+      <label for="registerPassword">Password (at least 12 characters)</label>
+      <input id="registerPassword" type="password" autocomplete="new-password" required minlength="12" maxlength="1024">
+      <label for="invitationCode">Invitation code</label>
+      <input id="invitationCode" type="password" required>
+      <button class="btn btn-primary" type="submit">Create account</button>
+    </form>
+    <form id="verifyForm" onsubmit="verifyAccount(event)" hidden>
+      <label for="verifyEmail">Email</label>
+      <input id="verifyEmail" type="email" autocomplete="email" required>
+      <label for="verifyCode">Email confirmation code</label>
+      <input id="verifyCode" type="text" inputmode="numeric" pattern="[0-9]{8}" required>
+      <button class="btn btn-primary" type="submit">Confirm email</button>
+    </form>
+    <form id="recoveryRequestForm" onsubmit="requestRecovery(event)" hidden>
+      <label for="recoveryEmail">Email</label>
+      <input id="recoveryEmail" type="email" autocomplete="email" required>
+      <button class="btn btn-primary" type="submit">Email a recovery code</button>
+    </form>
+    <form id="recoveryResetForm" onsubmit="resetPassword(event)" hidden>
+      <label for="resetEmail">Email</label>
+      <input id="resetEmail" type="email" autocomplete="email" required>
+      <label for="resetCode">Recovery code</label>
+      <input id="resetCode" type="text" inputmode="numeric" pattern="[0-9]{8}" required>
+      <label for="resetPassword">New password</label>
+      <input id="resetPassword" type="password" autocomplete="new-password" minlength="12" required>
+      <button class="btn btn-primary" type="submit">Reset password</button>
+    </form>
+    <div id="authLinks" style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap">
+      <a href="#" onclick="showAuthForm('login');return false">Sign in</a>
+      <a href="#" onclick="showAuthForm('register');return false">Create account</a>
+      <a href="#" onclick="showAuthForm('recoveryRequest');return false">Forgot password?</a>
+    </div>
+    <div id="loginMessage" class="login-message" role="status" aria-live="polite"></div>
+  </div>
+</section>
+<div id="dashboard" style="display:none" inert>
 
 <!-- Top Bar -->
 <div class="topbar">
   <div class="topbar-left">
-    <h1>TRADING BOTS</h1>
+    <h1>Trading bots</h1>
     <div class="ws-indicator">
       <div class="ws-dot" id="wsDot"></div>
       <span id="wsLabel">Connecting…</span>
@@ -444,14 +544,17 @@
     <button class="btn btn-neutral btn-sm" onclick="startAll()" title="Start All Bots">▶ All</button>
     <button class="btn btn-neutral btn-sm" onclick="stopAll()" title="Stop All Bots">■ All</button>
     <button class="btn btn-neutral btn-sm btn-icon" onclick="openSettingsModal()" title="Exchange Settings">⚙</button>
+    <button class="btn btn-neutral btn-sm" onclick="openExecutionSettings()">Research assumptions</button>
     <button class="btn btn-primary" onclick="openCreateModal()">+ New Bot</button>
+    <button class="btn btn-neutral btn-sm" onclick="signOut()">Sign out</button>
   </div>
 </div>
 
 <!-- Main view tabs -->
 <div class="main-tabs">
   <button class="main-tab-btn active" data-view="Bots" onclick="switchView('Bots')">Bots</button>
-  <button class="main-tab-btn" data-view="Tester" onclick="switchView('Tester')">Tester</button>
+  <button class="main-tab-btn" data-view="AIBots" onclick="switchView('AIBots')">AI Bots</button>
+  <button class="main-tab-btn" data-view="Portfolio" onclick="switchView('Portfolio')">Portfolio</button>
   <button class="main-tab-btn" data-view="Optimizer" onclick="switchView('Optimizer')">Optimizer</button>
 </div>
 
@@ -472,9 +575,21 @@
 <!-- Three-box layout -->
 <div class="three-box-layout">
   <div class="tri-box">
-    <div class="tri-box-header">
-      <span class="tri-box-title">Bots</span>
-      <span class="tri-box-count" id="boxBotsHeader">0</span>
+    <div class="tri-box-header bot-box-header">
+      <div class="bot-box-heading">
+        <span class="tri-box-title">Bots</span>
+        <span class="tri-box-count" id="boxBotsHeader">0</span>
+      </div>
+      <div class="bot-toolbar">
+        <input id="botSearch" type="search" placeholder="Search name, market or strategy" aria-label="Search bots" oninput="renderBotsBox()">
+        <select id="botStatusFilter" aria-label="Filter bots by status" onchange="renderBotsBox()">
+          <option value="all">All states</option>
+          <option value="running">Running</option>
+          <option value="stopped">Stopped</option>
+          <option value="idle">Idle</option>
+          <option value="error">Error</option>
+        </select>
+      </div>
     </div>
     <div class="tri-box-body" id="boxBotsBody">
       <div class="empty-state"><span class="icon">🤖</span>Create your first bot to get started.</div>
@@ -518,73 +633,86 @@
 
 </div><!-- /viewBots -->
 
-<!-- ═══════════════════ TESTER VIEW ═══════════════════ -->
-<div id="viewTester" class="view-pane">
-  <div class="tester-wrap">
-
-    <div class="tester-section">
-      <h3>1 · Assets</h3>
-      <div class="hint">Star the margin markets you want to test. Selections are saved as favorites.</div>
-      <div class="tester-toolbar">
-        <input type="text" id="tAssetSearch" placeholder="Filter markets…" oninput="renderTesterAssets()">
-        <button class="btn btn-neutral btn-sm" onclick="testerSelectShown()">★ Select shown</button>
-        <button class="btn btn-neutral btn-sm" onclick="testerClearAssets()">Clear</button>
-        <span class="tester-run-note"><strong id="tAssetCount">0</strong> selected</span>
-      </div>
-      <div class="chip-grid" id="tAssetGrid"></div>
+<!-- ═══════════════════ AI BOTS VIEW ═══════════════════ -->
+<div id="viewAIBots" class="view-pane">
+  <div class="research-intro">
+    <div>
+      <h2>AI Bots</h2>
+      <p>Price AI is a simulation prototype. Agentic AI combines completed candles from your chosen timeframes and reports cost-adjusted probabilities. Live orders require an explicit start and pass through exchange risk and reconciliation checks.</p>
     </div>
-
-    <div class="tester-section">
-      <h3>2 · Strategies</h3>
-      <div class="hint">Each selected strategy is tested against every selected asset and timeframe.</div>
-      <div class="opt-grid" id="tStrategyGrid"></div>
-    </div>
-
-    <div class="tester-section">
-      <h3>3 · Timeframes</h3>
-      <div class="hint">One results table is produced per timeframe.</div>
-      <div class="opt-grid" id="tTimeframeGrid"></div>
-    </div>
-
-    <div class="tester-section">
-      <h3>4 · Run</h3>
-      <div class="tester-run-bar">
-        <div class="form-group" style="margin:0;width:130px">
-          <label>Credit (USDT)</label>
-          <input type="number" id="tCredit" value="100" min="1" step="1" onchange="saveTesterPrefs()">
-        </div>
-        <div class="form-group" style="margin:0;width:120px">
-          <label>Leverage</label>
-          <input type="number" id="tLeverage" value="5" min="1" max="100" step="1" onchange="saveTesterPrefs()">
-        </div>
-        <button class="btn btn-primary" id="tRunBtn" onclick="runTester()" style="padding:9px 20px">▶ Run Backtests</button>
-        <button class="btn btn-danger btn-sm" id="tCancelBtn" onclick="cancelTester()" style="display:none">■ Cancel</button>
-        <span class="tester-run-note" id="tRunNote"></span>
-      </div>
-      <div class="progress-wrap" id="tProgressWrap" style="display:none">
-        <div class="progress-track"><div class="progress-fill" id="tProgressFill"></div></div>
-        <div class="progress-meta">
-          <span class="progress-current" id="tProgressCurrent"></span>
-          <span id="tProgressCount"></span>
-        </div>
-      </div>
-    </div>
-
-    <div id="tResults"></div>
-
+    <button class="btn btn-primary" onclick="openCreateModal('ai')">+ New AI Bot</button>
   </div>
-</div>
+  <div class="three-box-layout">
+    <div class="tri-box">
+      <div class="tri-box-header"><span class="tri-box-title">AI Bots</span><span class="tri-box-count" id="boxAIBotsHeader">0</span></div>
+      <div class="tri-box-body" id="boxAIBotsBody"><div class="empty-state">Create an AI bot to get started.</div></div>
+    </div>
+    <div class="tri-box">
+      <div class="tri-box-header"><span class="tri-box-title">AI Orders</span><span class="tri-box-count" id="boxAIOrdersHeader">0</span></div>
+      <div class="tri-box-body" id="boxAIOrdersBody"></div>
+    </div>
+    <div class="tri-box">
+      <div class="tri-box-header"><span class="tri-box-title">AI Positions</span><span class="tri-box-count" id="boxAIPositionsHeader">0</span></div>
+      <div class="tri-box-body" id="boxAIPositionsBody"></div>
+    </div>
+  </div>
+  <div class="activity-feed-bar" style="padding:0 24px 16px">
+    <div class="tri-box" style="max-height:400px">
+      <div class="tri-box-header"><span class="tri-box-title">AI Activity</span><span class="tri-box-count" id="aiFeedCount">0</span></div>
+      <div class="tri-box-body" id="aiActivityFeedBody"></div>
+    </div>
+  </div>
+</div><!-- /viewAIBots -->
+
+<!-- ═══════════════════ PORTFOLIO VIEW ═══════════════════ -->
+<div id="viewPortfolio" class="view-pane">
+  <div class="research-intro">
+    <div><h2>Portfolio</h2><p>Exchange balances, allocation, margin exposure and saved performance history in USDT.</p></div>
+    <button class="btn btn-neutral btn-sm" onclick="loadPortfolio(true)">Refresh &amp; save snapshot</button>
+  </div>
+  <div id="portfolioStatus" class="hint" role="status" style="padding:12px 24px">Open this tab to load your portfolio.</div>
+  <div class="portfolio-grid">
+    <section class="portfolio-panel wide"><h3>Overview</h3><div id="portfolioMetrics" class="portfolio-metrics"></div><p id="portfolioValuationNote" class="portfolio-note"></p></section>
+    <section class="portfolio-panel"><h3>Holdings</h3><div style="overflow-x:auto"><table class="portfolio-table"><thead><tr><th>Asset</th><th>Wallet</th><th>Amount</th><th>Value</th><th>Weight</th></tr></thead><tbody id="portfolioHoldings"></tbody></table></div></section>
+    <section class="portfolio-panel"><h3>Margin positions</h3><div style="overflow-x:auto"><table class="portfolio-table"><thead><tr><th>Market</th><th>Side</th><th>Exposure</th><th>Unrealized P&amp;L</th></tr></thead><tbody id="portfolioPositions"></tbody></table></div></section>
+    <section class="portfolio-panel wide"><h3>Equity history</h3><div id="portfolioEquityChart" style="min-height:165px"></div><p class="portfolio-note">Cash-flow-adjusted returns require every external deposit and withdrawal to be recorded below. Internal spot/margin transfers are excluded.</p></section>
+    <section class="portfolio-panel"><h3>External cash flows</h3><form class="portfolio-controls" onsubmit="savePortfolioFlow(event)">
+      <label>Type<select id="portfolioFlowKind"><option value="deposit">Deposit</option><option value="withdrawal">Withdrawal</option></select></label>
+      <label>USDT equivalent<input id="portfolioFlowAmount" type="number" min="0.01" step="any" required></label>
+      <label>When<input id="portfolioFlowTime" type="datetime-local"></label>
+      <label>Note<input id="portfolioFlowNote" maxlength="120" placeholder="Optional"></label>
+      <button class="btn btn-primary btn-sm" type="submit">Record</button>
+    </form><div id="portfolioFlows"></div></section>
+    <section class="portfolio-panel"><h3>Allocation targets</h3><p class="portfolio-note">Spot assets only. Each target is at most 35%; keep at least 20% in USDT.</p><div id="portfolioTargetInputs"></div><button class="btn btn-neutral btn-sm" onclick="savePortfolioTargets()">Save targets</button></section>
+    <section class="portfolio-panel wide"><h3>Indicative rebalance</h3><div id="portfolioRebalance"></div><p class="portfolio-note">Ideas are capped at 10% of spot value and 25% of the top five order-book levels. Estimates include fee and slippage assumptions. No orders are placed.</p></section>
+  </div>
+</div><!-- /viewPortfolio -->
 
 <!-- ═══════════════════ OPTIMIZER VIEW ═══════════════════ -->
 <div id="viewOptimizer" class="view-pane">
+  <div class="research-intro">
+    <div>
+      <h2>Parameter research</h2>
+      <p>Explore strategy inputs on historical candles. Compare the selected settings with defaults before creating a bot.</p>
+    </div>
+  </div>
+  <div class="tester-section" style="margin:18px 24px 0">
+    <h3>Saved runs</h3>
+    <div class="tester-toolbar">
+      <select id="optimizerJobHistory" aria-label="Saved optimizer runs" onchange="restoreResearchJob('optimizer')" style="max-width:100%;flex:1;padding:8px"><option value="">Choose a saved run</option></select>
+      <button class="btn btn-neutral btn-sm" onclick="loadResearchHistory('optimizer')">Refresh history</button>
+    </div>
+    <div id="optimizerHistoryStatus" class="hint" role="status">Completed results and interrupted runs remain available after restart.</div>
+  </div>
+
   <div class="tester-wrap">
 
     <!-- Sub-tab navigation -->
-    <div style="display:flex;border-bottom:1px solid var(--border);margin-bottom:0;gap:0;margin-left:-2px">
+    <div class="research-tabs">
       <button id="subTabOptimizer" onclick="switchOptimizerSubTab('optimizer')"
-        style="background:transparent;border:none;border-bottom:2px solid var(--accent);padding:8px 20px;cursor:pointer;color:var(--fg);font-size:0.95em;font-weight:500;margin-bottom:-1px">Optimizer</button>
+        style="border-bottom-color:var(--accent);color:var(--text)">Optimizer</button>
       <button id="subTabTester" onclick="switchOptimizerSubTab('tester')"
-        style="background:transparent;border:none;border-bottom:2px solid transparent;padding:8px 20px;cursor:pointer;color:var(--muted);font-size:0.95em;margin-bottom:-1px">Optimizer Tester</button>
+        >Optimizer Tester</button>
     </div>
 
     <div id="optimizerPane">
@@ -610,7 +738,7 @@
         </div>
         <div class="form-group">
           <label>Past candles</label>
-          <input type="number" id="oCandles" value="1000" min="200" max="5000" step="100" onchange="saveOptimizerPrefs()">
+          <input type="number" id="oCandles" value="1000" min="200" max="5000" step="100" oninput="updateOptimizerNote()" onchange="saveOptimizerPrefs()">
         </div>
         <div class="form-group">
           <label>Credit (USDT)</label>
@@ -621,12 +749,12 @@
           <input type="number" id="oLeverage" value="5" min="1" max="100" step="1" onchange="saveOptimizerPrefs()">
         </div>
         <div class="form-group">
-          <label>CPU cores</label>
-          <select id="oCores" onchange="saveOptimizerPrefs()"></select>
+          <label>Parallel workers</label>
+          <select id="oCores" onchange="saveOptimizerPrefs(); updateOptimizerNote()"></select>
         </div>
         <div class="form-group">
           <label>Generations</label>
-          <input type="number" id="oMaxiter" value="30" min="5" max="1000" step="5" onchange="saveOptimizerPrefs()">
+          <input type="number" id="oMaxiter" value="30" min="5" max="1000" step="5" oninput="updateOptimizerNote()" onchange="saveOptimizerPrefs()">
         </div>
       </div>
     </div>
@@ -685,6 +813,8 @@
 
     <div class="tester-section">
       <h3>Run</h3>
+      <div class="workload-preview" id="oWorkload" aria-live="polite"></div>
+      <div class="workload-hint">Evaluation count is an upper estimate; early convergence can end the search sooner. Runtime depends on the machine and data fetch.</div>
       <div class="tester-run-bar">
         <button class="btn btn-primary" id="oRunBtn" onclick="runOptimizer()" style="padding:9px 20px">▶ Optimize</button>
         <button class="btn btn-danger btn-sm" id="oCancelBtn" onclick="cancelOptimizer()" style="display:none">■ Cancel</button>
@@ -705,8 +835,8 @@
       <div id="oDeltaChart"></div>
     </div>
 
-    <div id="oResults"></div>
     <div id="oChart"></div>
+    <div id="oResults"></div>
 
     </div><!-- /optimizerPane -->
 
@@ -735,7 +865,7 @@
           </div>
           <div class="form-group">
             <label>Total candles</label>
-            <input type="number" id="otCandles" value="1000" min="200" max="5000" step="100">
+            <input type="number" id="otCandles" value="1000" min="200" max="5000" step="100" oninput="_updateTesterRunNote()">
           </div>
           <div class="form-group" style="grid-column:1/-1">
             <label>Train / Test Split</label>
@@ -754,12 +884,12 @@
             <input type="number" id="otLeverage" value="5" min="1" max="100" step="1">
           </div>
           <div class="form-group">
-            <label>CPU cores</label>
-            <select id="otCores"></select>
+            <label>Parallel workers</label>
+            <select id="otCores" onchange="_updateTesterRunNote()"></select>
           </div>
           <div class="form-group">
             <label>Generations</label>
-            <input type="number" id="otMaxiter" value="30" min="5" max="1000" step="5">
+            <input type="number" id="otMaxiter" value="30" min="5" max="1000" step="5" oninput="_updateTesterRunNote()">
           </div>
         </div>
       </div>
@@ -816,6 +946,8 @@
 
       <div class="tester-section">
         <h3>Run</h3>
+        <div class="workload-preview" id="otWorkload" aria-live="polite"></div>
+        <div class="workload-hint">Evaluation count is an upper estimate; early convergence can end the search sooner. The test window is evaluated after training.</div>
         <div class="tester-run-bar">
           <button class="btn btn-primary" id="otRunBtn" onclick="runOptimizerTester()" style="padding:9px 20px">▶ Optimize &amp; Test</button>
           <button class="btn btn-danger btn-sm" id="otCancelBtn" onclick="cancelOptimizerTester()" style="display:none">■ Cancel</button>
@@ -836,8 +968,8 @@
         <div id="otDeltaChart"></div>
       </div>
 
-      <div id="otResults"></div>
       <div id="otTrainChart"></div>
+      <div id="otResults"></div>
       <div id="otTestChart"></div>
 
     </div><!-- /optimizerTesterPane -->
@@ -884,7 +1016,7 @@
       </div>
       <div class="form-group">
         <label>Timeframe</label>
-        <select id="fTimeframe">
+        <select id="fTimeframe" onchange="onAITimeframeChange('f')">
           <option value="1">1 minute</option><option value="5">5 minutes</option>
           <option value="15">15 minutes</option><option value="30">30 minutes</option>
           <option value="60">1 hour</option><option value="180">3 hours</option>
@@ -893,11 +1025,23 @@
       </div>
       <div class="form-group">
         <label>Strategy</label>
-        <select id="fStrategy">
+        <select id="fStrategy" onchange="onPriceAIStrategyChange('f')">
           <option value="AdvRSI">Advanced RSI Combined</option>
           <option value="TrendMomentum">Trend-Filtered Momentum</option>
           <option value="ExtremeReversal">Extreme Reversal (Beta)</option>
+          <option value="PriceAI">Price AI (Simulation)</option>
+          <option value="AgenticAI">Agentic AI (Multi-timeframe)</option>
         </select>
+        <div class="market-hint" id="fPriceAIHint"></div>
+      </div>
+      <div class="form-group" id="fAITimeframes" style="display:none">
+        <label>AI evidence timeframes (choose 2 or 3, including primary)</label>
+        <div class="mode-toggle">
+          <label><input type="checkbox" value="15"> 15m</label>
+          <label><input type="checkbox" value="60" checked> 1h</label>
+          <label><input type="checkbox" value="240" checked> 4h</label>
+          <label><input type="checkbox" value="D" checked> 1d</label>
+        </div>
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -915,6 +1059,17 @@
       <button class="btn btn-neutral" onclick="closeModal('createModal')">Cancel</button>
       <button class="btn btn-primary" onclick="submitCreate()">Create Bot</button>
     </div>
+  </div>
+</div>
+
+<!-- AI evidence modal -->
+<div class="modal-overlay" id="aiEvidenceModal">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h2 id="aiEvidenceTitle">AI Evidence</h2>
+      <button class="modal-close" onclick="closeModal('aiEvidenceModal')">×</button>
+    </div>
+    <div class="modal-body" id="aiEvidenceBody"></div>
   </div>
 </div>
 
@@ -952,7 +1107,7 @@
       </div>
       <div class="form-group">
         <label>Timeframe</label>
-        <select id="eTimeframe">
+        <select id="eTimeframe" onchange="onAITimeframeChange('e')">
           <option value="1">1 minute</option><option value="5">5 minutes</option>
           <option value="15">15 minutes</option><option value="30">30 minutes</option>
           <option value="60">1 hour</option><option value="180">3 hours</option>
@@ -961,11 +1116,23 @@
       </div>
       <div class="form-group">
         <label>Strategy</label>
-        <select id="eStrategy">
+        <select id="eStrategy" onchange="onPriceAIStrategyChange('e')">
           <option value="AdvRSI">Advanced RSI Combined</option>
           <option value="TrendMomentum">Trend-Filtered Momentum</option>
           <option value="ExtremeReversal">Extreme Reversal (Beta)</option>
+          <option value="PriceAI">Price AI (Simulation)</option>
+          <option value="AgenticAI">Agentic AI (Multi-timeframe)</option>
         </select>
+        <div class="market-hint" id="ePriceAIHint"></div>
+      </div>
+      <div class="form-group" id="eAITimeframes" style="display:none">
+        <label>AI evidence timeframes (choose 2 or 3, including primary)</label>
+        <div class="mode-toggle">
+          <label><input type="checkbox" value="15"> 15m</label>
+          <label><input type="checkbox" value="60"> 1h</label>
+          <label><input type="checkbox" value="240"> 4h</label>
+          <label><input type="checkbox" value="D"> 1d</label>
+        </div>
       </div>
       <div class="form-row">
         <div class="form-group">
@@ -1072,6 +1239,65 @@
   </div>
 </div>
 
+<!-- Explicit exchange recovery for stopped bots -->
+<div class="modal-overlay" id="recoveryModal">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header"><h2 id="recoveryTitle">Recover bot</h2><button class="modal-close" onclick="closeModal('recoveryModal')" aria-label="Close recovery">×</button></div>
+    <div class="modal-body">
+      <p style="line-height:1.6;margin-bottom:16px">Reconcile this bot's recorded orders and positions with the exchange before restarting.</p>
+      <button class="btn btn-primary" onclick="recoverBot('reconcile')">Reconcile recorded state</button>
+      <form onsubmit="event.preventDefault();recoverBot('adopt-position')" style="margin-top:24px">
+        <label for="recoveryPosition">Existing exchange position ID</label>
+        <input id="recoveryPosition" type="number" min="1" step="1" required style="width:100%;margin:8px 0;padding:10px">
+        <p style="color:var(--muted);line-height:1.6;margin-bottom:12px">Only adopt a position that belongs to this bot. Adoption assigns ownership and lets this bot manage and close that position. Pending orders must be resolved first.</p>
+        <button id="adoptPositionButton" class="btn btn-neutral" type="submit">Adopt this position</button>
+      </form>
+      <form onsubmit="event.preventDefault();recoverBot('resolve-order')" style="margin-top:24px">
+        <label for="recoveryIntent">Unresolved local order</label>
+        <select id="recoveryIntent" required style="width:100%;margin:8px 0;padding:10px"></select>
+        <label for="recoveryOrder">Matching exchange order ID</label>
+        <input id="recoveryOrder" type="number" min="1" step="1" required style="width:100%;margin:8px 0;padding:10px">
+        <p style="color:var(--muted);line-height:1.6;margin-bottom:12px">Use this only after finding the exact order in Nobitex. The dashboard validates its market, side, amount, and timestamp before binding it.</p>
+        <button id="resolveOrderButton" class="btn btn-neutral" type="submit">Bind and reconcile order</button>
+      </form>
+      <p id="recoveryStatus" role="status" style="margin-top:16px;line-height:1.6"></p>
+    </div>
+  </div>
+</div>
+
+<!-- Research execution assumptions -->
+<div class="modal-overlay" id="executionModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Research assumptions</h2>
+      <button class="modal-close" onclick="closeModal('executionModal')" aria-label="Close research assumptions">×</button>
+    </div>
+    <form id="executionForm" onsubmit="saveExecutionSettings(event)">
+      <div class="modal-body">
+        <p style="line-height:1.6;margin-bottom:16px;color:var(--muted)">Nobitex account and market rates are loaded when this panel opens. Saved assumptions apply to new backtests, Optimizer runs, and newly created bots across all markets; existing bots keep their saved values.</p>
+        <div class="form-group"><label for="eAssumptionMarket">Nobitex market used for auto-fill</label><select id="eAssumptionMarket" onchange="refreshNobitexAssumptions()"></select></div>
+        <button type="button" class="btn btn-neutral btn-sm" onclick="refreshNobitexAssumptions()">Refresh from Nobitex</button>
+        <p id="eAssumptionSources" role="status" style="line-height:1.6;margin:10px 0 16px;color:var(--muted)"></p>
+        <div id="executionStatus" class="cred-status disconnected" role="status">Loading assumptions…</div>
+        <div class="form-group"><label for="eEntryFee">Entry fee (% of filled notional; account profile)</label><input id="eEntryFee" type="number" min="0" max="99.9999" step="any" required></div>
+        <div class="form-group"><label for="eExitFee">Exit fee (% of filled notional; account profile)</label><input id="eExitFee" type="number" min="0" max="99.9999" step="any" required></div>
+        <div class="form-group"><label for="eSlippage">Adverse slippage (basis points; your estimate)</label><input id="eSlippage" type="number" min="0" max="9999.99" step="any" required></div>
+        <div class="form-group"><label for="eHoldingPolicy">Holding charge policy</label><select id="eHoldingPolicy"><option value="none">No holding charge</option><option value="entry_notional_daily">Entry notional, prorated by elapsed days</option></select></div>
+        <div class="form-group"><label for="eHoldingRate">Holding charge (% per day; selected margin market)</label><input id="eHoldingRate" type="number" min="0" step="any" required></div>
+        <div class="form-group"><label for="eMargin">Margin per entry (% of starting capital; your allocation)</label><input id="eMargin" type="number" min="0.000001" max="100" step="any" required></div>
+        <div class="form-group"><label for="ePositions">Position mode</label><select id="ePositions"><option value="net">One position at a time</option><option value="multi">Multiple positions within available capital</option></select></div>
+        <div class="form-group"><label for="eLiquidation">Liquidation commitment ratio</label><input id="eLiquidation" type="number" min="0.000001" step="any" required></div>
+        <div class="form-group"><label for="eFill">Historical fill timing</label><select id="eFill"><option value="next_open">Next candle open (recommended)</option><option value="legacy_close">Signal candle close (legacy comparison)</option></select></div>
+        <p style="line-height:1.6;color:var(--muted)">Nobitex publishes a 1.1 minimum commitment ratio, used here as a simulator approximation. Position mode, fill timing, capital allocation and slippage are research choices. The market renewal rate may vary with delegated value; the simulator charges it against entry notional. Live orders use actual exchange fills.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-neutral" onclick="closeModal('executionModal')">Cancel</button>
+        <button id="executionSave" type="submit" class="btn btn-primary" disabled>Save assumptions</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <!-- Candle Count Warning Modal -->
 <div class="modal-overlay" id="candleWarnModal">
   <div class="modal" style="max-width:420px;">
@@ -1090,8 +1316,169 @@
   </div>
 </div>
 
+</div><!-- dashboard -->
 <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
 <script>
+let authenticated = false;
+let csrfToken = null;
+let wsReconnectTimer = null;
+let authWalletTimer = null;
+const nativeFetch = window.fetch.bind(window);
+
+async function apiFetch(url, options = {}) {
+  if (!authenticated) return new Response('{"error":"Authentication required"}', {status:401});
+  const headers = new Headers(options.headers || {});
+  if (!['GET', 'HEAD', 'OPTIONS'].includes((options.method || 'GET').toUpperCase())) {
+    headers.set('X-CSRF-Token', csrfToken);
+  }
+  const response = await nativeFetch(url, {...options, headers, credentials:'same-origin'});
+  if (response.status === 401) showLogin('Your session ended. Sign in again.');
+  return response;
+}
+
+function showLogin(message = '') {
+  authenticated = false;
+  csrfToken = null;
+  clearTimeout(wsReconnectTimer);
+  clearInterval(authWalletTimer);
+  stopOptimizerPolling();
+  stopOptimizerTesterPolling();
+  clearTimeout(_optimizerPrefsTimer);
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  bots = []; exchangePositions = []; exchangeOrders = [];
+  document.querySelectorAll('#dashboard input[type="password"]').forEach(el => el.value = '');
+  document.getElementById('dashboard').style.display = 'none';
+  document.getElementById('dashboard').inert = true;
+  document.getElementById('loginScreen').style.display = 'grid';
+  document.getElementById('loginMessage').textContent = message;
+  showAuthForm('login', false);
+}
+
+function showAuthForm(name, clearMessage = true) {
+  for (const form of ['login', 'register', 'verify', 'recoveryRequest', 'recoveryReset']) {
+    document.getElementById(form + 'Form').hidden = form !== name;
+  }
+  if (clearMessage) document.getElementById('loginMessage').textContent = '';
+}
+
+async function authPost(path, payload) {
+  const response = await nativeFetch(path, {method:'POST', credentials:'same-origin',
+    headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Request failed');
+  return result;
+}
+
+async function registerAccount(event) {
+  event.preventDefault();
+  try {
+    await authPost('/api/auth/register', {username:document.getElementById('registerUsername').value,
+      email:document.getElementById('registerEmail').value,
+      password:document.getElementById('registerPassword').value,
+      invitation_code:document.getElementById('invitationCode').value});
+    document.getElementById('verifyEmail').value = document.getElementById('registerEmail').value;
+    document.getElementById('registerPassword').value = '';
+    document.getElementById('invitationCode').value = '';
+    showAuthForm('verify');
+    document.getElementById('loginMessage').textContent = 'Check your email for the confirmation code.';
+  } catch (error) { document.getElementById('loginMessage').textContent = error.message; }
+}
+
+async function verifyAccount(event) {
+  event.preventDefault();
+  try {
+    await authPost('/api/auth/register/verify', {email:document.getElementById('verifyEmail').value,
+      code:document.getElementById('verifyCode').value});
+    document.getElementById('loginUsername').value = document.getElementById('registerUsername').value;
+    showAuthForm('login');
+    document.getElementById('loginMessage').textContent = 'Email confirmed. Sign in with your new account.';
+  } catch (error) { document.getElementById('loginMessage').textContent = error.message; }
+}
+
+async function requestRecovery(event) {
+  event.preventDefault();
+  try {
+    await authPost('/api/auth/recovery/request', {email:document.getElementById('recoveryEmail').value});
+    document.getElementById('resetEmail').value = document.getElementById('recoveryEmail').value;
+    showAuthForm('recoveryReset');
+    document.getElementById('loginMessage').textContent = 'If the address is registered, a recovery code has been sent.';
+  } catch (error) { document.getElementById('loginMessage').textContent = error.message; }
+}
+
+async function resetPassword(event) {
+  event.preventDefault();
+  try {
+    await authPost('/api/auth/recovery/reset', {email:document.getElementById('resetEmail').value,
+      code:document.getElementById('resetCode').value,
+      password:document.getElementById('resetPassword').value});
+    document.getElementById('resetPassword').value = '';
+    showAuthForm('login');
+    document.getElementById('loginMessage').textContent = 'Password changed. Sign in again.';
+  } catch (error) { document.getElementById('loginMessage').textContent = error.message; }
+}
+
+async function checkSession() {
+  const response = await nativeFetch('/api/auth/session', {credentials:'same-origin'});
+  if (!response.ok) throw new Error('Cannot check dashboard session');
+  const session = await response.json();
+  const multiuser = !!session.multiuser;
+  document.getElementById('authLinks').style.display = multiuser ? 'flex' : 'none';
+  document.getElementById('loginUsernameLabel').hidden = !multiuser;
+  document.getElementById('loginUsername').hidden = !multiuser;
+  document.getElementById('loginUsername').required = multiuser;
+  if (!session.authenticated) {
+    showLogin();
+    document.getElementById('loginForm').hidden = session.setup_required;
+    document.getElementById('loginDescription').textContent = session.setup_required
+      ? 'Set an operator password on this computer first. Run python main.py setup-password, then restart the dashboard.'
+      : 'Sign in to manage your bots and exchange account.';
+    return false;
+  }
+  authenticated = true;
+  csrfToken = session.csrf_token;
+  return true;
+}
+
+function openDashboard() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('dashboard').style.display = '';
+  document.getElementById('dashboard').inert = false;
+  connectWS();
+  fetchWallet();
+  loadMarginMarkets();
+  clearInterval(authWalletTimer);
+  authWalletTimer = setInterval(() => { if (authenticated) fetchWallet(); }, 30000);
+}
+
+async function signIn(event) {
+  event.preventDefault();
+  const button = document.getElementById('loginButton');
+  button.disabled = true;
+  try {
+    const response = await nativeFetch('/api/auth/login', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:document.getElementById('loginUsername').value,
+        password:document.getElementById('operatorPassword').value})});
+    const result = await response.json();
+    if (!response.ok) { document.getElementById('loginMessage').textContent = result.error || 'Sign-in failed'; return; }
+    document.getElementById('operatorPassword').value = '';
+    csrfToken = result.csrf_token;
+    authenticated = true;
+    openDashboard();
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().then(p => { notifPermission = p; });
+    }
+  } catch (_) { document.getElementById('loginMessage').textContent = 'Cannot connect to the dashboard.'; }
+  finally { button.disabled = false; }
+}
+
+async function signOut() {
+  try {
+    const response = await apiFetch('/api/auth/logout', {method:'POST'});
+    if (response.ok || response.status === 401) showLogin('Signed out.');
+    else showToast('Could not sign out. Try again.', 'error');
+  } catch (_) { showToast('Could not sign out. Check the connection and try again.', 'error'); }
+}
+
 // ── State ─────────────────────────────────────────────────────────────────────
 let bots = [];
 let exchangePositions = [];
@@ -1145,7 +1532,8 @@ function nextCandleStr(tf) {
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 function connectWS() {
-  const url = `ws://${location.host}/ws`;
+  if (!authenticated) return;
+  const url = `${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/ws`;
   ws = new WebSocket(url);
   ws.onopen  = () => { wsRetryDelay = 1000; setWsStatus('connected'); };
   ws.onmessage = (evt) => {
@@ -1161,7 +1549,11 @@ function connectWS() {
   ws.onerror = () => setWsStatus('error');
   ws.onclose = () => {
     setWsStatus('disconnected');
-    setTimeout(connectWS, wsRetryDelay);
+    if (!authenticated) return;
+    wsReconnectTimer = setTimeout(async () => {
+      try { if (await checkSession()) connectWS(); }
+      catch (_) { if (authenticated) connectWS(); }
+    }, wsRetryDelay);
     wsRetryDelay = Math.min(wsRetryDelay * 2, 15000);
   };
 }
@@ -1226,7 +1618,7 @@ function detectTradeNotifications(newBots) {
 }
 
 // ── Bot color palette ─────────────────────────────────────────────────────────
-const BOT_COLORS = ['#38bdf8','#4ade80','#f87171','#fbbf24','#a78bfa','#fb923c','#34d399','#f472b6'];
+const BOT_COLORS = ['#c8875a','#bca5cf','#8bb8bf','#e2bc76','#c9949f','#aabf91','#9ea9ce','#d4a884'];
 function getBotColor(botId) {
   let h = 0;
   for (let i = 0; i < botId.length; i++) h = (h * 31 + botId.charCodeAt(i)) & 0xffff;
@@ -1234,11 +1626,16 @@ function getBotColor(botId) {
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
+function isAIBot(bot) { return ['PriceAI', 'AgenticAI'].includes(bot.strategy); }
 function renderGrid() {
   renderBotsBox();
+  renderBotsBox('ai');
   renderOrdersBox();
+  renderOrdersBox('ai');
   renderPositionsBox();
+  renderPositionsBox('ai');
   renderActivityFeed();
+  renderActivityFeed('ai');
 }
 
 let _feedClearedBefore = null;
@@ -1246,15 +1643,18 @@ let _feedClearedBefore = null;
 function clearActivityFeed() {
   _feedClearedBefore = new Date().toISOString();
   renderActivityFeed();
+  renderActivityFeed('ai');
 }
 
-function renderActivityFeed() {
-  const body    = document.getElementById('activityFeedBody');
-  const counter = document.getElementById('feedCount');
+function renderActivityFeed(kind = 'standard') {
+  const isAI = kind === 'ai';
+  const body    = document.getElementById(isAI ? 'aiActivityFeedBody' : 'activityFeedBody');
+  const counter = document.getElementById(isAI ? 'aiFeedCount' : 'feedCount');
   if (!body) return;
 
   const allEntries = [];
   for (const b of bots) {
+    if (isAIBot(b) !== isAI) continue;
     const color = getBotColor(b.id);
     for (const item of (b.activity_log || [])) {
       if (_feedClearedBefore && item.time <= _feedClearedBefore) continue;
@@ -1286,63 +1686,102 @@ function renderActivityFeed() {
   }).join('')}</ul>`;
 }
 
-function renderBotsBox() {
-  const body   = document.getElementById('boxBotsBody');
-  const header = document.getElementById('boxBotsHeader');
-  header.textContent = bots.length;
-  if (!bots.length) {
-    body.innerHTML = `<div class="empty-state"><span class="icon">🤖</span>Create your first bot to get started.</div>`;
+function renderBotsBox(kind = 'standard') {
+  const isAI = kind === 'ai';
+  const body   = document.getElementById(isAI ? 'boxAIBotsBody' : 'boxBotsBody');
+  const header = document.getElementById(isAI ? 'boxAIBotsHeader' : 'boxBotsHeader');
+  const query = isAI ? '' : (document.getElementById('botSearch')?.value || '').trim().toLowerCase();
+  const status = isAI ? 'all' : (document.getElementById('botStatusFilter')?.value || 'all');
+  const category = bots.filter(b => isAIBot(b) === isAI);
+  const visibleBots = category.filter(b => {
+    const matchesText = !query || [b.name, b.symbol, b.strategy].some(value => String(value || '').toLowerCase().includes(query));
+    return matchesText && (status === 'all' || b.status === status);
+  });
+  header.textContent = query || status !== 'all' ? `${visibleBots.length} / ${category.length}` : String(category.length);
+  if (!category.length) {
+    body.innerHTML = `<div class="empty-state"><span class="icon">🤖</span>Create your first ${isAI ? 'AI ' : ''}bot to get started.</div>`;
     return;
   }
-  body.innerHTML = bots.map(b => {
+  if (!visibleBots.length) {
+    body.innerHTML = '<div class="empty-state" style="padding:24px">No bots match this search or status.</div>';
+    return;
+  }
+  body.innerHTML = visibleBots.map(b => {
     const isSim    = b.mode !== 'real';
     const pnlCls   = b.total_pnl > 0 ? 'pos' : b.total_pnl < 0 ? 'neg' : 'neu';
     const pnlSign  = b.total_pnl > 0 ? '+' : '';
-    const errorTip = b.error ? ` <span title="${escHtml(b.error)}" style="color:var(--red);cursor:help">⚠</span>` : '';
+    const state = ({running:'Running', stopped:'Stopped', idle:'Idle', error:'Error'})[b.status] || b.status;
+    const updated = b.last_updated ? `Last update ${timeAgo(b.last_updated)}` : 'No update yet';
     const startBtn = b.status !== 'running'
-      ? `<button class="btn btn-success btn-sm" onclick="startBot('${b.id}')">▶</button>` : '';
+      ? `<button class="btn btn-success btn-sm" onclick="startBot('${b.id}')">Start</button>` : '';
     const stopBtn  = b.status === 'running'
-      ? `<button class="btn btn-danger btn-sm" onclick="stopBot('${b.id}')">■</button>` : '';
-    const color = getBotColor(b.id);
-    return `<div class="tri-row" id="card-${b.id}">
-  <div class="bot-color-pill" style="background:${color}"></div>
-  <div style="flex:1;min-width:0">
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap">
-      <div class="status-dot ${b.status}"></div>
-      <span style="font-size:12px;font-weight:700">${escHtml(b.name)}${errorTip}</span>
-      <span class="bot-id">${b.id}</span>
-      <span class="badge ${isSim ? 'badge-sim' : 'badge-real'}" style="margin-left:auto">${isSim ? 'SIM' : 'LIVE'}</span>
-    </div>
-    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-      <span style="font-size:12px;font-weight:700">${escHtml(b.symbol)}</span>
-      <span style="font-size:11px;color:var(--muted)">${escHtml(b.strategy)} · ${fmtTF(b.timeframe)} · ${b.leverage}×</span>
-      <span style="font-size:11px;color:var(--muted);background:rgba(255,255,255,.07);border:1px solid var(--border);border-radius:4px;padding:1px 5px">$${b.credit}</span>
-      <span class="stat-value ${pnlCls}" style="font-size:12px;margin-left:auto">${pnlSign}$${b.total_pnl.toFixed(2)}</span>
-    </div>
+      ? `<button class="btn btn-danger btn-sm" onclick="stopBot('${b.id}')">Stop</button>` : '';
+    return `<div class="tri-row bot-card ${b.status}" id="card-${b.id}">
+  <div class="bot-card-head">
+    <span class="bot-card-name">${escHtml(b.name)}</span>
+    <span class="bot-status ${b.status}"><span class="status-dot ${b.status}"></span>${escHtml(state)}</span>
+    <span class="badge ${isSim ? 'badge-sim' : 'badge-real'}">${isSim ? 'SIM' : 'LIVE'}</span>
   </div>
-  <div style="display:flex;gap:4px;align-items:center;flex-shrink:0">
-    ${startBtn}${stopBtn}
-    <button class="btn btn-neutral btn-sm btn-icon" onclick="openEditModal('${b.id}')" title="Edit">✎</button>
-    <button class="btn btn-neutral btn-sm" onclick="showHistory('${b.id}')">Hist</button>
-    <button class="btn btn-danger btn-sm btn-icon" onclick="deleteBot('${b.id}')">✕</button>
+  <div class="bot-card-metrics">
+    <strong>${escHtml(b.symbol)}</strong>
+    <span>${escHtml(b.strategy)} · ${(b.ai_timeframes || [b.timeframe]).map(fmtTF).join(' + ')} · ${b.leverage}×</span>
+    <span class="stat-value ${pnlCls}">${pnlSign}$${b.total_pnl.toFixed(2)}</span>
+  </div>
+  <div class="bot-card-meta">${updated} · $${Number(b.credit).toFixed(2)} capital</div>
+  ${b.last_ai_decision ? `<div class="bot-card-meta">AI: ${escHtml(b.last_ai_decision.action.replace(/_/g, ' '))} · ${b.last_ai_decision.confidence == null ? '' : (Number(b.last_ai_decision.confidence) * 100).toFixed(1) + '% probability · '}${escHtml(b.last_ai_decision.reason)}</div>` : ''}
+  ${b.ai_model && b.strategy === 'AgenticAI' ? `<div class="bot-card-meta">Validation: ${b.ai_model.validation_passed ? 'passed' : 'failed — trading paused'} · Cost-adjusted move probability over ${b.ai_model.horizon_primary_candles} ${fmtTF(b.timeframe)} candles</div>` : ''}
+  ${b.error ? `<div class="bot-card-error">${escHtml(b.error)}</div>` : ''}
+  <div class="bot-card-actions">
+    ${startBtn}${stopBtn}${recoveryButton(b)}
+    ${isAI ? `<button class="btn btn-neutral btn-sm" onclick="showAIEvidence('${b.id}')">Evidence</button>` : ''}
+    <button class="btn btn-neutral btn-sm" onclick="openEditModal('${b.id}')">Edit</button>
+    <button class="btn btn-neutral btn-sm" onclick="showHistory('${b.id}')">History</button>
+    <button class="btn btn-sm btn-danger-subtle" onclick="deleteBot('${b.id}')">Delete</button>
   </div>
 </div>`;
   }).join('');
 }
 
-function renderOrdersBox() {
-  const body   = document.getElementById('boxOrdersBody');
-  const header = document.getElementById('boxOrdersHeader');
+async function showAIEvidence(id) {
+  const res = await apiFetch(`/api/bots/${id}`);
+  if (!res.ok) { showToast('AI evidence unavailable', 'error'); return; }
+  const bot = await res.json();
+  const model = bot.ai_model || {};
+  const latest = (bot.ai_decisions || []).at(-1);
+  const pct = value => value == null ? '—' : `${(Number(value) * 100).toFixed(1)}%`;
+  const brier = value => value == null ? '—' : Number(value).toFixed(5);
+  document.getElementById('aiEvidenceTitle').textContent = `AI Evidence — ${bot.name}`;
+  const validation = model.ensemble_validation || {};
+  const rows = Object.entries(latest?.specialists || {}).map(([tf, scores]) =>
+    `<tr><td>${escHtml(fmtTF(tf))}</td><td>${pct(scores.long_probability)}</td><td>${pct(scores.short_probability)}</td></tr>`).join('');
+  const history = (bot.ai_decisions || []).slice(-20).reverse().map(decision =>
+    `<tr><td>${escHtml(decision.candle_time || '')}</td><td>${escHtml(decision.action || '')}</td><td>${pct(decision.confidence)}</td><td>${escHtml(decision.reason || '')}</td></tr>`).join('');
+  document.getElementById('aiEvidenceBody').innerHTML = `
+    <p style="color:var(--muted)">Confidence estimates the chance of a cost-adjusted directional move over the next four primary candles. It is not an order profit probability.</p>
+    <p><strong>Validation:</strong> ${model.validation_passed == null ? (model.model_version ? 'Price AI prototype' : 'Not trained') : model.validation_passed ? 'Passed' : 'Failed — trading paused'}
+       · <strong>Model:</strong> ${escHtml(model.model_version || '—')}</p>
+    ${model.ensemble_validation ? `<p><strong>Brier score:</strong> long ${brier(validation.long_brier)} vs baseline ${brier(validation.long_baseline_brier)}; short ${brier(validation.short_brier)} vs baseline ${brier(validation.short_baseline_brier)}. Lower is better; ${validation.validation_rows || 0} held out candles.</p>` : ''}
+    <h3>Latest specialist probabilities</h3>
+    <table><thead><tr><th>Timeframe</th><th>Long</th><th>Short</th></tr></thead><tbody>${rows || '<tr><td colspan="3">No decisions yet</td></tr>'}</tbody></table>
+    <h3 style="margin-top:18px">Recent decisions</h3>
+    <div style="max-height:320px;overflow:auto"><table><thead><tr><th>Candle</th><th>Action</th><th>Confidence</th><th>Reason</th></tr></thead><tbody>${history || '<tr><td colspan="4">No decisions yet</td></tr>'}</tbody></table></div>`;
+  document.getElementById('aiEvidenceModal').classList.add('open');
+}
+
+function renderOrdersBox(kind = 'standard') {
+  const isAI = kind === 'ai';
+  const body   = document.getElementById(isAI ? 'boxAIOrdersBody' : 'boxOrdersBody');
+  const header = document.getElementById(isAI ? 'boxAIOrdersHeader' : 'boxOrdersHeader');
 
   const botOrders = bots
-    .filter(b => b.pending_order != null)
+    .filter(b => isAIBot(b) === isAI && b.pending_order != null)
     .map(b => ({ type: 'bot', bot: b, order: b.pending_order }));
 
   const trackedIds = new Set(
     botOrders.map(e => e.order.order_id).filter(id => id != null)
   );
   const externalOrders = exchangeOrders
-    .filter(o => o.attributed_bot_id == null && !trackedIds.has(o.order_id))
+    .filter(o => !isAI && o.attributed_bot_id == null && !trackedIds.has(o.order_id))
     .map(o => ({ type: 'external', order: o }));
 
   const all = [...botOrders, ...externalOrders];
@@ -1392,24 +1831,26 @@ function renderOrdersBox() {
   }).join('');
 }
 
-function renderPositionsBox() {
-  const body   = document.getElementById('boxPositionsBody');
-  const header = document.getElementById('boxPositionsHeader');
+function renderPositionsBox(kind = 'standard') {
+  const isAI = kind === 'ai';
+  const body   = document.getElementById(isAI ? 'boxAIPositionsBody' : 'boxPositionsBody');
+  const header = document.getElementById(isAI ? 'boxAIPositionsHeader' : 'boxPositionsHeader');
+  const aiIds = new Set(bots.filter(isAIBot).map(b => b.id));
 
   const coveredIds = new Set(
     exchangePositions.map(p => p.exchange_id).filter(id => id != null)
   );
 
-  const exPos = exchangePositions.map(p => ({
+  const exPos = exchangePositions.filter(p => (p.attributed_bot_id != null && aiIds.has(p.attributed_bot_id)) === isAI).map(p => ({
     source: 'exchange', pos: p,
     botName: p.attributed_bot_name || null,
     botId:   p.attributed_bot_id   || null,
     symbol:  p.symbol || '',
-    color:   p.attributed_bot_id ? getBotColor(p.attributed_bot_id) : '#64748b',
+    color:   p.attributed_bot_id ? getBotColor(p.attributed_bot_id) : '#aaa8a3',
   }));
 
   const simPos = bots
-    .filter(b => b.mode !== 'real')
+    .filter(b => isAIBot(b) === isAI && b.mode !== 'real')
     .flatMap(b => (b.open_positions || []).map(p => ({
       source: 'sim', pos: p,
       botName: b.name, botId: b.id,
@@ -1417,7 +1858,7 @@ function renderPositionsBox() {
     })));
 
   const realFallback = bots
-    .filter(b => b.mode === 'real')
+    .filter(b => isAIBot(b) === isAI && b.mode === 'real')
     .flatMap(b => (b.open_positions || [])
       .filter(p => !coveredIds.has(p.exchange_id))
       .map(p => ({
@@ -1450,7 +1891,7 @@ function renderPositionsBox() {
     const unrealStr   = unreal != null ? `${unreal >= 0 ? '+' : ''}$${Math.abs(unreal).toFixed(2)}` : '—';
     const tagHtml = botName
       ? `<span class="tri-bot-tag" style="background:${color}22;color:${color};border:1px solid ${color}55">${escHtml(botName)}</span>`
-      : `<span class="tri-bot-tag" style="background:#64748b22;color:#94a3b8;border:1px solid #64748b55">External</span>`;
+      : `<span class="tri-bot-tag" style="background:#aaa8a322;color:var(--muted);border:1px solid var(--border)">External</span>`;
     return `<div class="tri-row">
   <div class="bot-color-pill" style="background:${color}"></div>
   <div style="flex:1;min-width:0">
@@ -1525,7 +1966,7 @@ function renderRow(b) {
   </td>
   <td class="col-actions">
     <div class="row-actions">
-      ${startBtn}${stopBtn}
+      ${startBtn}${stopBtn}${recoveryButton(b)}
       <button class="btn btn-neutral btn-sm btn-icon" onclick="openEditModal('${b.id}')" title="Edit">✎</button>
       <button class="btn btn-neutral btn-sm btn-icon" onclick="duplicateBot('${b.id}')" title="Duplicate">⎘</button>
       <button class="btn btn-neutral btn-sm" onclick="showHistory('${b.id}')">Hist</button>
@@ -1594,8 +2035,9 @@ function renderSparkline(history, credit) {
 
 // ── Summary bar ───────────────────────────────────────────────────────────────
 function updateSummary() {
-  const running = bots.filter(b => b.status === 'running').length;
-  document.getElementById('sumRunning').textContent = `${running} / ${bots.length}`;
+  const standard = bots.filter(b => !['PriceAI', 'AgenticAI'].includes(b.strategy));
+  const running = standard.filter(b => b.status === 'running').length;
+  document.getElementById('sumRunning').textContent = `${running} / ${standard.length}`;
 }
 
 // ── Wallet ─────────────────────────────────────────────────────────────────────
@@ -1607,7 +2049,7 @@ async function fetchWallet() {
   bar.innerHTML = `<div class="wallet-loading">Fetching wallet…</div>`;
 
   try {
-    const res  = await fetch('/api/wallet');
+    const res  = await apiFetch('/api/wallet');
     const data = await res.json();
 
     if (!data.ok) {
@@ -1792,8 +2234,17 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
 });
 
-function openCreateModal() {
+function openCreateModal(kind) {
   _pendingOptParams = null;   // clear any stale optimizer params
+  const isAI = kind === 'ai' || (!kind && document.getElementById('viewAIBots').classList.contains('active'));
+  const strategy = document.getElementById('fStrategy');
+  [...strategy.options].forEach(option => { option.hidden = ['PriceAI', 'AgenticAI'].includes(option.value) !== isAI; });
+  strategy.value = isAI ? 'AgenticAI' : 'AdvRSI';
+  if (isAI) {
+    document.getElementById('fTimeframe').value = '60';
+    setAITimeframes('f', ['60', '240', 'D']);
+  }
+  onPriceAIStrategyChange('f');
   populateSymbolSelect('f', 'zecusdt');
   document.getElementById('createModal').classList.add('open');
   refreshCreateBudget();
@@ -1813,7 +2264,7 @@ async function refreshCreateBudget() {
   if (!isReal) { hint.textContent = ''; return; }
   hint.textContent = 'Checking available margin USDT…';
   try {
-    const res = await fetch('/api/wallet');
+    const res = await apiFetch('/api/wallet');
     const data = await res.json();
     if (!data.ok) {
       hint.textContent = data.error === 'no_credentials'
@@ -1840,7 +2291,7 @@ function validateCreateBudget() {
   const b = _createBudget;
   const credit = parseFloat(document.getElementById('fCredit').value) || 0;
   const over = credit > b.remaining + 1e-9;
-  hint.style.color = over ? 'var(--danger, #f87171)' : '';
+  hint.style.color = over ? 'var(--red)' : '';
   hint.textContent = over
     ? `Credit ${fmtWallet(credit)} exceeds available ${fmtWallet(b.remaining)} USDT.`
     : `Available: ${fmtWallet(b.remaining)} USDT (free ${fmtWallet(b.available)} − ${fmtWallet(b.committed)} committed to running live bots).`;
@@ -1848,6 +2299,50 @@ function validateCreateBudget() {
 }
 
 // ── Create Bot ────────────────────────────────────────────────────────────────
+function onPriceAIStrategyChange(prefix) {
+  const strategy = document.getElementById(`${prefix}Strategy`).value;
+  const priceAI = strategy === 'PriceAI';
+  const agenticAI = strategy === 'AgenticAI';
+  const real = document.getElementById(`${prefix}ModeReal`);
+  const sim = document.getElementById(`${prefix}ModeSim`);
+  const timeframe = document.getElementById(`${prefix}Timeframe`);
+  real.disabled = priceAI;
+  if (priceAI) {
+    sim.checked = true;
+    if (!['60', '240'].includes(timeframe.value)) timeframe.value = '240';
+  }
+  if (agenticAI && !['15', '60', '240', 'D'].includes(timeframe.value)) timeframe.value = '60';
+  document.getElementById(`${prefix}AITimeframes`).style.display = agenticAI ? '' : 'none';
+  if (agenticAI) onAITimeframeChange(prefix);
+  document.getElementById(`${prefix}PriceAIHint`).textContent = priceAI
+    ? 'Price-only AI prototype. 1-hour or 4-hour candles; simulation orders only. Configure fee and slippage assumptions in Settings.'
+    : agenticAI ? 'Specialist models analyze completed candles. Live trading requires positive cost assumptions and at most 5× leverage. Confidence is a cost-adjusted move probability, not a profit guarantee.' : '';
+  if (prefix === 'f') refreshCreateBudget();
+}
+
+function setAITimeframes(prefix, selected) {
+  document.querySelectorAll(`#${prefix}AITimeframes input[type="checkbox"]`).forEach(box => {
+    box.checked = selected.includes(box.value);
+  });
+}
+
+function getAITimeframes(prefix) {
+  return [...document.querySelectorAll(`#${prefix}AITimeframes input[type="checkbox"]:checked`)].map(box => box.value);
+}
+
+function onAITimeframeChange(prefix) {
+  if (document.getElementById(`${prefix}Strategy`).value !== 'AgenticAI') return;
+  const timeframe = document.getElementById(`${prefix}Timeframe`);
+  if (timeframe.value === 'D') timeframe.value = '240';
+  const primary = timeframe.value;
+  const seconds = _TF_SECS[primary];
+  document.querySelectorAll(`#${prefix}AITimeframes input[type="checkbox"]`).forEach(box => {
+    box.disabled = _TF_SECS[box.value] < seconds || _TF_SECS[box.value] > 24 * seconds;
+    if (box.disabled) box.checked = false;
+    if (box.value === primary) box.checked = true;
+  });
+}
+
 async function submitCreate() {
   const modeEl = document.querySelector('input[name="fMode"]:checked');
   if (modeEl && modeEl.value === 'real' && !validateCreateBudget()) {
@@ -1863,12 +2358,13 @@ async function submitCreate() {
     leverage:      parseInt(document.getElementById('fLeverage').value) || 5,
     mode:          modeEl ? modeEl.value : 'simulation',
   };
+  if (payload.strategy_name === 'AgenticAI') payload.ai_timeframes = getAITimeframes('f');
   if (_pendingOptParams) {
     payload.custom_params = _pendingOptParams;
     _pendingOptParams = null;
   }
   try {
-    const res = await fetch('/api/bots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const res = await apiFetch('/api/bots', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (!res.ok) { showToast('Error: ' + (await res.text()), 'error'); return; }
     closeModal('createModal');
     showToast('Bot created' + (payload.custom_params ? ' with optimized inputs' : ''), 'success');
@@ -1896,6 +2392,8 @@ function openEditModal(id) {
   const modeVal = bot.mode || 'simulation';
   const modeRad = document.querySelector(`input[name="eMode"][value="${modeVal}"]`);
   if (modeRad) modeRad.checked = true;
+  onPriceAIStrategyChange('e');
+  if (bot.strategy === 'AgenticAI') setAITimeframes('e', bot.ai_timeframes || [bot.timeframe, '240']);
   document.getElementById('editModal').classList.add('open');
 }
 
@@ -1911,8 +2409,9 @@ async function submitEdit() {
     mode:          document.querySelector('input[name="eMode"]:checked')?.value || 'simulation',
     restart:       document.getElementById('eRestart').checked,
   };
+  if (payload.strategy_name === 'AgenticAI') payload.ai_timeframes = getAITimeframes('e');
   try {
-    const res = await fetch(`/api/bots/${editingBotId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const res = await apiFetch(`/api/bots/${editingBotId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (!res.ok) { showToast('Error: ' + (await res.text()), 'error'); return; }
     closeModal('editModal');
     showToast('Bot updated', 'success');
@@ -1924,7 +2423,7 @@ let _pendingStartBotId = null;
 
 // POST a start request, surfacing a budget/other rejection as a toast.
 async function postStart(id) {
-  const res = await fetch(`/api/bots/${id}/start`, { method: 'POST' });
+  const res = await apiFetch(`/api/bots/${id}/start`, { method: 'POST' });
   if (!res.ok) {
     let msg = 'Start failed';
     try { msg = (await res.json()).error || msg; } catch (_) {}
@@ -1935,13 +2434,20 @@ async function postStart(id) {
 }
 
 async function startBot(id) {
-  showToast('Running 500-candle backtest…', 'info');
+  const priceAI = ['PriceAI', 'AgenticAI'].includes(bots.find(b => b.id === id)?.strategy);
+  showToast(priceAI ? 'Running held-out AI backtest…' : 'Running 500-candle backtest…', 'info');
   try {
-    const res  = await fetch(`/api/bots/${id}/backtest`);
+    const res  = await apiFetch(`/api/bots/${id}/backtest`);
     const data = await res.json();
 
     if (!res.ok || !data.ok) {
+      if (priceAI) { showToast(data.error || 'PriceAI backtest unavailable', 'error'); return; }
       if (await postStart(id)) showToast('Backtest unavailable — bot started', 'info');
+      return;
+    }
+
+    if (data.model && data.model.validation_passed === false) {
+      showToast('AI validation did not beat the chronological baseline; bot stays stopped.', 'error');
       return;
     }
 
@@ -1954,6 +2460,7 @@ async function startBot(id) {
     _showBacktestModal(data);
 
   } catch (e) {
+    if (priceAI) { showToast('PriceAI backtest failed: ' + e, 'error'); return; }
     await postStart(id);
   }
 }
@@ -2013,7 +2520,7 @@ function _showBacktestModal(data) {
         <div style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px">Sum of Losses</div>
         <div style="font-size:20px;font-weight:700;color:var(--red)">${sumLossesStr}</div>
       </div>
-      ${!profitable ? `<div style="background:#1a1000;border:1px solid #6b3a00;border-radius:6px;padding:8px 14px;font-size:12px;color:var(--yellow);margin-left:auto;">
+      ${!profitable ? `<div style="background:#393328;border:1px solid #766343;border-radius:6px;padding:8px 14px;font-size:12px;color:var(--yellow);margin-left:auto;">
         This bot would not have been profitable. Are you sure?
       </div>` : ''}
     </div>`;
@@ -2066,11 +2573,11 @@ function cancelBacktest() {
   document.getElementById('backtestModal').classList.remove('open');
 }
 
-async function stopBot(id)  { await fetch(`/api/bots/${id}/stop`,  { method: 'POST' }); }
+async function stopBot(id)  { await apiFetch(`/api/bots/${id}/stop`,  { method: 'POST' }); }
 
 async function deleteBot(id) {
   if (!confirm('Delete this bot and all its data?')) return;
-  await fetch(`/api/bots/${id}`, { method: 'DELETE' });
+  await apiFetch(`/api/bots/${id}`, { method: 'DELETE' });
   bots = bots.filter(b => b.id !== id);
   renderGrid();
   updateSummary();
@@ -2079,14 +2586,14 @@ async function deleteBot(id) {
 
 async function duplicateBot(id) {
   try {
-    const res = await fetch(`/api/bots/${id}/duplicate`, { method: 'POST' });
+    const res = await apiFetch(`/api/bots/${id}/duplicate`, { method: 'POST' });
     if (!res.ok) { showToast('Duplicate failed', 'error'); return; }
     showToast('Bot duplicated', 'success');
   } catch (e) { showToast('Network error: ' + e, 'error'); }
 }
 
 async function startAll() {
-  const res = await fetch('/api/bots/actions/start-all', { method: 'POST' });
+  const res = await apiFetch('/api/bots/actions/start-all', { method: 'POST' });
   let blocked = [];
   try { blocked = (await res.json()).blocked || []; } catch (_) {}
   if (blocked.length) {
@@ -2096,7 +2603,7 @@ async function startAll() {
   }
 }
 async function stopAll() {
-  await fetch('/api/bots/actions/stop-all', { method: 'POST' });
+  await apiFetch('/api/bots/actions/stop-all', { method: 'POST' });
   showToast('Stopping all bots…', 'info');
 }
 
@@ -2130,7 +2637,7 @@ async function loadBotPriceChart() {
   destroyBotHistCharts();
   pane.innerHTML = `<div class="empty-state"><span class="icon">⏳</span>Loading chart…</div>`;
   try {
-    const res  = await fetch(`/api/bots/${_histBotId}/chart`);
+    const res  = await apiFetch(`/api/bots/${_histBotId}/chart`);
     const data = await res.json();
     if (!data.ok || !data.chart_data?.candles?.length) {
       pane.innerHTML = `<div class="empty-state"><span class="icon">📈</span>${escHtml(data.error || 'No chart data available yet.')}</div>`;
@@ -2143,7 +2650,7 @@ async function loadBotPriceChart() {
 }
 
 async function showHistory(id) {
-  const res = await fetch(`/api/bots/${id}`);
+  const res = await apiFetch(`/api/bots/${id}`);
   if (!res.ok) { showToast('Could not load bot', 'error'); return; }
   const bot = await res.json();
 
@@ -2239,7 +2746,7 @@ function renderPnlChart(trades) {
 // ── Settings Modal ────────────────────────────────────────────────────────────
 async function openSettingsModal() {
   try {
-    const res  = await fetch('/api/settings/credentials');
+    const res  = await apiFetch('/api/settings/credentials');
     const data = await res.json();
     const statusEl = document.getElementById('credStatus');
     if (data.has_credentials) {
@@ -2273,12 +2780,234 @@ async function saveCredentials() {
     private_key: method === 'api_key' ? document.getElementById('sPrivateKey').value.trim() : '',
   };
   try {
-    const res = await fetch('/api/settings/credentials', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const res = await apiFetch('/api/settings/credentials', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     if (!res.ok) { showToast('Save failed: ' + (await res.text()), 'error'); return; }
     closeModal('settingsModal');
+    ['sToken', 'sPublicKey', 'sPrivateKey'].forEach(id => document.getElementById(id).value = '');
     showToast('Credentials saved', 'success');
     fetchWallet();
   } catch (e) { showToast('Network error: ' + e, 'error'); }
+}
+
+
+let recoveryBotId = null;
+function recoveryButton(bot) {
+  return bot.mode === 'real' && bot.status !== 'running'
+    ? `<button class="btn btn-neutral btn-sm" onclick="openRecovery('${bot.id}')">Recover</button>` : '';
+}
+async function openRecovery(id) {
+  const bot = bots.find(b => b.id === id);
+  if (!bot || bot.mode !== 'real' || bot.status === 'running') return;
+  recoveryBotId = id;
+  document.getElementById('recoveryTitle').textContent = 'Recover ' + bot.name;
+  document.getElementById('recoveryPosition').value = '';
+  document.getElementById('recoveryOrder').value = '';
+  const intentSelect = document.getElementById('recoveryIntent');
+  intentSelect.replaceChildren(new Option('Loading unresolved orders…', ''));
+  document.getElementById('adoptPositionButton').disabled = !!bot.pending_order;
+  document.getElementById('recoveryStatus').textContent = bot.error || 'Bot is stopped. Recovery does not start trading.';
+  document.getElementById('recoveryModal').classList.add('open');
+  try {
+    const response = await apiFetch(`/api/bots/${encodeURIComponent(id)}`);
+    const detail = await response.json();
+    if (!response.ok) throw new Error(detail.error || 'Could not load recovery state');
+    intentSelect.replaceChildren(new Option('Choose an unresolved order', ''));
+    for (const intent of detail.unresolved_orders || []) {
+      intentSelect.add(new Option(`${intent.kind} ${intent.side} ${intent.src.toUpperCase()}/${intent.dst.toUpperCase()} · ${intent.state}`, intent.client_order_id));
+    }
+    document.getElementById('resolveOrderButton').disabled = !(detail.unresolved_orders || []).length;
+  } catch (error) {
+    intentSelect.replaceChildren(new Option('Could not load unresolved orders', ''));
+    document.getElementById('recoveryStatus').textContent = error.message;
+  }
+}
+async function recoverBot(action) {
+  const bot = bots.find(b => b.id === recoveryBotId);
+  const status = document.getElementById('recoveryStatus');
+  if (!bot || bot.status === 'running') { status.textContent = 'Stop the bot before recovery.'; return; }
+  const options = {method:'POST'};
+  if (action === 'adopt-position') {
+    const position_id = Number(document.getElementById('recoveryPosition').value);
+    if (!Number.isSafeInteger(position_id) || position_id < 1) { status.textContent = 'Enter a valid positive position ID.'; return; }
+    options.headers = {'Content-Type':'application/json'};
+    options.body = JSON.stringify({position_id});
+  } else if (action === 'resolve-order') {
+    const client_order_id = document.getElementById('recoveryIntent').value;
+    const order_id = Number(document.getElementById('recoveryOrder').value);
+    if (!client_order_id || !Number.isSafeInteger(order_id) || order_id < 1) { status.textContent = 'Choose an unresolved order and enter its positive exchange order ID.'; return; }
+    options.headers = {'Content-Type':'application/json'};
+    options.body = JSON.stringify({client_order_id, order_id});
+  }
+  const buttons = document.querySelectorAll('#recoveryModal button');
+  buttons.forEach(button => button.disabled = true);
+  status.textContent = 'Checking exchange state…';
+  try {
+    const response = await apiFetch(`/api/bots/${encodeURIComponent(recoveryBotId)}/${action}`, options);
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || result.detail || 'Recovery failed');
+    const index = bots.findIndex(b => b.id === result.id);
+    if (index >= 0) bots[index] = result;
+    renderGrid();
+    status.textContent = result.error || (action === 'reconcile' ? 'Recorded state reconciled. Bot remains stopped.' : action === 'resolve-order' ? 'Order bound and reconciled. Bot remains stopped.' : 'Position adopted. Bot remains stopped.');
+  } catch (error) { status.textContent = error.message; }
+  finally {
+    buttons.forEach(button => button.disabled = false);
+    document.getElementById('adoptPositionButton').disabled = !!bots.find(b => b.id === recoveryBotId)?.pending_order;
+  }
+}
+async function loadResearchHistory(kind) {
+  const select = document.getElementById(kind + 'JobHistory');
+  const status = document.getElementById(kind + 'HistoryStatus');
+  try {
+    const response = await apiFetch(`/api/${kind}/jobs`);
+    if (!response.ok) throw new Error('Could not load saved runs');
+    const jobs = await response.json();
+    const selected = select.value;
+    select.replaceChildren(new Option('Choose a saved run', ''));
+    for (const job of jobs) {
+      const date = job.created_at ? new Date(typeof job.created_at === 'number' ? job.created_at * 1000 : job.created_at).toLocaleString() : job.id;
+      const label = [date, job.symbol || 'Batch', job.strategy_label || job.strategy || '', job.train_pct != null ? 'Train/test' : '', job.status].filter(Boolean).join(' · ');
+      select.add(new Option(label, job.id));
+    }
+    select.value = selected;
+    status.textContent = jobs.length ? `${jobs.length} saved runs. Select one to restore its results and assumptions.` : 'No saved runs yet.';
+  } catch (error) { status.textContent = error.message; }
+}
+async function restoreResearchJob(kind) {
+  const id = document.getElementById(kind + 'JobHistory').value;
+  if (!id) return;
+  const status = document.getElementById(kind + 'HistoryStatus');
+  try {
+    const response = await apiFetch(`/api/${kind}/run/${encodeURIComponent(id)}`);
+    if (!response.ok) throw new Error('Could not restore this run');
+    const job = await response.json();
+    const running = ['pending', 'running'].includes(job.status);
+    if (job.train_pct != null) {
+      switchOptimizerSubTab('tester');
+      stopOptimizerTesterPolling(); optimizerTesterJobId = id; _setOptimizerTesterRunning(running);
+      renderOptimizerTesterProgress(job); renderOptimizerTesterResults(job);
+      if (running) pollOptimizerTester();
+    } else {
+      switchOptimizerSubTab('optimizer');
+      stopOptimizerPolling(); optimizerJobId = id; _setOptimizerRunning(running);
+      renderOptimizerProgress(job); renderOptimizerResults(job);
+      if (running) pollOptimizer();
+    }
+    const assumptions = job.execution;
+    status.textContent = `Restored ${job.status} run. ${job.error || ''} ` + (assumptions
+      ? `Entry fee ${(assumptions.entry_fee_rate * 100).toFixed(3)}%; exit fee ${(assumptions.exit_fee_rate * 100).toFixed(3)}%; slippage ${assumptions.slippage_bps} bps; holding ${(assumptions.holding_rate_per_day * 100).toFixed(3)}%/day (${assumptions.holding_policy}); fill ${assumptions.fill_timing}; margin ${(assumptions.margin_fraction * 100).toFixed(1)}%; positions ${assumptions.position_mode}; liquidation ratio ${assumptions.liquidation_ratio}.`
+      : 'Historical assumptions were not recorded.');
+  } catch (error) { status.textContent = error.message; }
+}
+
+function executionStatus(config) {
+  const configured = [config.entry_fee_rate, config.exit_fee_rate, config.slippage_bps, config.holding_rate_per_day].some(value => Number(value) > 0);
+  const element = document.getElementById('executionStatus');
+  element.className = 'cred-status ' + (configured ? 'connected' : 'disconnected');
+  element.textContent = configured ? 'Cost scenario configured. Saved results retain the assumptions used for that run.' : 'Costs unconfigured: all charges and slippage are zero. Results are a zero-cost scenario.';
+}
+
+function populateExecutionMarkets() {
+  const selector = document.getElementById('eAssumptionMarket');
+  const symbols = [...new Set([
+    ...marginMarkets.map(m => m.symbol.toUpperCase()),
+    ...bots.map(b => String(b.symbol || '').toUpperCase()),
+    'BTCUSDT',
+  ])].filter(symbol => /^[A-Z0-9]{3,30}(USDT|IRT)$/.test(symbol));
+  const preferred = selector.value || bots.find(b => b.strategy === 'PriceAI')?.symbol?.toUpperCase() || 'BTCUSDT';
+  selector.innerHTML = symbols.map(symbol => `<option value="${symbol}">${symbol}</option>`).join('');
+  if (symbols.includes(preferred)) selector.value = preferred;
+}
+
+let executionRefreshId = 0;
+async function refreshNobitexAssumptions() {
+  const requestId = ++executionRefreshId;
+  const symbol = document.getElementById('eAssumptionMarket').value;
+  const status = document.getElementById('eAssumptionSources');
+  const saveButton = document.getElementById('executionSave');
+  if (!symbol) { status.textContent = 'Choose a Nobitex market first.'; return; }
+  saveButton.disabled = true;
+  status.textContent = `Reading ${symbol} account and margin rates from Nobitex…`;
+  try {
+    const response = await apiFetch(`/api/settings/execution/nobitex?symbol=${encodeURIComponent(symbol)}`);
+    const data = await response.json();
+    if (requestId !== executionRefreshId) return;
+    if (!response.ok) throw new Error(data.error || 'Nobitex rates unavailable');
+    const values = data.values;
+    if (values.entry_fee_rate != null) document.getElementById('eEntryFee').value = values.entry_fee_rate * 100;
+    if (values.exit_fee_rate != null) document.getElementById('eExitFee').value = values.exit_fee_rate * 100;
+    if (values.holding_rate_per_day != null) document.getElementById('eHoldingRate').value = values.holding_rate_per_day * 100;
+    if (values.holding_policy != null) document.getElementById('eHoldingPolicy').value = values.holding_policy;
+    if (values.liquidation_ratio != null) document.getElementById('eLiquidation').value = values.liquidation_ratio;
+    const filled = [];
+    if (values.entry_fee_rate != null) filled.push('account trading fee from GET /users/profile');
+    if (values.holding_rate_per_day != null) filled.push(`${symbol} daily renewal rate from GET /margin/markets/list`);
+    if (values.liquidation_ratio != null) filled.push('1.1 liquidation ratio from Nobitex documentation');
+    status.textContent = `Auto-filled: ${filled.join('; ')}. ${data.warnings.join('; ')} Slippage and capital allocation stay editable. Saved assumptions apply globally.`;
+    executionStatus({entry_fee_rate: Number(document.getElementById('eEntryFee').value) / 100,
+      exit_fee_rate: Number(document.getElementById('eExitFee').value) / 100,
+      slippage_bps: Number(document.getElementById('eSlippage').value),
+      holding_rate_per_day: Number(document.getElementById('eHoldingRate').value) / 100});
+  } catch (error) {
+    if (requestId === executionRefreshId) status.textContent = `Nobitex auto-fill unavailable: ${error.message}. Saved values are preserved.`;
+  } finally {
+    if (requestId === executionRefreshId) saveButton.disabled = false;
+  }
+}
+
+async function openExecutionSettings() {
+  document.getElementById('executionModal').classList.add('open');
+  document.getElementById('executionSave').disabled = true;
+  document.getElementById('executionStatus').textContent = 'Loading assumptions…';
+  document.getElementById('eAssumptionSources').textContent = '';
+  try {
+    const response = await apiFetch('/api/settings/execution');
+    if (!response.ok) throw new Error('Could not load research assumptions');
+    const config = await response.json();
+    document.getElementById('eEntryFee').value = config.entry_fee_rate * 100;
+    document.getElementById('eExitFee').value = config.exit_fee_rate * 100;
+    document.getElementById('eSlippage').value = config.slippage_bps;
+    document.getElementById('eHoldingPolicy').value = config.holding_policy;
+    document.getElementById('eHoldingRate').value = config.holding_rate_per_day * 100;
+    document.getElementById('eMargin').value = config.margin_fraction * 100;
+    document.getElementById('ePositions').value = config.position_mode;
+    document.getElementById('eLiquidation').value = config.liquidation_ratio;
+    document.getElementById('eFill').value = config.fill_timing;
+    executionStatus(config);
+    document.getElementById('executionSave').disabled = false;
+    if (!marginMarkets.length) await loadMarginMarkets();
+    populateExecutionMarkets();
+    await refreshNobitexAssumptions();
+  } catch (error) { document.getElementById('executionStatus').textContent = error.message; }
+}
+
+async function saveExecutionSettings(event) {
+  event.preventDefault();
+  const button = document.getElementById('executionSave');
+  const config = {
+    entry_fee_rate: Number(document.getElementById('eEntryFee').value) / 100,
+    exit_fee_rate: Number(document.getElementById('eExitFee').value) / 100,
+    slippage_bps: Number(document.getElementById('eSlippage').value),
+    holding_policy: document.getElementById('eHoldingPolicy').value,
+    holding_rate_per_day: Number(document.getElementById('eHoldingRate').value) / 100,
+    margin_fraction: Number(document.getElementById('eMargin').value) / 100,
+    position_mode: document.getElementById('ePositions').value,
+    liquidation_ratio: Number(document.getElementById('eLiquidation').value),
+    fill_timing: document.getElementById('eFill').value,
+  };
+  if (config.holding_policy === 'none' && config.holding_rate_per_day > 0) {
+    document.getElementById('executionStatus').textContent = 'Choose the daily holding policy or set its charge to zero.';
+    return;
+  }
+  button.disabled = true;
+  try {
+    const response = await apiFetch('/api/settings/execution', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(config)});
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Could not save research assumptions');
+    executionStatus(config);
+    showToast('Research assumptions saved for future runs', 'success');
+  } catch (error) { document.getElementById('executionStatus').textContent = error.message; }
+  finally { button.disabled = false; }
 }
 
 // ── Margin Markets ────────────────────────────────────────────────────────────
@@ -2286,7 +3015,7 @@ let marginMarkets = [];
 
 async function loadMarginMarkets() {
   try {
-    const res  = await fetch('/api/margin-markets');
+    const res  = await apiFetch('/api/margin-markets');
     const data = await res.json();
     if (data.ok && data.markets.length) {
       marginMarkets = data.markets;
@@ -2350,298 +3079,96 @@ function onMarketChange(prefix) {
   if (hint) hint.innerHTML = `${dirHtml} &nbsp;·&nbsp; Max leverage: <strong>${maxLev}×</strong> &nbsp;·&nbsp; <span class="fee">Fee: ${feeStr}%/day</span>`;
 }
 
-// ── Tester tab ────────────────────────────────────────────────────────────────
-let testerConfig = {};
-let testerFavorites = new Set();   // lowercase symbols chosen for testing (saved as favorites)
-let testerStrategies = new Set();
-let testerTimeframes = new Set();
-let _testerConfigLoaded = false;
-let testerJobId = null;
-let testerPollTimer = null;
-let _testerPrefsTimer = null;
-
 function switchView(view) {
   document.querySelectorAll('.view-pane').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.main-tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('view' + view).classList.add('active');
   document.querySelector(`.main-tab-btn[data-view="${view}"]`).classList.add('active');
-  if (view === 'Tester') initTesterTab();
   if (view === 'Optimizer') initOptimizerTab();
+  if (view === 'Portfolio') loadPortfolio();
 }
 
-async function initTesterTab() {
-  if (!marginMarkets.length) { try { await loadMarginMarkets(); } catch (_) {} }
-  if (!_testerConfigLoaded) {
-    try {
-      const res = await fetch('/api/tester/config');
-      testerConfig = await res.json();
-      testerFavorites  = new Set((testerConfig.favorites  || []).map(s => s.toLowerCase()));
-      testerStrategies = new Set(testerConfig.strategies || []);
-      testerTimeframes = new Set(testerConfig.timeframes || []);
-      if (testerConfig.credit   != null) document.getElementById('tCredit').value   = testerConfig.credit;
-      if (testerConfig.leverage != null) document.getElementById('tLeverage').value = testerConfig.leverage;
-      _testerConfigLoaded = true;
-    } catch (_) {}
-  }
-  renderTesterAssets();
-  renderTesterStrategies();
-  renderTesterTimeframes();
-  updateRunNote();
+// ═══════════════════ PORTFOLIO TAB ═══════════════════
+function portfolioMoney(value) {
+  return value == null ? '—' : Number(value).toLocaleString(undefined, {maximumFractionDigits:2}) + ' USDT';
 }
-
-// ── Asset chips ─────────────────────────────────────────────────────────────
-function renderTesterAssets() {
-  const grid = document.getElementById('tAssetGrid');
-  if (!grid) return;
-  if (!marginMarkets.length) {
-    grid.innerHTML = '<div style="color:var(--muted);font-size:12px">No markets available — check exchange connection.</div>';
-    updateAssetCount();
-    return;
-  }
-  const q = (document.getElementById('tAssetSearch').value || '').toLowerCase().trim();
-  const items = marginMarkets.filter(m => !q || m.symbol.toLowerCase().includes(q));
-  grid.innerHTML = items.map(m => {
-    const sym = m.symbol.toLowerCase();
-    const active = testerFavorites.has(sym);
-    const dir = m.buyEnabled && m.sellEnabled ? '↕' : m.buyEnabled ? '↑' : '↓';
-    return `<span class="chip ${active ? 'active' : ''}" onclick="toggleAsset('${sym}')">
-      <span class="star">${active ? '★' : '☆'}</span>${escHtml(m.symbol)}<span class="chip-dir">${dir}</span>
-    </span>`;
-  }).join('') || '<div style="color:var(--muted);font-size:12px">No markets match the filter.</div>';
-  updateAssetCount();
+function portfolioPercent(value) {
+  return value == null ? '—' : Number(value).toFixed(2) + '%';
 }
-
-function toggleAsset(sym) {
-  if (testerFavorites.has(sym)) testerFavorites.delete(sym);
-  else testerFavorites.add(sym);
-  renderTesterAssets();
-  saveTesterPrefs();
+function renderPortfolioChart(points) {
+  const pane = document.getElementById('portfolioEquityChart');
+  if (!points || points.length < 2) { pane.textContent = 'History appears after two complete snapshots.'; return; }
+  const values = points.map(p => Number(p.equity_usdt));
+  const low = Math.min(...values), high = Math.max(...values);
+  const span = Math.max(high - low, 1);
+  const path = values.map((v,i) => `${i ? 'L':'M'}${(i * 900/(values.length-1)).toFixed(1)},${(145 - (v-low)/span*125).toFixed(1)}`).join(' ');
+  pane.innerHTML = `<svg viewBox="0 0 900 165" role="img" aria-label="Portfolio equity history" style="width:100%;height:165px"><path d="${path}" fill="none" stroke="var(--accent)" stroke-width="2.5"/><text x="3" y="14" fill="var(--muted)" font-size="11">${portfolioMoney(high)}</text><text x="3" y="162" fill="var(--muted)" font-size="11">${portfolioMoney(low)}</text></svg>`;
 }
-
-function testerSelectShown() {
-  const q = (document.getElementById('tAssetSearch').value || '').toLowerCase().trim();
-  marginMarkets
-    .filter(m => !q || m.symbol.toLowerCase().includes(q))
-    .forEach(m => testerFavorites.add(m.symbol.toLowerCase()));
-  renderTesterAssets();
-  saveTesterPrefs();
+function renderPortfolio(data) {
+  const snapshot = data.snapshot, history = data.history || {};
+  document.getElementById('portfolioStatus').textContent = data.error || (snapshot ? 'Updated ' + new Date(snapshot.captured_at).toLocaleString() : 'No portfolio snapshot yet');
+  const metrics = snapshot ? [
+    ['Estimated equity', portfolioMoney(snapshot.equity_usdt)],
+    ['Spot value', portfolioMoney(snapshot.spot_usdt)],
+    ['Margin exposure', portfolioMoney(snapshot.margin_exposure_usdt)],
+    ['Adjusted return', portfolioPercent(history.return_pct)],
+    ['Net P&L', portfolioMoney(history.net_pnl_usdt)],
+    ['Max drawdown', portfolioPercent(history.max_drawdown_pct)],
+  ] : [];
+  document.getElementById('portfolioMetrics').innerHTML = metrics.map(([label,value]) => `<div class="portfolio-metric"><strong>${value}</strong><span>${label}</span></div>`).join('');
+  document.getElementById('portfolioValuationNote').textContent = snapshot && !snapshot.valuation_complete
+    ? 'Incomplete valuation: no USDT price for ' + snapshot.unpriced.join(', ') + '. Performance omits this snapshot.'
+    : 'Estimated from exchange wallet balances and open-position unrealized P&L. Blocked collateral remains within wallet balances.';
+  document.getElementById('portfolioHoldings').innerHTML = snapshot && snapshot.holdings.length ? snapshot.holdings.map(h =>
+    `<tr><td>${escHtml(h.currency)}</td><td>${escHtml(h.wallet)}</td><td>${Number(h.amount).toLocaleString(undefined,{maximumFractionDigits:8})}</td><td>${portfolioMoney(h.value_usdt)}</td><td>${portfolioPercent(h.weight_pct)}</td></tr>`).join('') : '<tr><td colspan="5">No holdings available</td></tr>';
+  document.getElementById('portfolioPositions').innerHTML = snapshot && snapshot.positions.length ? snapshot.positions.map(p =>
+    `<tr><td>${escHtml(p.symbol)}</td><td>${escHtml(p.side || '')}</td><td>${portfolioMoney(p.exposure_usdt)}</td><td>${portfolioMoney(p.unrealized_pnl_usdt)}</td></tr>`).join('') : '<tr><td colspan="4">No open positions</td></tr>';
+  renderPortfolioChart(history.points);
+  document.getElementById('portfolioFlows').innerHTML = (data.cashflows || []).map(f =>
+    `<div style="display:flex;gap:10px;align-items:center;margin-top:8px;font-size:11px"><span>${escHtml(new Date(f.occurred_at).toLocaleDateString())}</span><strong>${portfolioMoney(f.amount_usdt)}</strong><span>${escHtml(f.note)}</span><button class="btn btn-neutral btn-sm" onclick="deletePortfolioFlow(${Number(f.id)})">Remove</button></div>`).join('') || '<p class="portfolio-note">No external flows recorded.</p>';
+  const currentAssets = snapshot ? snapshot.holdings.filter(h => h.wallet === 'spot' && !['USDT','IRT'].includes(h.currency)).map(h => h.currency) : [];
+  const targetAssets = [...new Set([...currentAssets, ...Object.keys(data.targets || {})])].sort();
+  document.getElementById('portfolioTargetInputs').innerHTML = targetAssets.map(code =>
+    `<label class="portfolio-controls" style="display:flex;margin:8px 0"><span style="min-width:60px">${escHtml(code)}</span><input class="portfolio-target" data-asset="${escHtml(code)}" type="number" min="0" max="35" step="0.1" value="${Number((data.targets || {})[code] || 0)*100}" style="width:80px">%</label>`).join('') || '<p class="portfolio-note">Hold spot assets to set targets.</p>';
+  document.getElementById('portfolioRebalance').innerHTML = (data.rebalance_ideas || []).length ?
+    `<table class="portfolio-table"><thead><tr><th>Asset</th><th>Idea</th><th>Notional</th><th>Estimated cost</th><th>Visible depth</th></tr></thead><tbody>${data.rebalance_ideas.map(i =>
+      `<tr><td>${escHtml(i.asset)}</td><td>${escHtml(i.side)}</td><td>${portfolioMoney(i.notional_usdt)}</td><td>${portfolioMoney(i.estimated_cost_usdt)}</td><td>${portfolioMoney(i.top5_depth_usdt)}</td></tr>`).join('')}</tbody></table>` : '<p class="portfolio-note">Set allocation targets to see ideas when order-book depth is available.</p>';
 }
-
-function testerClearAssets() {
-  testerFavorites.clear();
-  renderTesterAssets();
-  saveTesterPrefs();
-}
-
-function updateAssetCount() {
-  const el = document.getElementById('tAssetCount');
-  if (el) el.textContent = testerFavorites.size;
-  updateRunNote();
-}
-
-// ── Strategy / timeframe toggles ──────────────────────────────────────────────
-function renderTesterStrategies() {
-  const grid = document.getElementById('tStrategyGrid');
-  grid.innerHTML = (testerConfig.available_strategies || []).map(s => {
-    const checked = testerStrategies.has(s.value) ? 'checked' : '';
-    return `<div class="opt-toggle">
-      <input type="checkbox" id="ts-${s.value}" ${checked} onchange="toggleStrategy('${s.value}')">
-      <label for="ts-${s.value}">${escHtml(s.label)}</label>
-    </div>`;
-  }).join('');
-}
-
-function toggleStrategy(v) {
-  if (testerStrategies.has(v)) testerStrategies.delete(v); else testerStrategies.add(v);
-  updateRunNote(); saveTesterPrefs();
-}
-
-function renderTesterTimeframes() {
-  const grid = document.getElementById('tTimeframeGrid');
-  grid.innerHTML = (testerConfig.available_timeframes || []).map(t => {
-    const checked = testerTimeframes.has(t.value) ? 'checked' : '';
-    return `<div class="opt-toggle">
-      <input type="checkbox" id="tt-${t.value}" ${checked} onchange="toggleTimeframe('${t.value}')">
-      <label for="tt-${t.value}">${escHtml(t.label)}</label>
-    </div>`;
-  }).join('');
-}
-
-function toggleTimeframe(v) {
-  if (testerTimeframes.has(v)) testerTimeframes.delete(v); else testerTimeframes.add(v);
-  updateRunNote(); saveTesterPrefs();
-}
-
-function updateRunNote() {
-  const note = document.getElementById('tRunNote');
-  if (!note) return;
-  const a = testerFavorites.size, s = testerStrategies.size, t = testerTimeframes.size;
-  const combos = a * s * t;
-  const fetches = a * t;   // candle data is shared across strategies
-  const fpm = testerConfig.fetches_per_minute || 30;
-  if (!combos) { note.textContent = 'Select assets, strategies and timeframes to begin.'; return; }
-  const secs = Math.round(fetches * 60 / fpm);
-  const eta = secs >= 60 ? `~${Math.ceil(secs / 60)} min` : `~${secs}s`;
-  note.innerHTML = `<strong>${combos}</strong> backtests · <strong>${fetches}</strong> data fetch${fetches === 1 ? '' : 'es'} (throttled to ${fpm}/min, ${eta})`;
-}
-
-// ── Persistence ───────────────────────────────────────────────────────────────
-function saveTesterPrefs() {
-  updateAssetCount();
-  clearTimeout(_testerPrefsTimer);
-  _testerPrefsTimer = setTimeout(() => {
-    const payload = {
-      favorites:  [...testerFavorites],
-      strategies: [...testerStrategies],
-      timeframes: [...testerTimeframes],
-      credit:   parseFloat(document.getElementById('tCredit').value) || 100,
-      leverage: parseInt(document.getElementById('tLeverage').value) || 5,
-    };
-    fetch('/api/tester/prefs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).catch(() => {});
-  }, 600);
-}
-
-// ── Run ───────────────────────────────────────────────────────────────────────
-async function runTester() {
-  if (!testerFavorites.size)  { showToast('Select at least one asset', 'error'); return; }
-  if (!testerStrategies.size) { showToast('Select at least one strategy', 'error'); return; }
-  if (!testerTimeframes.size) { showToast('Select at least one timeframe', 'error'); return; }
-  const payload = {
-    symbols:    [...testerFavorites],
-    strategies: [...testerStrategies],
-    timeframes: [...testerTimeframes],
-    credit:   parseFloat(document.getElementById('tCredit').value) || 100,
-    leverage: parseInt(document.getElementById('tLeverage').value) || 5,
-  };
+async function loadPortfolio(saveSnapshot = false) {
   try {
-    const res  = await fetch('/api/tester/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    const data = await res.json();
-    if (!res.ok) { showToast('Error: ' + (data.error || 'run failed'), 'error'); return; }
-    testerJobId = data.job_id;
-    document.getElementById('tResults').innerHTML = '';
-    _setTesterRunning(true);
-    pollTester();
-  } catch (e) { showToast('Network error: ' + e, 'error'); }
-}
-
-function _setTesterRunning(running) {
-  document.getElementById('tRunBtn').style.display    = running ? 'none' : '';
-  document.getElementById('tCancelBtn').style.display = running ? '' : 'none';
-  if (running) document.getElementById('tProgressWrap').style.display = '';
-}
-
-async function cancelTester() {
-  if (!testerJobId) return;
-  try { await fetch(`/api/tester/run/${testerJobId}/cancel`, { method: 'POST' }); } catch (_) {}
-  showToast('Cancelling…', 'info');
-}
-
-async function pollTester() {
-  if (!testerJobId) return;
-  try {
-    const res = await fetch(`/api/tester/run/${testerJobId}`);
-    if (!res.ok) { stopTesterPolling(); _setTesterRunning(false); return; }
-    const job = await res.json();
-    renderTesterProgress(job);
-    renderTesterResults(job);
-    if (['done', 'cancelled', 'error'].includes(job.status)) {
-      stopTesterPolling();
-      _setTesterRunning(false);
-      if (job.status === 'done')           showToast(`Backtests complete (${job.total})`, 'success');
-      else if (job.status === 'cancelled') showToast('Backtests cancelled', 'info');
-      else                                 showToast('Run error: ' + (job.error || 'unknown'), 'error');
-    } else {
-      testerPollTimer = setTimeout(pollTester, 1000);
+    if (saveSnapshot) {
+      const captured = await apiFetch('/api/portfolio/snapshot', {method:'POST'});
+      if (!captured.ok) throw new Error((await captured.json()).error || 'Snapshot failed');
     }
-  } catch (e) {
-    testerPollTimer = setTimeout(pollTester, 1500);
-  }
+    const response = await apiFetch('/api/portfolio');
+    if (!response.ok) throw new Error('Portfolio unavailable');
+    renderPortfolio(await response.json());
+  } catch (error) { document.getElementById('portfolioStatus').textContent = String(error); }
 }
-
-function stopTesterPolling() {
-  clearTimeout(testerPollTimer);
-  testerPollTimer = null;
+async function savePortfolioFlow(event) {
+  event.preventDefault();
+  try {
+    const when = document.getElementById('portfolioFlowTime').value;
+    const payload = {kind:document.getElementById('portfolioFlowKind').value,
+      amount_usdt:Number(document.getElementById('portfolioFlowAmount').value),
+      occurred_at:when ? new Date(when).toISOString() : null,
+      note:document.getElementById('portfolioFlowNote').value};
+    const response = await apiFetch('/api/portfolio/cashflows', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    if (!response.ok) throw new Error((await response.json()).error || 'Could not record flow');
+    document.getElementById('portfolioFlowAmount').value = '';
+    await loadPortfolio();
+  } catch (error) { showToast(String(error), 'error'); }
 }
-
-function renderTesterProgress(job) {
-  const pct = job.total ? Math.round(job.completed / job.total * 100) : 0;
-  document.getElementById('tProgressWrap').style.display = '';
-  const fill = document.getElementById('tProgressFill');
-  fill.style.width = pct + '%';
-  fill.style.background = job.status === 'error' ? 'var(--red)' : job.status === 'done' ? 'var(--green)' : 'var(--accent)';
-  document.getElementById('tProgressCount').textContent = `${job.completed} / ${job.total}`;
-  const cur = job.status === 'running' ? (job.current || '…')
-            : job.status === 'done' ? '✓ Complete'
-            : job.status === 'cancelled' ? 'Cancelled'
-            : 'Error';
-  document.getElementById('tProgressCurrent').textContent = cur;
+async function deletePortfolioFlow(id) {
+  const response = await apiFetch(`/api/portfolio/cashflows/${id}`, {method:'DELETE'});
+  if (response.ok) await loadPortfolio(); else showToast('Could not remove cash flow', 'error');
 }
-
-function renderTesterResults(job) {
-  const wrap = document.getElementById('tResults');
-  const results = job.results || [];
-  if (!results.length) { wrap.innerHTML = ''; return; }
-
-  const tfOrder = (testerConfig.available_timeframes || []).map(t => t.value);
-  const tfLabel = {};
-  (testerConfig.available_timeframes || []).forEach(t => { tfLabel[t.value] = t.label; });
-
-  const groups = {};
-  results.forEach(r => { (groups[r.timeframe] = groups[r.timeframe] || []).push(r); });
-  const tfs = Object.keys(groups).sort((a, b) => {
-    const ia = tfOrder.indexOf(a), ib = tfOrder.indexOf(b);
-    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
-  });
-  const medals = ['🥇', '🥈', '🥉'];
-
-  wrap.innerHTML = tfs.map(tf => {
-    const rows = groups[tf].slice().sort((a, b) => {
-      if (a.error && !b.error) return 1;
-      if (!a.error && b.error) return -1;
-      return b.total_pnl - a.total_pnl;
-    });
-    const okCount = rows.filter(r => !r.error).length;
-    let rank = 0;
-    const body = rows.map(r => {
-      if (r.error) {
-        return `<tr><td class="rank">–</td><td style="font-weight:700">${escHtml(r.symbol)}</td>
-          <td>${escHtml(r.strategy_label || r.strategy)}</td>
-          <td class="err-cell" colspan="5">${escHtml(r.error)}</td></tr>`;
-      }
-      rank++;
-      const medal  = rank <= 3 ? `<span class="medal">${medals[rank - 1]}</span>` : rank;
-      const pnlCls = r.total_pnl > 0 ? 'pnl-pos' : r.total_pnl < 0 ? 'pnl-neg' : '';
-      const pnlStr = (r.total_pnl >= 0 ? '+' : '') + '$' + r.total_pnl.toFixed(2);
-      const wrColor = r.win_rate >= 60 ? 'var(--green)' : r.win_rate >= 45 ? 'var(--yellow)' : 'var(--red)';
-      const prof = r.profitable === true ? '<span style="color:var(--green)">✓</span>'
-                 : r.profitable === false ? '<span style="color:var(--red)">✗</span>'
-                 : '<span style="color:var(--muted)">—</span>';
-      return `<tr class="${rank === 1 ? 'best' : ''}">
-        <td class="rank">${medal}</td>
-        <td style="font-weight:700">${escHtml(r.symbol)}</td>
-        <td>${escHtml(r.strategy_label || r.strategy)}</td>
-        <td class="${pnlCls}">${pnlStr}</td>
-        <td style="color:${wrColor};font-weight:700">${r.win_rate.toFixed(1)}%</td>
-        <td>${r.trade_count}</td>
-        <td>${r.candle_count}</td>
-        <td>${prof}</td>
-      </tr>`;
-    }).join('');
-    return `<div class="tf-result">
-      <div class="tf-result-head">
-        <span class="tf-name">${escHtml(tfLabel[tf] || fmtTF(tf))}</span>
-        <span class="tf-sub">${okCount} of ${rows.length} combos · sorted by net P&amp;L</span>
-      </div>
-      <div style="overflow-x:auto">
-        <table class="result-table">
-          <thead><tr><th>#</th><th>Asset</th><th>Strategy</th><th>Net P&amp;L</th><th>Win Rate</th><th>Trades</th><th>Candles</th><th>Profit?</th></tr></thead>
-          <tbody>${body}</tbody>
-        </table>
-      </div>
-    </div>`;
-  }).join('');
+async function savePortfolioTargets() {
+  const targets = {};
+  document.querySelectorAll('.portfolio-target').forEach(el => { targets[el.dataset.asset] = Number(el.value)/100; });
+  const response = await apiFetch('/api/portfolio/targets', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({targets})});
+  if (response.ok) await loadPortfolio(); else showToast((await response.json()).error || 'Invalid targets', 'error');
 }
-
 // ═══════════════════ OPTIMIZER TAB ═══════════════════
 let optimizerConfig = {};
 let _optimizerConfigLoaded = false;
@@ -2653,10 +3180,11 @@ let _optCharts = []; // lightweight-charts instances; destroyed on each new run
 let _candleWarnContext = 'optimizer'; // 'optimizer' | 'tester' — routes modal buttons
 
 async function initOptimizerTab() {
+  loadResearchHistory('optimizer');
   if (!marginMarkets.length) { try { await loadMarginMarkets(); } catch (_) {} }
   if (!_optimizerConfigLoaded) {
     try {
-      const res = await fetch('/api/optimizer/config');
+      const res = await apiFetch('/api/optimizer/config');
       optimizerConfig = await res.json();
       _optimizerConfigLoaded = true;
     } catch (_) { return; }
@@ -2770,19 +3298,56 @@ function resetOptimizerBounds() {
   showToast('Bounds reset to defaults', 'info');
 }
 
+function _optimizerWorkload(candles, generations, cores, inputs, trainPct = null) {
+  const candleCount = Math.max(0, Number(candles) || 0);
+  const generationCount = Math.max(0, Number(generations) || 0);
+  const inputCount = Math.max(0, Number(inputs) || 0);
+  const workload = {
+    candles: candleCount,
+    generations: generationCount,
+    cores: Math.max(1, Number(cores) || 1),
+    evaluations: 20 * inputCount * (generationCount + 1),
+  };
+  if (trainPct != null) {
+    workload.trainCandles = Math.floor(candleCount * Number(trainPct) / 100);
+    workload.testCandles = candleCount - workload.trainCandles;
+  }
+  return workload;
+}
+
+function _renderWorkload(target, workload) {
+  const parts = [
+    `<span><strong>${workload.candles.toLocaleString()}</strong> candles</span>`,
+    `<span><strong>${workload.generations}</strong> generations</span>`,
+    `<span><strong>${workload.cores}</strong> workers</span>`,
+    `<span>up to <strong>~${workload.evaluations.toLocaleString()}</strong> evaluations</span>`,
+  ];
+  if (workload.trainCandles != null) {
+    parts.splice(1, 0,
+      `<span><strong>~${workload.trainCandles.toLocaleString()}</strong> train</span>`,
+      `<span><strong>~${workload.testCandles.toLocaleString()}</strong> test</span>`);
+  }
+  target.innerHTML = parts.join('');
+}
+
 function updateOptimizerNote() {
   const note = document.getElementById('oRunNote');
   if (!note) return;
   const spec = _optimizerStrategySpec();
   const n = spec && spec.params ? spec.params.length : 0;
-  if (!n) { note.textContent = ''; return; }
-  note.innerHTML = `Searching <strong>${n}</strong> inputs via Differential Evolution · one data fetch, then pure-CPU backtests.`;
+  if (!n) { note.textContent = ''; document.getElementById('oWorkload').innerHTML = ''; return; }
+  const selectedCores = Number(document.getElementById('oCores').value);
+  const cores = selectedCores || optimizerConfig.default_cores || 1;
+  const workload = _optimizerWorkload(document.getElementById('oCandles').value,
+    document.getElementById('oMaxiter').value, cores, n);
+  _renderWorkload(document.getElementById('oWorkload'), workload);
+  note.textContent = `Searching ${n} inputs. One market data fetch, then CPU backtests.`;
 }
 
 function saveOptimizerPrefs() {
   clearTimeout(_optimizerPrefsTimer);
   _optimizerPrefsTimer = setTimeout(() => {
-    fetch('/api/optimizer/prefs', {
+    apiFetch('/api/optimizer/prefs', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(_optimizerPayload()),
     }).catch(() => {});
@@ -2839,7 +3404,7 @@ async function runOptimizer() {
     }
   }
   try {
-    const res  = await fetch('/api/optimizer/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const res  = await apiFetch('/api/optimizer/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const data = await res.json();
     if (!res.ok) {
       const msg = data.error || (Array.isArray(data.detail) ? data.detail.map(d => d.msg).join('; ') : data.detail) || 'run failed';
@@ -2981,10 +3546,11 @@ function renderOptimizerProgress(job) {
   const cur = job.status === 'running' ? `Searching…${bestInfo}${etaText}`
             : job.status === 'pending' ? 'Starting…'
             : job.status === 'done' ? '✓ Complete'
+            : job.status === 'interrupted' ? 'Interrupted by restart'
             : job.status === 'cancelled' ? 'Cancelled'
             : 'Error';
   document.getElementById('oProgressCurrent').textContent = cur;
-  const cores = job.workers > 1 ? ` · ${job.workers} cores` : '';
+  const cores = job.workers > 1 ? ` · ${job.workers} workers` : '';
   const objLabel = {profit:'profit',winrate:'win rate',balanced:'balanced'}[job.objective] || 'profit';
   document.getElementById('oProgressCount').textContent = `${job.evaluations} backtests · gen ${job.iteration}/${job.maxiter}${cores} · goal: ${objLabel}`;
   renderDeltaCard('oDeltaSection', 'oDeltaChart', job);
@@ -2992,19 +3558,19 @@ function renderOptimizerProgress(job) {
 
 async function cancelOptimizer() {
   if (!optimizerJobId) return;
-  try { await fetch(`/api/optimizer/run/${optimizerJobId}/cancel`, { method: 'POST' }); } catch (_) {}
+  try { await apiFetch(`/api/optimizer/run/${optimizerJobId}/cancel`, { method: 'POST' }); } catch (_) {}
   showToast('Cancelling…', 'info');
 }
 
 async function pollOptimizer() {
   if (!optimizerJobId) return;
   try {
-    const res = await fetch(`/api/optimizer/run/${optimizerJobId}`);
+    const res = await apiFetch(`/api/optimizer/run/${optimizerJobId}`);
     if (!res.ok) { stopOptimizerPolling(); _setOptimizerRunning(false); return; }
     const job = await res.json();
     renderOptimizerProgress(job);
     renderOptimizerResults(job);
-    if (['done', 'cancelled', 'error'].includes(job.status)) {
+    if (['done', 'cancelled', 'error', 'interrupted'].includes(job.status)) {
       stopOptimizerPolling();
       _setOptimizerRunning(false);
       if (job.status === 'done')           showToast('Optimization complete', 'success');
@@ -3127,7 +3693,7 @@ function renderOptimizerResults(job) {
     </tr>`;
   }).join('');
 
-  const isDone = job.status === 'done' || job.status === 'cancelled';
+  const isDone = job.status === 'done';
   const applyBtn = isDone
     ? `<button class="btn btn-success btn-sm" onclick="applyOptimizerToBot()" style="margin-top:12px">→ Apply to New Bot</button>`
     : '';
@@ -3160,7 +3726,7 @@ function renderOptimizerResults(job) {
   // Store current job for the Apply button.
   window._lastOptimizerJob = job;
 
-  // Render chart once data is available (only when job is finished)
+  // A new best candidate can publish its chart while the search is still running.
   if (job.chart_data) renderOptChart(job);
 }
 
@@ -3195,12 +3761,14 @@ function _buildOptChart(outerEl, chartData, trades, title, chartsArr, idSuffix) 
       <div id="${ind2Id}"  style="height:120px;border-radius:4px;overflow:hidden"></div>
     </div>`;
 
+  const style = getComputedStyle(document.documentElement);
+  const themeColor = name => style.getPropertyValue(name).trim();
   const theme = {
-    layout:   { background: { color: 'transparent' }, textColor: '#8b949e' },
-    grid:     { vertLines: { color: '#1e2029' }, horzLines: { color: '#1e2029' } },
-    timeScale:{ timeVisible: true, secondsVisible: false, borderColor: '#2a3447' },
+    layout:   { background: { color: 'transparent' }, textColor: themeColor('--muted') },
+    grid:     { vertLines: { color: themeColor('--border') }, horzLines: { color: themeColor('--border') } },
+    timeScale:{ timeVisible: true, secondsVisible: false, borderColor: themeColor('--border') },
     crosshair:{ mode: 0 },
-    rightPriceScale: { borderColor: '#2a3447', minimumWidth: 64 },
+    rightPriceScale: { borderColor: themeColor('--border'), minimumWidth: 64 },
   };
 
   const toSeries = (arr) => candles.map((c, i) =>
@@ -3212,22 +3780,22 @@ function _buildOptChart(outerEl, chartData, trades, title, chartsArr, idSuffix) 
   chartsArr.push(priceChart);
 
   const candleSeries = priceChart.addCandlestickSeries({
-    upColor: '#4ade80', downColor: '#f87171',
-    borderUpColor: '#4ade80', borderDownColor: '#f87171',
-    wickUpColor: '#4ade80', wickDownColor: '#f87171',
+    upColor: themeColor('--green'), downColor: themeColor('--red'),
+    borderUpColor: themeColor('--green'), borderDownColor: themeColor('--red'),
+    wickUpColor: themeColor('--green'), wickDownColor: themeColor('--red'),
   });
   candleSeries.setData(candles);
 
   if (ind.ema) {
-    const emaSeries = priceChart.addLineSeries({ color: '#fbbf24', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'EMA' });
+    const emaSeries = priceChart.addLineSeries({ color: themeColor('--yellow'), lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'EMA' });
     emaSeries.setData(toSeries(ind.ema));
   }
 
   const markers = [];
   trades.forEach(t => {
     const isLong = t.Position === 'Long';
-    if (t._start_ts) markers.push({ time: t._start_ts, position: isLong ? 'belowBar' : 'aboveBar', color: isLong ? '#4ade80' : '#f87171', shape: isLong ? 'arrowUp' : 'arrowDown', size: 1 });
-    if (t._end_ts)   markers.push({ time: t._end_ts,   position: isLong ? 'aboveBar' : 'belowBar', color: t.Liquidated ? '#f97316' : (isLong ? '#86efac' : '#fca5a5'), shape: t.Liquidated ? 'square' : 'circle', size: 1 });
+    if (t._start_ts) markers.push({ time: t._start_ts, position: isLong ? 'belowBar' : 'aboveBar', color: isLong ? themeColor('--green') : themeColor('--red'), shape: isLong ? 'arrowUp' : 'arrowDown', size: 1 });
+    if (t._end_ts)   markers.push({ time: t._end_ts,   position: isLong ? 'aboveBar' : 'belowBar', color: t.Liquidated ? themeColor('--yellow') : (isLong ? themeColor('--green') : themeColor('--red')), shape: t.Liquidated ? 'square' : 'circle', size: 1 });
   });
   markers.sort((a, b) => a.time - b.time);
   candleSeries.setMarkers(markers);
@@ -3238,12 +3806,12 @@ function _buildOptChart(outerEl, chartData, trades, title, chartsArr, idSuffix) 
   chartsArr.push(stochChart);
 
   if (ind.stoch_k) {
-    const kSeries = stochChart.addLineSeries({ color: '#38bdf8', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'K' });
+    const kSeries = stochChart.addLineSeries({ color: '#8bb8bf', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'K' });
     kSeries.setData(toSeries(ind.stoch_k));
-    const dSeries = stochChart.addLineSeries({ color: '#f97316', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'D' });
+    const dSeries = stochChart.addLineSeries({ color: themeColor('--accent'), lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'D' });
     dSeries.setData(toSeries(ind.stoch_d));
-    if (ind.oversold   != null) kSeries.createPriceLine({ price: ind.oversold,   color: '#4ade8055', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'OS' });
-    if (ind.overbought != null) kSeries.createPriceLine({ price: ind.overbought, color: '#f8717155', lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'OB' });
+    if (ind.oversold   != null) kSeries.createPriceLine({ price: ind.oversold,   color: themeColor('--green'), lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'OS' });
+    if (ind.overbought != null) kSeries.createPriceLine({ price: ind.overbought, color: themeColor('--red'), lineWidth: 1, lineStyle: 1, axisLabelVisible: true, title: 'OB' });
   }
 
   // RSI or MACD panel
@@ -3255,13 +3823,13 @@ function _buildOptChart(outerEl, chartData, trades, title, chartsArr, idSuffix) 
     const macdSeries = ind2Chart.addHistogramSeries({ priceLineVisible: false, lastValueVisible: false, title: 'MACD' });
     macdSeries.setData(candles.map((c, i) => {
       const v = ind.macd_hist[i];
-      return v != null ? { time: c.time, value: v, color: v >= 0 ? '#4ade8088' : '#f8717188' } : { time: c.time };
+      return v != null ? { time: c.time, value: v, color: v >= 0 ? themeColor('--green') : themeColor('--red') } : { time: c.time };
     }));
   } else if (ind.rsi) {
-    const rsiSeries = ind2Chart.addLineSeries({ color: '#a78bfa', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'RSI' });
+    const rsiSeries = ind2Chart.addLineSeries({ color: themeColor('--purple'), lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'RSI' });
     rsiSeries.setData(toSeries(ind.rsi));
     if (ind.rsi_ma) {
-      const rsiMaSeries = ind2Chart.addLineSeries({ color: '#f97316', lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'MA' });
+      const rsiMaSeries = ind2Chart.addLineSeries({ color: themeColor('--accent'), lineWidth: 1, priceLineVisible: false, lastValueVisible: false, title: 'MA' });
       rsiMaSeries.setData(toSeries(ind.rsi_ma));
     }
     rsiSeries.createPriceLine({ price: 50, color: '#ffffff22', lineWidth: 1, lineStyle: 1 });
@@ -3283,21 +3851,32 @@ function renderOptChart(job) {
   const container = document.getElementById('oChart');
   if (!job?.chart_data?.candles?.length) { destroyOptCharts(); return; }
   const cd  = job.chart_data;
-  const sig = cd.candles[0]?.time + ':' + cd.candles[cd.candles.length - 1]?.time + ':' + cd.strategy;
+  const sig = `${cd.candles[0]?.time}:${cd.candles[cd.candles.length - 1]?.time}:${cd.strategy}:${cd.revision || 0}:${job.status}`;
   if (container.dataset.sig === sig) return;
+  let visibleRange = null;
+  try { visibleRange = _optCharts[0]?.timeScale().getVisibleLogicalRange(); } catch (_) {}
   destroyOptCharts();
   container.dataset.sig = sig;
-  _buildOptChart(container, cd, job.best_trades || [], 'BEST BACKTEST CHART', _optCharts, 'main');
+  const title = job.status === 'done' ? 'BEST BACKTEST CHART' : 'BEST SO FAR · BACKTEST CHART';
+  _buildOptChart(container, cd, job.best_trades || [], title, _optCharts, 'main');
+  if (visibleRange) {
+    try { _optCharts[0].timeScale().setVisibleLogicalRange(visibleRange); } catch (_) {}
+  }
 }
 
-function applyOptimizerToBot() {
-  const job = window._lastOptimizerJob;
-  if (!job || !job.best_params) { showToast('No optimization result to apply', 'error'); return; }
+function applyOptimizerToBot(job = window._lastOptimizerJob) {
+  if (!job || job.status !== 'done' || !job.best_params) {
+    showToast('Complete an optimization before applying its inputs', 'error');
+    return;
+  }
 
   // Store the optimized params — submitCreate() will include them.
   _pendingOptParams = job.best_params;
 
   // Pre-fill the Create Bot modal with the optimizer's settings.
+  document.getElementById('fModeSim').checked = true;
+  document.getElementById('fModeReal').checked = false;
+  refreshCreateBudget();
   populateSymbolSelect('f');
   setTimeout(() => {
     // Find and select the matching symbol.
@@ -3306,7 +3885,11 @@ function applyOptimizerToBot() {
     for (const opt of symSel.options) {
       if (opt.value.toLowerCase().replace('/', '') === target) { opt.selected = true; break; }
     }
+    [...document.getElementById('fStrategy').options].forEach(option => {
+      option.hidden = ['PriceAI', 'AgenticAI'].includes(option.value);
+    });
     document.getElementById('fStrategy').value = job.strategy || '';
+    onPriceAIStrategyChange('f');
     const tfSel = document.getElementById('fTimeframe');
     for (const opt of tfSel.options) { if (opt.value === String(job.timeframe)) { opt.selected = true; break; } }
     document.getElementById('fCredit').value  = job.credit  || 100;
@@ -3330,10 +3913,10 @@ function switchOptimizerSubTab(name) {
   const optBtn = document.getElementById('subTabOptimizer');
   const tstBtn = document.getElementById('subTabTester');
   optBtn.style.borderBottomColor = isOpt ? 'var(--accent)' : 'transparent';
-  optBtn.style.color             = isOpt ? 'var(--fg)' : 'var(--muted)';
+  optBtn.style.color             = isOpt ? 'var(--text)' : 'var(--muted)';
   optBtn.style.fontWeight        = isOpt ? '500' : 'normal';
   tstBtn.style.borderBottomColor = isOpt ? 'transparent' : 'var(--accent)';
-  tstBtn.style.color             = isOpt ? 'var(--muted)' : 'var(--fg)';
+  tstBtn.style.color             = isOpt ? 'var(--muted)' : 'var(--text)';
   tstBtn.style.fontWeight        = isOpt ? 'normal' : '500';
   if (!isOpt) {
     initOptimizerTesterTab();
@@ -3346,7 +3929,7 @@ async function initOptimizerTesterTab() {
   if (!marginMarkets.length) { try { await loadMarginMarkets(); } catch (_) {} }
   if (!_optimizerConfigLoaded) {
     try {
-      const res = await fetch('/api/optimizer/config');
+      const res = await apiFetch('/api/optimizer/config');
       optimizerConfig = await res.json();
       _optimizerConfigLoaded = true;
     } catch (_) { return; }
@@ -3449,6 +4032,7 @@ function _updateTrainPctLabel() {
   const pct = parseInt(document.getElementById('otTrainPct')?.value) || 70;
   const el  = document.getElementById('otTrainPctLabel');
   if (el) el.textContent = `Train ${pct}% · Test ${100 - pct}%`;
+  if (_testerControlsInitialized) _updateTesterRunNote();
 }
 
 function _otObjectiveChange() {
@@ -3466,8 +4050,14 @@ function _updateTesterRunNote() {
   if (!note) return;
   const spec = _optimizerTesterStrategySpec();
   const n = spec && spec.params ? spec.params.length : 0;
-  if (!n) { note.textContent = ''; return; }
-  note.innerHTML = `Optimizes <strong>${n}</strong> inputs on the training window, then evaluates on the held-out test window.`;
+  if (!n) { note.textContent = ''; document.getElementById('otWorkload').innerHTML = ''; return; }
+  const selectedCores = Number(document.getElementById('otCores').value);
+  const cores = selectedCores || optimizerConfig.default_cores || 1;
+  const workload = _optimizerWorkload(document.getElementById('otCandles').value,
+    document.getElementById('otMaxiter').value, cores, n,
+    document.getElementById('otTrainPct').value);
+  _renderWorkload(document.getElementById('otWorkload'), workload);
+  note.textContent = `Searching ${n} inputs on training candles, then evaluating on held-out candles.`;
 }
 
 function _optimizerTesterPayload() {
@@ -3502,7 +4092,7 @@ async function runOptimizerTester() {
     }
   }
   try {
-    const res  = await fetch('/api/optimizer/tester/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+    const res  = await apiFetch('/api/optimizer/tester/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const data = await res.json();
     if (!res.ok) {
       const msg = data.error || (Array.isArray(data.detail) ? data.detail.map(d => d.msg).join('; ') : data.detail) || 'run failed';
@@ -3541,10 +4131,11 @@ function renderOptimizerTesterProgress(job) {
   const cur = job.status === 'running' ? `Optimizing training window…${bestInfo}${etaText}`
             : job.status === 'pending' ? 'Starting…'
             : job.status === 'done'    ? '✓ Complete — train & test results ready'
+            : job.status === 'interrupted' ? 'Interrupted by restart'
             : job.status === 'cancelled' ? 'Cancelled'
             : 'Error';
   document.getElementById('otProgressCurrent').textContent = cur;
-  const cores = job.workers > 1 ? ` · ${job.workers} cores` : '';
+  const cores = job.workers > 1 ? ` · ${job.workers} workers` : '';
   const split = `${trainPct}/${100 - trainPct} split`;
   document.getElementById('otProgressCount').textContent =
     `${job.evaluations} backtests · gen ${job.iteration}/${job.maxiter}${cores} · ${split} · ${job.train_candle_count || 0} train / ${job.test_candle_count || 0} test candles`;
@@ -3553,19 +4144,19 @@ function renderOptimizerTesterProgress(job) {
 
 async function cancelOptimizerTester() {
   if (!optimizerTesterJobId) return;
-  try { await fetch(`/api/optimizer/tester/run/${optimizerTesterJobId}/cancel`, { method: 'POST' }); } catch (_) {}
+  try { await apiFetch(`/api/optimizer/tester/run/${optimizerTesterJobId}/cancel`, { method: 'POST' }); } catch (_) {}
   showToast('Cancelling…', 'info');
 }
 
 async function pollOptimizerTester() {
   if (!optimizerTesterJobId) return;
   try {
-    const res = await fetch(`/api/optimizer/tester/run/${optimizerTesterJobId}`);
+    const res = await apiFetch(`/api/optimizer/tester/run/${optimizerTesterJobId}`);
     if (!res.ok) { stopOptimizerTesterPolling(); _setOptimizerTesterRunning(false); return; }
     const job = await res.json();
     renderOptimizerTesterProgress(job);
     renderOptimizerTesterResults(job);
-    if (['done', 'cancelled', 'error'].includes(job.status)) {
+    if (['done', 'cancelled', 'error', 'interrupted'].includes(job.status)) {
       stopOptimizerTesterPolling();
       _setOptimizerTesterRunning(false);
       if (job.status === 'done')           showToast('Optimizer Tester complete', 'success');
@@ -3623,6 +4214,7 @@ function _tradeTableHtml(trades) {
 function renderOptimizerTesterResults(job) {
   const wrap = document.getElementById('otResults');
   if (!wrap) return;
+  window._lastOptimizerTesterJob = job.status === 'done' ? job : null;
 
   if (job.status === 'error') {
     wrap.innerHTML = `<div class="tester-section"><div class="err-cell" style="color:var(--yellow)">${escHtml(job.error || 'error')}</div></div>`;
@@ -3693,6 +4285,7 @@ function renderOptimizerTesterResults(job) {
 
   // ── Test results ──────────────────────────────────────────────────────────
   let testHtml = '';
+  let comparisonHtml = '';
   if (job.test_summary) {
     const ts = job.test_summary;
     const tb = job.test_baseline || {};
@@ -3701,10 +4294,30 @@ function renderOptimizerTesterResults(job) {
     const testPnlCls  = testPnl     > 0 ? 'pnl-pos' : testPnl     < 0 ? 'pnl-neg' : '';
     const tbPnlCls    = testBasePnl > 0 ? 'pnl-pos' : testBasePnl < 0 ? 'pnl-neg' : '';
     const testWrColor = (ts.win_rate || 0) >= 60 ? 'var(--green)' : (ts.win_rate || 0) >= 45 ? 'var(--yellow)' : 'var(--red)';
+    comparisonHtml = `
+      <div class="tester-section comparison-panel">
+        <h3>Training vs held-out</h3>
+        <div class="hint">The windows contain different candle counts. Compare each window with its own default-input result.</div>
+        <div style="overflow-x:auto">
+          <table class="comparison-table">
+            <thead><tr><th>Metric</th><th>Training</th><th>Held-out</th></tr></thead>
+            <tbody>
+              <tr><td>Optimized net P&amp;L</td><td>$${bestPnl.toFixed(2)}</td><td>$${testPnl.toFixed(2)}</td></tr>
+              <tr><td>Default net P&amp;L</td><td>$${basePnl.toFixed(2)}</td><td>$${testBasePnl.toFixed(2)}</td></tr>
+              <tr><td>Win rate</td><td>${(s.win_rate || 0).toFixed(1)}%</td><td>${(ts.win_rate || 0).toFixed(1)}%</td></tr>
+              <tr><td>Trades</td><td>${s.trade_count || 0}</td><td>${ts.trade_count || 0}</td></tr>
+              <tr><td>Candles</td><td>${job.train_candle_count || 0}</td><td>${job.test_candle_count || 0}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        ${job.status === 'done' && job.best_params
+          ? '<button class="btn btn-success btn-sm" onclick="applyOptimizerToBot(window._lastOptimizerTesterJob)" style="margin-top:12px">Apply to New Bot</button>'
+          : ''}
+      </div>`;
 
     let cautionHtml = '';
     if (job.status === 'done' && bestPnl > 0 && testPnl < bestPnl * 0.3) {
-      cautionHtml = `<div style="color:var(--yellow);font-size:0.88em;margin-top:10px;padding:6px 10px;background:rgba(251,191,36,0.08);border-radius:4px;border-left:3px solid var(--yellow)">⚠ Large gap between training P&amp;L ($${bestPnl.toFixed(2)}) and test P&amp;L ($${testPnl.toFixed(2)}) — the parameters may be overfitted to the training window.</div>`;
+      cautionHtml = `<div style="color:var(--yellow);font-size:0.88em;margin-top:10px;padding:6px 10px;background:#393328;border-radius:4px;border-left:3px solid var(--yellow)">⚠ Large gap between training P&amp;L ($${bestPnl.toFixed(2)}) and test P&amp;L ($${testPnl.toFixed(2)}) — the parameters may be overfitted to the training window.</div>`;
     }
 
     const testTradesHtml = job.test_trades?.length
@@ -3728,7 +4341,7 @@ function renderOptimizerTesterResults(job) {
       </div>`;
   }
 
-  wrap.innerHTML = trainTradesHtml + trainSummaryHtml + testHtml;
+  wrap.innerHTML = comparisonHtml + trainSummaryHtml + testHtml + trainTradesHtml;
 
   if (job.chart_data || job.test_chart_data) renderOptTesterCharts(job);
 }
@@ -3747,27 +4360,28 @@ function renderOptTesterCharts(job) {
   const testEl  = document.getElementById('otTestChart');
   const trainCd = job.chart_data;
   const testCd  = job.test_chart_data;
-  const trainSig = trainCd?.candles?.length ? `${trainCd.candles[0]?.time}:${trainCd.candles[trainCd.candles.length - 1]?.time}:train` : '';
+  const trainSig = trainCd?.candles?.length ? `${trainCd.candles[0]?.time}:${trainCd.candles[trainCd.candles.length - 1]?.time}:train:${trainCd.revision || 0}` : '';
   const testSig  = testCd?.candles?.length  ? `${testCd.candles[0]?.time}:${testCd.candles[testCd.candles.length - 1]?.time}:test`   : '';
-  const combined = trainSig + '|' + testSig;
-  if (!trainEl || !testEl || !combined.replace('|', '')) return;
+  const combined = trainSig + '|' + testSig + ':' + job.status;
+  if (!trainEl || !testEl || (!trainSig && !testSig)) return;
   if (trainEl.dataset.sig === combined) return;
+  let visibleRange = null;
+  try { visibleRange = _optTesterCharts[0]?.timeScale().getVisibleLogicalRange(); } catch (_) {}
   destroyOptTesterCharts();
   trainEl.dataset.sig = combined;
-  if (trainCd?.candles?.length) _buildOptChart(trainEl, trainCd, job.best_trades  || [], 'TRAINING PERIOD CHART',     _optTesterCharts, 'train');
+  if (trainCd?.candles?.length) {
+    const title = job.status === 'done' ? 'TRAINING PERIOD CHART' : 'BEST SO FAR · TRAINING CHART';
+    _buildOptChart(trainEl, trainCd, job.best_trades || [], title, _optTesterCharts, 'train');
+    if (visibleRange) {
+      try { _optTesterCharts[0].timeScale().setVisibleLogicalRange(visibleRange); } catch (_) {}
+    }
+  }
   if (testCd?.candles?.length)  _buildOptChart(testEl,  testCd,  job.test_trades  || [], 'OUT-OF-SAMPLE TEST CHART',  _optTesterCharts, 'test');
 }
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
-// Request notification permission
-if ('Notification' in window) {
-  Notification.requestPermission().then(p => { notifPermission = p; });
-}
-
-connectWS();
-fetchWallet();
-loadMarginMarkets();
-setInterval(fetchWallet, 30000);
+checkSession().then(active => { if (active) openDashboard(); })
+  .catch(() => showLogin('Cannot connect to the dashboard. Reload to try again.'));
 </script>
 </body>
 </html>

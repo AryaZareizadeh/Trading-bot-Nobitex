@@ -22,30 +22,30 @@ pool of worker processes — one per CPU core — so a 16-core machine runs ~16
 backtests at once. SciPy drives this for us when handed ``workers=pool.map`` plus
 ``updating="deferred"``. See ``OptimizerJob._run_de_parallel``.
 
-Runs execute as in-memory background jobs (consistent with the rest of the
-dashboard: no DB, state lost on restart) that the frontend polls for progress.
+The parent process persists job inputs and results in SQLite; interrupted
+searches are retained for inspection and require a new run.
 """
 
 import asyncio
-import json
 import multiprocessing as mp
 import os
 import sys
 import time
 import uuid
-from dataclasses import fields
-from pathlib import Path
+import secrets
+from dataclasses import fields, asdict
 from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
 from scipy.optimize import differential_evolution
 
-from backtester import STRATEGY_LABELS, TIMEFRAMES, _VALID_TIMEFRAMES, _summarize
+from backtester import STRATEGY_LABELS, TIMEFRAMES, _VALID_TIMEFRAMES, ResearchPersistence
 from bot import STRATEGY_MAP
 from config import Config
 from data import DataFetcher
 from indicators import Indicators
+from execution_model import evaluate_research, execution_config, required_warmup, WARMUP_CANDLES
 from strategy import AdvRsiParams, StochRsiExtremeParams, TrendMomentumParams, PARAMS_CLASS
 
 exchange = "binance"  # default exchange for optimizer; can be overridden in Config
@@ -107,13 +107,12 @@ _DEFAULT_CANDLES = 1000
 _DE_POPSIZE = 20
 _DE_MAXITER = 30
 _DE_TOL = 0.01
-_DE_SEED = None
+_DE_SEED = None  # None generates and records a concrete seed for each job.
 
 # Cores used when the user leaves the selector on "Auto" (capped to the machine's
 # CPU count, and overridable with the OPTIMIZER_WORKERS env var).
 _DEFAULT_WORKERS = 14
 
-_PREFS_FILE = Path(__file__).parent / "optimizer.json"
 _MAX_JOBS_KEPT = 20
 
 
@@ -195,38 +194,17 @@ def _compute_score(summary: dict, objective: str, credit: float, min_price_chang
     return -pnl
 
 
-def evaluate(
-    df: pd.DataFrame,
-    strategy_name: str,
-    params,
-    credit: float,
-    leverage: int,
-    warmup_df: pd.DataFrame | None = None,
-) -> dict:
-    """Backtest one parameter set over a pre-fetched DataFrame; return its summary.
-
-    If *warmup_df* is supplied (e.g. the training split), it is prepended to *df*
-    so that indicators have a full history at the first evaluation candle.  Only
-    trades that start within *df* are counted; candle_count reflects len(df) only.
-    """
-    cfg = Config()
-    cfg.exchange = exchange
-    cfg.leverage = leverage
-    cfg.trade_size = credit
-    cfg.initial_capital = credit
-
+def evaluate(df: pd.DataFrame, strategy_name: str, params, credit: float, leverage: int,
+             warmup_df: pd.DataFrame | None = None, execution=None, start_idx=None) -> dict:
+    """Evaluate net equity; held-out evaluation starts flat after warmup."""
     if warmup_df is not None:
-        combined_df = pd.concat([warmup_df, df])
-        indicators = Indicators(combined_df)
+        combined = pd.concat([warmup_df, df])
+        combined.attrs = dict(df.attrs)
         start_idx = len(warmup_df)
     else:
-        combined_df = df
-        indicators = Indicators(df)
-        start_idx = 0
-
-    strategy = STRATEGY_MAP[strategy_name](cfg, params)
-    trades_df = strategy.run(combined_df, indicators, live_start_idx=start_idx)
-    return _summarize(trades_df, len(strategy.open_positions), len(df))
+        combined = df
+    return evaluate_research(combined, strategy_name, credit, leverage, params,
+                             execution, start_idx)["summary"]
 
 
 def _fetch_df(symbol: str, timeframe: str, candles: int) -> pd.DataFrame:
@@ -234,8 +212,10 @@ def _fetch_df(symbol: str, timeframe: str, candles: int) -> pd.DataFrame:
     cfg.exchange = exchange
     cfg.symbol = symbol
     cfg.interval = timeframe
-    cfg.limit = candles
-    return DataFetcher(cfg).fetch()
+    cfg.limit = candles + WARMUP_CANDLES
+    df = DataFetcher(cfg).fetch()
+    df.attrs["data_source"] = exchange
+    return df
 
 
 # ── Parallel evaluation across CPU cores ─────────────────────────────────────────
@@ -269,8 +249,37 @@ def _system_cpu_count() -> int:
     return os.cpu_count() or 1
 
 
+def _disable_windows_eco_qos(kernel32, process) -> bool:
+    """Mark a CPU-bound optimizer worker as HighQoS instead of EcoQoS."""
+    import ctypes
+    from ctypes import wintypes
+
+    class ProcessPowerThrottlingState(ctypes.Structure):
+        _fields_ = [
+            ("Version", wintypes.ULONG),
+            ("ControlMask", wintypes.ULONG),
+            ("StateMask", wintypes.ULONG),
+        ]
+
+    # ProcessPowerThrottling = 4.  Taking control of execution-speed
+    # throttling while leaving its state off explicitly requests HighQoS.
+    process_power_throttling = 4
+    execution_speed = 0x1
+    state = ProcessPowerThrottlingState(1, execution_speed, 0)
+    kernel32.SetProcessInformation.argtypes = [
+        wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD,
+    ]
+    kernel32.SetProcessInformation.restype = wintypes.BOOL
+    return bool(kernel32.SetProcessInformation(
+        process,
+        process_power_throttling,
+        ctypes.byref(state),
+        ctypes.sizeof(state),
+    ))
+
+
 def _expand_cpu_affinity() -> None:
-    """Expand this worker's CPU affinity and priority for full P+E core use.
+    """Give this worker full affinity and HighQoS for full P+E core use.
 
     Spawned worker processes inherit the parent's (possibly restricted) affinity
     mask and default to background priority. On Intel hybrid CPUs (12th-gen+),
@@ -282,15 +291,34 @@ def _expand_cpu_affinity() -> None:
     if sys.platform == "win32":
         try:
             import ctypes
-            kernel32 = ctypes.windll.kernel32
+            from ctypes import wintypes
+
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.GetCurrentProcess.argtypes = []
+            kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+            kernel32.GetProcessAffinityMask.argtypes = [
+                wintypes.HANDLE,
+                ctypes.POINTER(ctypes.c_size_t),
+                ctypes.POINTER(ctypes.c_size_t),
+            ]
+            kernel32.GetProcessAffinityMask.restype = wintypes.BOOL
+            kernel32.SetProcessAffinityMask.argtypes = [
+                wintypes.HANDLE, ctypes.c_size_t,
+            ]
+            kernel32.SetProcessAffinityMask.restype = wintypes.BOOL
+            kernel32.SetPriorityClass.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+            kernel32.SetPriorityClass.restype = wintypes.BOOL
             proc = kernel32.GetCurrentProcess()
             # 1. Expand affinity to the full system mask (all P+E cores)
             proc_mask = ctypes.c_size_t()
             sys_mask = ctypes.c_size_t()
             if kernel32.GetProcessAffinityMask(proc, ctypes.byref(proc_mask),
                                                ctypes.byref(sys_mask)):
-                kernel32.SetProcessAffinityMask(proc, sys_mask)
-            # 2. Raise priority so Intel Thread Director routes to P-cores
+                kernel32.SetProcessAffinityMask(proc, sys_mask.value)
+            # 2. Opt out of EcoQoS, which can constrain a background process to
+            # the efficient cores on a heterogeneous Windows CPU.
+            _disable_windows_eco_qos(kernel32, proc)
+            # 3. Raise priority so the search is treated as foreground work.
             ABOVE_NORMAL_PRIORITY_CLASS = 0x00008000
             kernel32.SetPriorityClass(proc, ABOVE_NORMAL_PRIORITY_CLASS)
         except Exception:
@@ -303,13 +331,13 @@ def _expand_cpu_affinity() -> None:
 
 
 def _worker_init(df, strategy_name, credit, leverage, names, objective, min_price_change,
-                  balanced_cap=100.0, balanced_weight=0.5) -> None:
+                  balanced_cap=100.0, balanced_weight=0.5, execution=None, start_idx=None) -> None:
     """Pool initializer: runs once per worker process, caching the shared context."""
     _expand_cpu_affinity()
     _WORKER.update(df=df, strategy=strategy_name, credit=credit,
                    leverage=leverage, names=names, objective=objective,
                    min_price_change=min_price_change, balanced_cap=balanced_cap,
-                   balanced_weight=balanced_weight)
+                   balanced_weight=balanced_weight, execution=execution, start_idx=start_idx)
 
 
 def _worker_objective(vector) -> float:
@@ -321,7 +349,7 @@ def _worker_objective(vector) -> float:
     """
     params = _build_params(_WORKER["strategy"], _WORKER["names"], vector)
     summary = evaluate(_WORKER["df"], _WORKER["strategy"], params,
-                       _WORKER["credit"], _WORKER["leverage"])
+                       _WORKER["credit"], _WORKER["leverage"], execution=_WORKER.get("execution"), start_idx=_WORKER.get("start_idx"))
     return _compute_score(summary, _WORKER["objective"], _WORKER["credit"], _WORKER["min_price_change"],
                           _WORKER.get("balanced_cap", 100.0), _WORKER.get("balanced_weight", 0.5))
 
@@ -333,7 +361,7 @@ def _resolve_workers() -> int:
     Override with the ``OPTIMIZER_WORKERS`` env var: a positive integer caps the
     count, ``-1`` means use every core.
     """
-    cpu = _system_cpu_count()
+    cpu = _configured_worker_cap()
     raw = os.getenv("OPTIMIZER_WORKERS", "").strip()
     if raw:
         try:
@@ -345,6 +373,15 @@ def _resolve_workers() -> int:
         if n >= 1:
             return min(n, cpu)
     return min(_DEFAULT_WORKERS, cpu)
+
+
+def _configured_worker_cap() -> int:
+    cpu = _system_cpu_count()
+    try:
+        limit = int(os.getenv("OPTIMIZER_MAX_CORES_PER_JOB", ""))
+    except ValueError:
+        return cpu
+    return min(cpu, limit) if limit > 0 else cpu
 
 
 # ── Background job ───────────────────────────────────────────────────────────────
@@ -360,7 +397,7 @@ class OptimizerJob:
                  min_price_change: float = 5.0,
                  balanced_cap: float = 100.0,
                  balanced_weight: float = 0.5,
-                 train_pct: float | None = None):
+                 train_pct: float | None = None, execution=None, random_seed=None):
         self.id = uuid.uuid4().hex[:8]
         self.symbol = symbol
         self.strategy = strategy
@@ -368,6 +405,11 @@ class OptimizerJob:
         self.candles = candles
         self.credit = credit
         self.leverage = leverage
+        self.execution = asdict(execution_config(execution))
+        self.random_seed = int(random_seed) if random_seed is not None else (secrets.randbits(32) if _DE_SEED is None else _DE_SEED)
+        if not 0 <= self.random_seed < 2**32:
+            raise ValueError("random_seed must be an unsigned 32-bit integer")
+        self.evaluation_start = None
         self.requested_cores = cores     # 0 = Auto; else the user-picked core count
         self.objective = objective
         self.min_price_change = float(min_price_change) if min_price_change else 5.0
@@ -392,6 +434,7 @@ class OptimizerJob:
         self.history: list[dict] = []    # per-generation best snapshots
         self.best_trades: list[dict] | None = None  # trade log from the best run
         self.chart_data: dict | None = None          # OHLCV + indicator series for the chart
+        self._charted_params: dict | None = None
 
         # Tester-mode fields (only populated when train_pct is set)
         self.train_pct = train_pct
@@ -404,9 +447,11 @@ class OptimizerJob:
 
         self._cancel = False
         self._task: asyncio.Task | None = None
+        self._persist = lambda: None
 
     def cancel(self) -> None:
         self._cancel = True
+        self._persist()
 
     @property
     def _effective_bounds(self) -> dict[str, tuple[int, int]]:
@@ -429,7 +474,7 @@ class OptimizerJob:
             popsize=_DE_POPSIZE,
             maxiter=self.maxiter,
             tol=_DE_TOL,
-            rng=_DE_SEED,
+            rng=self.random_seed,
             polish=False,        # L-BFGS polish ignores integrality; skip it
             mutation=(0.5, 1.0),
             recombination=0.7,
@@ -448,21 +493,13 @@ class OptimizerJob:
         # A specific core count picked in the UI wins; 0 means "Auto" (defer to the
         # CPU-count / OPTIMIZER_WORKERS default).
         if self.requested_cores and self.requested_cores >= 1:
-            self.workers = min(self.requested_cores, _system_cpu_count())
+            self.workers = min(self.requested_cores, _configured_worker_cap())
         else:
             self.workers = _resolve_workers()
         if self.workers <= 1:
             self._run_de_serial(df)
             return
-        try:
-            self._run_de_parallel(df, self.workers)
-        except Exception:
-            # Multiprocessing can fail to start in locked-down environments; never
-            # let that abort a run — fall back to the single-core path.
-            self.workers = 1
-            self.iteration = 0
-            self.evaluations = 0
-            self._run_de_serial(df)
+        self._run_de_parallel(df, self.workers)
 
     def _run_de_serial(self, df: pd.DataFrame) -> None:
         """Single-core search: one backtest at a time in this process."""
@@ -475,7 +512,7 @@ class OptimizerJob:
 
         def objective(vector) -> float:
             params = _build_params(self.strategy, names, vector)
-            summary = evaluate(df, self.strategy, params, self.credit, self.leverage)
+            summary = evaluate(df, self.strategy, params, self.credit, self.leverage, execution=self.execution, start_idx=self.evaluation_start)
             score = _compute_score(summary, self.objective, self.credit, self.min_price_change, self.balanced_cap, self.balanced_weight)
             self.evaluations += 1
             if score < best["score"]:
@@ -495,6 +532,7 @@ class OptimizerJob:
             self.best_pnl = best["pnl"] if best["params"] is not None else None
             self.best_params = best["params"]
             self.best_summary = best["summary"]
+            self._refresh_best_chart(df)
             if best["params"] is not None:
                 self.history.append({
                     "iteration": self.iteration,
@@ -505,6 +543,7 @@ class OptimizerJob:
                 })
             if self._cancel:
                 return True   # signal DE to stop
+            self._persist()
             return False
 
         differential_evolution(objective, **self._de_kwargs(bounds, integrality, callback))
@@ -513,6 +552,7 @@ class OptimizerJob:
         self.best_pnl = best["pnl"] if best["params"] is not None else None
         self.best_params = best["params"]
         self.best_summary = best["summary"]
+        self._refresh_best_chart(df)
 
     def _run_de_parallel(self, df: pd.DataFrame, workers: int) -> None:
         """Multi-core search: each generation's backtests run in a worker pool.
@@ -536,7 +576,7 @@ class OptimizerJob:
         def record(vector) -> None:
             """Re-score one DE vector in the parent and keep it if it's the best."""
             params = _build_params(self.strategy, names, vector)
-            summary = evaluate(df, self.strategy, params, self.credit, self.leverage)
+            summary = evaluate(df, self.strategy, params, self.credit, self.leverage, execution=self.execution, start_idx=self.evaluation_start)
             score = _compute_score(summary, self.objective, self.credit, self.min_price_change, self.balanced_cap, self.balanced_weight)
             if best["score"] is None or score < best["score"]:
                 best["score"] = score
@@ -561,6 +601,7 @@ class OptimizerJob:
             self.best_pnl = best["pnl"]
             self.best_params = best["params"]
             self.best_summary = best["summary"]
+            self._refresh_best_chart(df)
             if best["pnl"] is not None:
                 self.history.append({
                     "iteration": self.iteration,
@@ -571,6 +612,7 @@ class OptimizerJob:
                 })
             if self._cancel:
                 return True   # signal DE to stop (takes effect after this generation)
+            self._persist()
             return False
 
         # "spawn" is the only start method on Windows and avoids fork-safety issues
@@ -580,7 +622,7 @@ class OptimizerJob:
             processes=workers,
             initializer=_worker_init,
             initargs=(df, self.strategy, self.credit, self.leverage, names, self.objective, self.min_price_change,
-                      self.balanced_cap, self.balanced_weight),
+                      self.balanced_cap, self.balanced_weight, self.execution, self.evaluation_start),
         )
         try:
             result = differential_evolution(
@@ -600,27 +642,40 @@ class OptimizerJob:
         self.best_pnl = best["pnl"]
         self.best_params = best["params"]
         self.best_summary = best["summary"]
+        self._refresh_best_chart(df)
 
     async def run(self) -> None:
         self.status = "running"
+        self._persist()
         try:
-            df = await asyncio.to_thread(_fetch_df, self.symbol, self.timeframe, self.candles)
+            # Every candidate sees the same evaluation candles, even when its
+            # indicator periods differ. Reserve enough history for all bounds.
+            upper = {key: bounds[1] for key, bounds in self._effective_bounds.items()}
+            warmup = required_warmup(upper)
+            df = await asyncio.to_thread(_fetch_df, self.symbol, self.timeframe, self.candles + warmup-WARMUP_CANDLES)
             if df is None or df.empty or len(df) < 50:
                 self.status = "error"
                 self.error = "insufficient candle data"
                 return
-            self.candle_count = len(df)
+            if self._cancel:
+                self.status = "cancelled"
+                return
+            if len(df) <= warmup:
+                raise ValueError("Insufficient candle data after indicator warmup")
+            self.evaluation_start = max(warmup, len(df)-self.candles)
+            self.candle_count = len(df)-self.evaluation_start
 
             # In tester mode, split df into train (for DE) and test (for evaluation).
             train_df = df
             test_df: pd.DataFrame | None = None
             if self.train_pct is not None:
-                train_n = max(1, int(len(df) * self.train_pct / 100))
-                if train_n < _MIN_CANDLES:
+                train_count = int(self.candle_count * self.train_pct / 100)
+                train_n = self.evaluation_start + train_count
+                if train_count < _MIN_CANDLES:
                     self.status = "error"
                     self.error = (
-                        f"Training set too small ({train_n} candles < {_MIN_CANDLES} minimum). "
-                        "Increase candle count or lower the train %."
+                        f"Training set too small ({train_count} candles < {_MIN_CANDLES} minimum). "
+                        "Increase candle count or the train %."
                     )
                     return
                 test_n = len(df) - train_n
@@ -633,19 +688,19 @@ class OptimizerJob:
                     return
                 train_df = df.iloc[:train_n].copy()
                 test_df = df.iloc[train_n:].copy()
-                self.train_candle_count = len(train_df)
+                self.train_candle_count = train_count
                 self.test_candle_count = len(test_df)
 
             # Baseline: the strategy's shipped default inputs, for comparison.
             self.baseline = await asyncio.to_thread(
                 evaluate, train_df, self.strategy, PARAMS_CLASS[self.strategy](),
-                self.credit, self.leverage,
+                self.credit, self.leverage, execution=self.execution, start_idx=self.evaluation_start,
             )
 
             await asyncio.to_thread(self._run_de, train_df)
 
             if not self._cancel and self.best_params:
-                await asyncio.to_thread(self._compute_best_trades, train_df)
+                await asyncio.to_thread(self._refresh_best_chart, train_df)
                 if test_df is not None:
                     await asyncio.to_thread(self._compute_test_results, df, train_n)
 
@@ -659,33 +714,23 @@ class OptimizerJob:
         except Exception as exc:
             self.status = "error"
             self.error = str(exc)
+        finally:
+            self._persist()
+
+    def _refresh_best_chart(self, df: pd.DataFrame) -> None:
+        """Publish a new chart only when the best parameter set changes."""
+        if self.best_params and self.best_params != self._charted_params:
+            self._compute_best_trades(df)
 
     def _compute_best_trades(self, df: pd.DataFrame) -> None:
-        """Re-run the strategy once with best_params to capture the full trade log."""
+        """Re-run the best strategy and publish trades and chart data for polling."""
         if not self.best_params:
             return
-        cfg = Config()
-        cfg.exchange = exchange
-        cfg.leverage = self.leverage
-        cfg.trade_size = self.credit
-        cfg.initial_capital = self.credit
+        charted_params = dict(self.best_params)
         indicators = Indicators(df)
-        params = PARAMS_CLASS[self.strategy](**self.best_params)
-        strategy = STRATEGY_MAP[self.strategy](cfg, params)
-        trades_df = strategy.run(df, indicators, live_start_idx=0)
-        records = trades_df.to_dict("records")
-        open_count = len(strategy.open_positions)
-        closed_count = max(0, len(records) - open_count)
-        if closed_count > 1:
-            offset = float(records[0]["Balance ($)"])
-            adjusted = []
-            for r in records[1:closed_count]:
-                r = dict(r)
-                r["Balance ($)"] = f"{float(r['Balance ($)']) - offset:.2f}"
-                adjusted.append(r)
-            self.best_trades = adjusted
-        else:
-            self.best_trades = []
+        params = PARAMS_CLASS[self.strategy](**charted_params)
+        result = evaluate_research(df, self.strategy, self.credit, self.leverage, params, self.execution, self.evaluation_start)
+        trades = result["trades"]
 
         # ── Chart data ───────────────────────────────────────────────────────
         _tehran = ZoneInfo("Asia/Tehran")
@@ -710,7 +755,7 @@ class OptimizerJob:
             time_map[fmt] = unix
 
         # Annotate each trade record with unix timestamps for chart markers
-        for r in (self.best_trades or []):
+        for r in trades:
             r["_start_ts"] = time_map.get(r.get("Start Time", ""))
             r["_end_ts"] = time_map.get(r.get("End Time", ""))
 
@@ -748,7 +793,12 @@ class OptimizerJob:
                 "overbought": params.overbought,
             }
 
-        self.chart_data = {"candles": candles, "indicators": ind, "strategy": self.strategy}
+        revision = (self.chart_data or {}).get("revision", 0) + 1
+        self.best_trades = trades
+        self.best_summary = result["summary"]
+        self.chart_data = {"candles": candles, "indicators": ind,
+                           "strategy": self.strategy, "revision": revision}
+        self._charted_params = charted_params
 
     def _compute_test_results(self, full_df: pd.DataFrame, train_n: int) -> None:
         """Evaluate best and default params on the held-out test set.
@@ -766,32 +816,14 @@ class OptimizerJob:
 
         # Summary metrics — each evaluate() call prepends train_df for warmup
         self.test_summary  = evaluate(test_df, self.strategy, best_params_obj,
-                                      self.credit, self.leverage, warmup_df=train_df)
+                                      self.credit, self.leverage, warmup_df=train_df, execution=self.execution)
         self.test_baseline = evaluate(test_df, self.strategy, PARAMS_CLASS[self.strategy](),
-                                      self.credit, self.leverage, warmup_df=train_df)
+                                      self.credit, self.leverage, warmup_df=train_df, execution=self.execution)
 
         # Trade log — run strategy over full_df so indicators have warmup history
-        cfg = Config()
-        cfg.exchange = exchange
-        cfg.leverage = self.leverage
-        cfg.trade_size = self.credit
-        cfg.initial_capital = self.credit
         indicators = Indicators(full_df)
-        strategy = STRATEGY_MAP[self.strategy](cfg, best_params_obj)
-        trades_df = strategy.run(full_df, indicators, live_start_idx=train_n)
-        records = trades_df.to_dict("records")
-        open_count = len(strategy.open_positions)
-        closed_count = max(0, len(records) - open_count)
-        if closed_count > 1:
-            offset = float(records[0]["Balance ($)"])
-            adjusted = []
-            for r in records[1:closed_count]:
-                r = dict(r)
-                r["Balance ($)"] = f"{float(r['Balance ($)']) - offset:.2f}"
-                adjusted.append(r)
-            self.test_trades = adjusted
-        else:
-            self.test_trades = []
+        self.test_trades = evaluate_research(full_df, self.strategy, self.credit, self.leverage,
+                                             best_params_obj, self.execution, train_n)["trades"]
 
         # Chart data for the test period (same structure as self.chart_data)
         _tehran = ZoneInfo("Asia/Tehran")
@@ -876,6 +908,14 @@ class OptimizerJob:
     def to_dict(self) -> dict:
         return {
             "id": self.id,
+            "execution": self.execution,
+            "random_seed": self.random_seed,
+            "evaluation_start": self.evaluation_start,
+            "custom_bounds": self.custom_bounds,
+            "min_price_change": self.min_price_change,
+            "balanced_cap": self.balanced_cap,
+            "balanced_weight": self.balanced_weight,
+            "requested_cores": self.requested_cores,
             "status": self.status,
             "error": self.error,
             "created_at": self.created_at,
@@ -915,8 +955,12 @@ class OptimizerJob:
 
 # ── Manager / registry ───────────────────────────────────────────────────────────
 
-class OptimizerManager:
-    def __init__(self):
+class OptimizerManager(ResearchPersistence):
+    namespace = "optimizer"
+
+    def __init__(self, store=None):
+        self._injected_store = store
+        self._loaded_path = None
         self._jobs: dict[str, OptimizerJob] = {}
         self._prefs: dict = self._load_prefs()
 
@@ -933,25 +977,16 @@ class OptimizerManager:
             "objective": "profit",
             "custom_bounds": None,
         }
-        if not _PREFS_FILE.exists():
-            return defaults
-        try:
-            data = json.loads(_PREFS_FILE.read_text(encoding="utf-8"))
-            defaults.update({k: data[k] for k in defaults if k in data})
-        except Exception:
-            pass
         return defaults
 
     def _save_prefs(self) -> None:
-        try:
-            _PREFS_FILE.write_text(json.dumps(self._prefs, indent=2), encoding="utf-8")
-        except Exception:
-            pass
+        self._ensure_store().put("prefs", self.namespace, self._prefs)
 
     def save_prefs(self, symbol, strategy, timeframe, candles, credit, leverage,
                    cores=0, maxiter=_DE_MAXITER, objective="profit",
                    custom_bounds=None, min_price_change=5.0, balanced_cap=100.0,
                    balanced_weight=0.5) -> None:
+        self._ensure_store()
         self._prefs = {
             "symbol": (symbol or "").lower().replace("/", "").strip(),
             "strategy": strategy if strategy in STRATEGY_MAP else "",
@@ -970,6 +1005,7 @@ class OptimizerManager:
         self._save_prefs()
 
     def get_config(self) -> dict:
+        self._ensure_store()
         return {
             **self._prefs,
             "available_strategies": [
@@ -987,7 +1023,7 @@ class OptimizerManager:
             "min_candles": _MIN_CANDLES,
             "max_candles": _MAX_CANDLES,
             "default_candles": _DEFAULT_CANDLES,
-            "max_cores": _system_cpu_count(),          # upper bound for the cores selector
+            "max_cores": _configured_worker_cap(),          # upper bound for the cores selector
             "default_cores": _resolve_workers(),     # what "Auto" resolves to right now
             "default_maxiter": _DE_MAXITER,
         }
@@ -996,31 +1032,35 @@ class OptimizerManager:
     def start_job(self, symbol, strategy, timeframe, candles, credit, leverage,
                   cores=0, maxiter=_DE_MAXITER, objective="profit",
                   custom_bounds=None, min_price_change=5.0, balanced_cap=100.0,
-                  balanced_weight=0.5, train_pct=None) -> OptimizerJob:
+                  balanced_weight=0.5, train_pct=None, execution=None, random_seed=None) -> OptimizerJob:
+        self._ensure_store()
         self._prune()
         job = OptimizerJob(
             symbol.lower().replace("/", "").strip(), strategy, timeframe,
             _clamp_candles(candles), float(credit), int(leverage), _clamp_cores(cores),
             maxiter=maxiter, custom_bounds=custom_bounds, objective=objective,
             min_price_change=min_price_change, balanced_cap=balanced_cap,
-            balanced_weight=balanced_weight, train_pct=train_pct,
+            balanced_weight=balanced_weight, train_pct=train_pct, execution=execution, random_seed=random_seed,
         )
-        self._jobs[job.id] = job
+        self._attach(job)
         job._task = asyncio.create_task(job.run())
         return job
 
     def get_job(self, job_id: str) -> OptimizerJob | None:
+        self._ensure_store()
         return self._jobs.get(job_id)
 
     def _prune(self) -> None:
         if len(self._jobs) < _MAX_JOBS_KEPT:
             return
         finished = sorted(
-            (j for j in self._jobs.values() if j.status in ("done", "cancelled", "error")),
+            (j for j in self._jobs.values() if j.status in ("done", "cancelled", "error", "interrupted")),
             key=lambda j: j.created_at,
         )
         while len(self._jobs) >= _MAX_JOBS_KEPT and finished:
-            self._jobs.pop(finished.pop(0).id, None)
+            key = finished.pop(0).id
+            self._ensure_store().delete(self.namespace + "_jobs", key)
+            self._jobs.pop(key, None)
 
 
 def _clamp_candles(candles) -> int:
@@ -1039,7 +1079,7 @@ def _clamp_cores(cores) -> int:
         return 0
     if n <= 0:
         return 0
-    return min(n, _system_cpu_count())
+    return min(n, _configured_worker_cap())
 
 
 optimizer_manager = OptimizerManager()

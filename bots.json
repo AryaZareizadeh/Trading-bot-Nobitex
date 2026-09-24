@@ -1,1 +1,117 @@
-[]
+[
+  {
+    "id": "4b59dc18",
+    "name": "SUIUSDT\u00b75580\u00b7balanced",
+    "symbol": "suiusdt",
+    "strategy_name": "AdvRSI",
+    "timeframe": "240",
+    "credit": 10.0,
+    "leverage": 3,
+    "mode": "real",
+    "custom_params": {
+      "rsi_length": 30,
+      "stoch_length": 126,
+      "k_smooth": 40,
+      "d_smooth": 11,
+      "rsi_fast_length": 10,
+      "rsi_ma_length": 43,
+      "oversold": 23,
+      "overbought": 65,
+      "exit_oversold": 19,
+      "exit_overbought": 69,
+      "entry_wait_candles": 4
+    }
+  },
+  {
+    "id": "ab2f58f0",
+    "name": "ZECUSDT-300d",
+    "symbol": "zecusdt",
+    "strategy_name": "AdvRSI",
+    "timeframe": "240",
+    "credit": 10.0,
+    "leverage": 5,
+    "mode": "real",
+    "custom_params": {
+      "rsi_length": 23,
+      "stoch_length": 51,
+      "k_smooth": 6,
+      "d_smooth": 78,
+      "rsi_fast_length": 13,
+      "rsi_ma_length": 16,
+      "oversold": 28,
+      "overbought": 82,
+      "exit_oversold": 6,
+      "exit_overbought": 67,
+      "entry_wait_candles": 0
+    }
+  },
+  {
+    "id": "f186a98c",
+    "name": "SUIUSDT-933d-505-64",
+    "symbol": "suiusdt",
+    "strategy_name": "AdvRSI",
+    "timeframe": "240",
+    "credit": 10.0,
+    "leverage": 5,
+    "mode": "real",
+    "custom_params": {
+      "rsi_length": 81,
+      "stoch_length": 137,
+      "k_smooth": 6,
+      "d_smooth": 58,
+      "rsi_fast_length": 38,
+      "rsi_ma_length": 7,
+      "oversold": 26,
+      "overbought": 79,
+      "exit_oversold": 18,
+      "exit_overbought": 75,
+      "entry_wait_candles": 0
+    }
+  },
+  {
+    "id": "95ebadeb",
+    "name": "BTCUSDT-2600d-241-64",
+    "symbol": "btcusdt",
+    "strategy_name": "AdvRSI",
+    "timeframe": "D",
+    "credit": 10.0,
+    "leverage": 5,
+    "mode": "real",
+    "custom_params": {
+      "rsi_length": 155,
+      "stoch_length": 53,
+      "k_smooth": 4,
+      "d_smooth": 37,
+      "rsi_fast_length": 18,
+      "rsi_ma_length": 21,
+      "oversold": 30,
+      "overbought": 79,
+      "exit_oversold": 22,
+      "exit_overbought": 97,
+      "entry_wait_candles": 0
+    }
+  },
+  {
+    "id": "cd656fba",
+    "name": "ETHUSDT-2050d-278-68",
+    "symbol": "ethusdt",
+    "strategy_name": "AdvRSI",
+    "timeframe": "D",
+    "credit": 10.0,
+    "leverage": 5,
+    "mode": "real",
+    "custom_params": {
+      "rsi_length": 109,
+      "stoch_length": 34,
+      "k_smooth": 4,
+      "d_smooth": 5,
+      "rsi_fast_length": 16,
+      "rsi_ma_length": 13,
+      "oversold": 27,
+      "overbought": 76,
+      "exit_oversold": 31,
+      "exit_overbought": 99,
+      "entry_wait_candles": 0
+    }
+  }
+]

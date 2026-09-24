@@ -44,10 +44,11 @@ class NobitexClient:
         private_key: str | None = None,
         token: str | None = None,
         testnet: bool = False,
+        allow_environment: bool = True,
     ):
-        self._public_key = public_key or os.getenv("NOBITEX_API_PUBLIC_KEY")
-        raw_private = private_key or os.getenv("NOBITEX_API_PRIVATE_KEY")
-        self._token = token or os.getenv("NOBITEX_TOKEN")
+        self._public_key = public_key or (os.getenv("NOBITEX_API_PUBLIC_KEY") if allow_environment else None)
+        raw_private = private_key or (os.getenv("NOBITEX_API_PRIVATE_KEY") if allow_environment else None)
+        self._token = token or (os.getenv("NOBITEX_TOKEN") if allow_environment else None)
         self._base = TESTNET_URL if testnet else BASE_URL
         self._session = requests.Session()
         self._session.trust_env = False
@@ -107,6 +108,10 @@ class NobitexClient:
         return data
 
     # ── Market info ────────────────────────────────────────────────────────────
+
+    def profile(self) -> dict:
+        """Account fee options from the documented user profile endpoint."""
+        return self._call("GET", "/users/profile")["profile"]
 
     def margin_markets(self) -> dict[str, dict]:
         """Available margin markets keyed by symbol (e.g. 'BTCUSDT')."""
@@ -173,9 +178,17 @@ class NobitexClient:
         data = self._call("GET", f"/v3/orderbook/{symbol.upper()}")
         return float(data["lastTradePrice"])
 
+    def orderbook(self, symbol: str) -> dict:
+        """Public depth used only to bound indicative portfolio rebalances."""
+        return self._call("GET", f"/v3/orderbook/{symbol.upper()}")
+
     def order_status(self, order_id: int) -> dict:
         """Fetch current status and fill info for an order."""
         return self._call("POST", "/market/orders/status", json={"id": order_id})["order"]
+
+    def order_by_client_id(self, client_id: str) -> dict:
+        """Experimental active-order lookup; absence does NOT rule out a fill."""
+        return self._call("POST", "/market/orders/status", json={"clientOrderId": client_id})["order"]
 
     def cancel_order(self, order_id: int) -> None:
         """Cancel an active order."""

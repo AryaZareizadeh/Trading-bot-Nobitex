@@ -381,6 +381,7 @@ class Bot:
                 "direction": direction,
                 "entry_price": float(p.get("entryPrice") or 0),
                 "entry_time": p.get("openedAt", ""),
+                "expiration_date": p.get("expirationDate"),
                 "unrealized_pnl": float(p.get("unrealizedPNL") or 0),
                 "unrealized_pnl_pct": float(p.get("unrealizedPNLPercent") or 0),
                 "liquidation_price": float(p.get("liquidationPrice") or 0),
@@ -598,10 +599,11 @@ class Bot:
                 return
             active = await asyncio.to_thread(client.positions, "active")
             self._real_positions = self._normalize_positions(active)
+            tracked = None
             if self._exchange_position_id is not None:
                 if self._store.owner(self._account_key(), self._exchange_position_id) != self.id:
                     raise RuntimeError("Recorded exchange position has no matching ownership")
-                tracked = next((p for p in active if p.get("id") == self._exchange_position_id), None)
+                tracked = next((p for p in active if str(p.get("id")) == str(self._exchange_position_id)), None)
                 if tracked is None or tracked.get("status") != "Open":
                     closed = await asyncio.to_thread(client.position, self._exchange_position_id)
                     if closed.get("status") == "Open":
@@ -617,6 +619,18 @@ class Bot:
                     self.open_positions = []
                     if self.cfg.strategy_name == AGENTIC_AI_NAME:
                         self._agent_signal = None
+                    self._persist()
+                    return
+                from position_limits import should_close_before_expiry
+                if should_close_before_expiry(tracked):
+                    self._log_event("position_expiring", f"Exchange position {self._exchange_position_id} is nearing expiration")
+                    if not await self._close_exchange_position(client, _format_price(self.current_price)):
+                        return
+                    self._seed_position = None
+                    self._agent_signal = None
+                    self._real_state = "none"
+                    self.open_positions = []
+                    self._live_from_ts = self.df.index[-1] + pd.Timedelta(seconds=RESOLUTION_SECONDS[self.cfg.timeframe]) if self.df is not None else None
                     self._persist()
                     return
             if self.cfg.strategy_name == AGENTIC_AI_NAME and self._agent_signal is None:
@@ -882,6 +896,10 @@ class Bot:
 
     async def run_backtest(self):
         from execution_model import evaluate_research, WARMUP_CANDLES
+        from position_limits import current_max_hold_days
+
+        self.cfg.execution = {**(self.cfg.execution or {}),
+                              "max_hold_days": await asyncio.to_thread(current_max_hold_days)}
 
         if self.cfg.strategy_name == AGENTIC_AI_NAME:
             frames = await self._fetch_agent_history(primary_limit=6000)
@@ -1091,17 +1109,32 @@ class Bot:
                 self._live_from_ts = self.df.index[-1] + pd.Timedelta(seconds=resolution)
             self.current_price = float(self.df.Close.iloc[-1])
             self.last_updated = datetime.now(timezone.utc)
+            if self.cfg.mode == "simulation":
+                from position_limits import current_max_hold_days
+                self.cfg.execution = {**(self.cfg.execution or {}),
+                                      "max_hold_days": await asyncio.to_thread(current_max_hold_days)}
             self._run_strategy()
             await self._sync_exchange()
             self._persist()
             while not self._stop_event.is_set():
                 # Candle timestamps are opens; the NEXT candle closes two periods later.
                 next_close = self.df.index[-1].timestamp() + 2 * resolution
+                from position_limits import exchange_expiration
+                owned = next((p for p in self._real_positions if str(p.get("exchange_id")) == str(self._exchange_position_id)), None)
+                expiration = exchange_expiration(owned.get("expiration_date")) if owned else None
+                expiry_check = expiration.timestamp() - 3600 if expiration else None
+                wake_at = min(next_close, expiry_check) if expiry_check is not None else next_close
                 try:
-                    await asyncio.wait_for(self._stop_event.wait(), max(5, next_close-time.time()+5))
+                    await asyncio.wait_for(self._stop_event.wait(), max(5, wake_at-time.time()+5))
                     break
                 except asyncio.TimeoutError:
                     pass
+                if expiry_check is not None and expiry_check <= next_close and time.time() >= expiry_check:
+                    await self._sync_exchange()
+                    self._persist()
+                    if self._exchange_position_id is not None:
+                        await asyncio.sleep(60)  # Avoid a tight retry loop on exchange failures.
+                    continue
                 fetcher = DataFetcher(self._make_config())
                 try:
                     fresh = await asyncio.to_thread(fetcher.fetch_latest)
@@ -1112,6 +1145,10 @@ class Bot:
                 # A failed signal evaluation must never trigger an old exchange signal.
                 if self.cfg.strategy_name == AGENTIC_AI_NAME:
                     await self._refresh_agent_higher_frames()
+                if self.cfg.mode == "simulation":
+                    from position_limits import current_max_hold_days
+                    self.cfg.execution = {**(self.cfg.execution or {}),
+                                          "max_hold_days": await asyncio.to_thread(current_max_hold_days)}
                 self._run_strategy()
                 await self._sync_exchange()
                 self.last_updated = datetime.now(timezone.utc)

@@ -92,7 +92,6 @@
     padding: 2px 7px; border-radius: 4px;
   }
   .wallet-tag.margin { background: #39303f; color: var(--purple); border: 1px solid #67556f; }
-  .wallet-tag.spot   { background: var(--accent-soft); color: var(--accent); border: 1px solid #78523d; }
   .wallet-currency { font-size: 11px; color: var(--muted); text-transform: uppercase; }
   .wallet-amount  { font-size: 13px; font-weight: 700; }
   .wallet-frozen  { font-size: 11px; color: var(--yellow); }
@@ -388,9 +387,19 @@
   .opt-history-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
   .opt-history-table tr:last-child td { border-bottom: none; }
   .opt-history-table .best-row td { background: rgba(200,135,90,.09); }
+  .optimizer-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
+  .optimizer-metric { min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); }
+  .optimizer-metric-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+  .optimizer-metric-head strong { font-size: 12px; }
+  .optimizer-metric-head span { font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .optimizer-metric svg { display: block; width: 100%; height: 180px; }
+  .optimizer-metric svg text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .optimizer-metric-empty { height: 180px; display: grid; place-items: center; color: var(--muted); font-size: 11px; text-align: center; }
+  .optimizer-metric-controls { display: flex; align-items: center; gap: 5px; }
+  @media (max-width: 850px) { .optimizer-metrics { grid-template-columns: 1fr; } }
 
   /* ── Three-box layout ── */
-  .three-box-layout { display: grid; grid-template-columns: minmax(350px, 1.45fr) repeat(2, minmax(230px, 1fr)); gap: 16px; padding: 16px 24px; align-items: start; }
+  .three-box-layout { display: grid; grid-template-columns: minmax(350px, 1.45fr) repeat(2, minmax(230px, 1fr)); gap: 16px; padding: 16px 24px; align-items: stretch; }
   .tri-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; max-height: calc(100vh - 180px); min-height: 220px; }
   .tri-box-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--surface2); border-radius: var(--radius) var(--radius) 0 0; flex-shrink: 0; }
   .tri-box-title { font-size: 13px; font-weight: 650; letter-spacing: .1px; color: var(--text); }
@@ -441,6 +450,13 @@
   .workload-preview span { padding: 6px 9px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface2); color: var(--muted); font-size: 11px; }
   .workload-preview strong { color: var(--text); }
   .workload-hint { color: var(--muted); font-size: 11px; margin-bottom: 10px; }
+  .run-snapshot { margin-top: 14px; padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); font-size: 11px; }
+  .run-snapshot-head { font-weight: 700; margin-bottom: 8px; }
+  .run-snapshot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 7px 18px; }
+  .run-snapshot-grid strong { color: var(--muted); font-weight: 500; }
+  .run-snapshot details { margin-top: 10px; }
+  .run-snapshot summary { cursor: pointer; color: var(--accent); }
+  .run-snapshot-extra { margin-top: 8px; line-height: 1.7; overflow-wrap: anywhere; }
   .comparison-panel { border-color: #79563d; }
   .comparison-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
   .comparison-table th, .comparison-table td { padding: 8px 10px; text-align: right; border-bottom: 1px solid var(--border); }
@@ -554,7 +570,7 @@
 <div class="main-tabs">
   <button class="main-tab-btn active" data-view="Bots" onclick="switchView('Bots')">Bots</button>
   <button class="main-tab-btn" data-view="AIBots" onclick="switchView('AIBots')">AI Bots</button>
-  <button class="main-tab-btn" data-view="Portfolio" onclick="switchView('Portfolio')">Portfolio</button>
+  <button class="main-tab-btn" data-view="PortfolioManager" onclick="switchView('PortfolioManager')">Portfolio Manager</button>
   <button class="main-tab-btn" data-view="Optimizer" onclick="switchView('Optimizer')">Optimizer</button>
 </div>
 
@@ -664,12 +680,19 @@
   </div>
 </div><!-- /viewAIBots -->
 
-<!-- ═══════════════════ PORTFOLIO VIEW ═══════════════════ -->
-<div id="viewPortfolio" class="view-pane">
+<!-- ═══════════════════ PORTFOLIO MANAGER VIEW ═══════════════════ -->
+<div id="viewPortfolioManager" class="view-pane">
   <div class="research-intro">
-    <div><h2>Portfolio</h2><p>Exchange balances, allocation, margin exposure and saved performance history in USDT.</p></div>
+    <div><h2>Portfolio Manager</h2><p>Isolated spot research and paper trading in USDT, with exchange portfolio history below.</p></div>
     <button class="btn btn-neutral btn-sm" onclick="loadPortfolio(true)">Refresh &amp; save snapshot</button>
   </div>
+  <div class="portfolio-grid">
+    <section class="portfolio-panel wide"><h3>Managed paper portfolio</h3><div id="managerStatus" class="portfolio-note">Loading paper portfolio…</div><div id="managerMetrics" class="portfolio-metrics"></div><div id="managerHoldings"></div><p class="portfolio-note">Virtual balance and estimated fills are separate from exchange wallets and other bots. Real orders are disabled.</p></section>
+    <section class="portfolio-panel"><h3>Approved assets and budget</h3><div id="managerAssets"></div><div class="portfolio-controls"><label>Initial USDT<input id="managerBudget" type="number" min="1" step="0.01" value="200"></label><button class="btn btn-neutral btn-sm" onclick="startManagedPaper()">Start paper</button><button class="btn btn-neutral btn-sm" onclick="stopManagedPaper()">Stop</button></div><p class="portfolio-note">A saved paper portfolio keeps its original budget and universe. Restart requires an explicit Start.</p></section>
+    <section class="portfolio-panel"><h3>Historical validation</h3><div class="portfolio-controls"><label>History days<input id="managerDays" type="number" min="90" max="730" value="365"></label><button class="btn btn-neutral btn-sm" onclick="runManagedResearch()">Run research</button></div><div id="managerResearch" class="portfolio-note"></div><div id="managerResearchDetails"></div></section>
+    <section class="portfolio-panel wide"><h3>Allocation decisions and performance</h3><div id="managerEquity"></div><div id="managerDecisions"></div><div id="managerFills"></div></section>
+  </div>
+  <div class="research-intro"><div><h2>Exchange portfolio history</h2><p>Exchange balances and cash flows remain separate from managed paper capital.</p></div></div>
   <div id="portfolioStatus" class="hint" role="status" style="padding:12px 24px">Open this tab to load your portfolio.</div>
   <div class="portfolio-grid">
     <section class="portfolio-panel wide"><h3>Overview</h3><div id="portfolioMetrics" class="portfolio-metrics"></div><p id="portfolioValuationNote" class="portfolio-note"></p></section>
@@ -683,10 +706,10 @@
       <label>Note<input id="portfolioFlowNote" maxlength="120" placeholder="Optional"></label>
       <button class="btn btn-primary btn-sm" type="submit">Record</button>
     </form><div id="portfolioFlows"></div></section>
-    <section class="portfolio-panel"><h3>Allocation targets</h3><p class="portfolio-note">Spot assets only. Each target is at most 35%; keep at least 20% in USDT.</p><div id="portfolioTargetInputs"></div><button class="btn btn-neutral btn-sm" onclick="savePortfolioTargets()">Save targets</button></section>
+    <section class="portfolio-panel"><h3>Manual exchange allocation ideas</h3><p class="portfolio-note">Legacy manual ideas: each target is at most 35%; keep at least 20% in USDT. These settings do not control managed paper trading.</p><div id="portfolioTargetInputs"></div><button class="btn btn-neutral btn-sm" onclick="savePortfolioTargets()">Save targets</button></section>
     <section class="portfolio-panel wide"><h3>Indicative rebalance</h3><div id="portfolioRebalance"></div><p class="portfolio-note">Ideas are capped at 10% of spot value and 25% of the top five order-book levels. Estimates include fee and slippage assumptions. No orders are placed.</p></section>
   </div>
-</div><!-- /viewPortfolio -->
+</div><!-- /viewPortfolioManager -->
 
 <!-- ═══════════════════ OPTIMIZER VIEW ═══════════════════ -->
 <div id="viewOptimizer" class="view-pane">
@@ -773,7 +796,7 @@
         </div>
         <div class="opt-obj-option">
           <input type="radio" name="oObjective" id="oObjBalanced" value="balanced" onchange="saveOptimizerPrefs(); _onObjectiveChange()">
-          <label for="oObjBalanced">Balanced<span class="obj-sub">Weighted geometric mean of capped profit and win rate</span></label>
+          <label for="oObjBalanced">Balanced<span class="obj-sub">Maximize uncapped net P&amp;L after win rate and trade floors</span></label>
         </div>
         <div class="opt-obj-option">
           <input type="radio" name="oObjective" id="oObjLargeMove" value="large_move" onchange="saveOptimizerPrefs(); _onObjectiveChange()">
@@ -786,19 +809,11 @@
                style="width:70px;" onchange="saveOptimizerPrefs()">
       </div>
       <div id="oBalancedRow" style="display:none; margin-top:12px; align-items:center; gap:8px; flex-wrap:wrap;">
-        <label style="font-size:12px; color:var(--muted);">Balanced cap ($):</label>
-        <input type="number" id="oBalancedCap" value="100" min="0.1" max="5000" step="1"
-               style="width:70px;" onchange="saveOptimizerPrefs()">
-        <span class="obj-sub" style="font-size:11px;">Profit ($) treated as "maxed out" when scoring</span>
-      </div>
-      <div id="oBalancedWeightRow" style="display:none; margin-top:12px; flex-direction:column; gap:6px;">
-        <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--muted);">
-          <span>Win Rate</span>
-          <span id="oBalancedWeightLabel">Win Rate 50% · PnL 50%</span>
-          <span>PnL</span>
-        </div>
-        <input type="range" id="oBalancedWeight" min="5" max="95" step="5" value="50"
-               style="width:100%;" oninput="_updateBalancedWeightLabel('o')" onchange="saveOptimizerPrefs()">
+        <label for="oMinWinRate" style="font-size:12px; color:var(--muted);">Minimum win rate (%):</label>
+        <input type="number" id="oMinWinRate" value="50" min="0.1" max="100" step="0.1" style="width:75px;" onchange="saveOptimizerPrefs()">
+        <label for="oMinClosedTrades" style="font-size:12px; color:var(--muted);">Minimum closed trades:</label>
+        <input type="number" id="oMinClosedTrades" value="30" min="10" max="10000" step="1" style="width:75px;" onchange="saveOptimizerPrefs()">
+        <span class="obj-sub" style="font-size:11px;">Training candidates must meet both floors; eligible candidates rank by uncapped net P&amp;L.</span>
       </div>
     </div>
 
@@ -813,10 +828,12 @@
 
     <div class="tester-section">
       <h3>Run</h3>
+      <div class="hint">Estimate for the editable settings above</div>
       <div class="workload-preview" id="oWorkload" aria-live="polite"></div>
       <div class="workload-hint">Evaluation count is an upper estimate; early convergence can end the search sooner. Runtime depends on the machine and data fetch.</div>
       <div class="tester-run-bar">
         <button class="btn btn-primary" id="oRunBtn" onclick="runOptimizer()" style="padding:9px 20px">▶ Optimize</button>
+        <button class="btn btn-neutral btn-sm" id="oPauseBtn" onclick="toggleOptimizerPause()" title="Pauses after the current generation. A server restart interrupts the run." style="display:none">Ⅱ Pause</button>
         <button class="btn btn-danger btn-sm" id="oCancelBtn" onclick="cancelOptimizer()" style="display:none">■ Cancel</button>
         <span class="tester-run-note" id="oRunNote"></span>
       </div>
@@ -827,11 +844,12 @@
           <span id="oProgressCount"></span>
         </div>
       </div>
+      <div id="oCurrentRun" style="display:none"></div>
     </div>
 
     <div class="tester-section" id="oDeltaSection" style="display:none">
-      <h3>Convergence</h3>
-      <div class="hint">DE population convergence (delta) by generation. Search stops once delta drops to or below the target.</div>
+      <h3>Optimization Progress</h3>
+      <div class="hint">Convergence measures the spread of population scores; it can rise when their average approaches zero. The other plots show the best eligible candidate found by each generation.</div>
       <div id="oDeltaChart"></div>
     </div>
 
@@ -908,7 +926,7 @@
           </div>
           <div class="opt-obj-option">
             <input type="radio" name="otObjective" id="otObjBalanced" value="balanced" onchange="_otObjectiveChange()">
-            <label for="otObjBalanced">Balanced<span class="obj-sub">Weighted geometric mean of capped profit and win rate</span></label>
+            <label for="otObjBalanced">Balanced<span class="obj-sub">Maximize uncapped net P&amp;L after win rate and trade floors</span></label>
           </div>
           <div class="opt-obj-option">
             <input type="radio" name="otObjective" id="otObjLargeMove" value="large_move" onchange="_otObjectiveChange()">
@@ -920,18 +938,11 @@
           <input type="number" id="otMinPriceChange" value="5" min="0.1" max="100" step="0.5" style="width:70px;">
         </div>
         <div id="otBalancedRow" style="display:none;margin-top:12px;align-items:center;gap:8px;flex-wrap:wrap;">
-          <label style="font-size:12px;color:var(--muted);">Balanced cap ($):</label>
-          <input type="number" id="otBalancedCap" value="100" min="0.1" max="5000" step="1" style="width:70px;">
-          <span class="obj-sub" style="font-size:11px;">Profit ($) treated as "maxed out" when scoring</span>
-        </div>
-        <div id="otBalancedWeightRow" style="display:none;margin-top:12px;flex-direction:column;gap:6px;">
-          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);">
-            <span>Win Rate</span>
-            <span id="otBalancedWeightLabel">Win Rate 50% · PnL 50%</span>
-            <span>PnL</span>
-          </div>
-          <input type="range" id="otBalancedWeight" min="5" max="95" step="5" value="50"
-                 style="width:100%;" oninput="_updateBalancedWeightLabel('ot')">
+          <label for="otMinWinRate" style="font-size:12px;color:var(--muted);">Minimum win rate (%):</label>
+          <input type="number" id="otMinWinRate" value="50" min="0.1" max="100" step="0.1" style="width:75px;">
+          <label for="otMinClosedTrades" style="font-size:12px;color:var(--muted);">Minimum closed trades:</label>
+          <input type="number" id="otMinClosedTrades" value="30" min="10" max="10000" step="1" style="width:75px;">
+          <span class="obj-sub" style="font-size:11px;">Training candidates must meet both floors; held-out results appear below.</span>
         </div>
       </div>
 
@@ -950,6 +961,7 @@
         <div class="workload-hint">Evaluation count is an upper estimate; early convergence can end the search sooner. The test window is evaluated after training.</div>
         <div class="tester-run-bar">
           <button class="btn btn-primary" id="otRunBtn" onclick="runOptimizerTester()" style="padding:9px 20px">▶ Optimize &amp; Test</button>
+          <button class="btn btn-neutral btn-sm" id="otPauseBtn" onclick="toggleOptimizerTesterPause()" title="Pauses after the current generation. A server restart interrupts the run." style="display:none">Ⅱ Pause</button>
           <button class="btn btn-danger btn-sm" id="otCancelBtn" onclick="cancelOptimizerTester()" style="display:none">■ Cancel</button>
           <span class="tester-run-note" id="otRunNote"></span>
         </div>
@@ -963,8 +975,8 @@
       </div>
 
       <div class="tester-section" id="otDeltaSection" style="display:none">
-        <h3>Convergence</h3>
-        <div class="hint">DE population convergence (delta) by generation. Search stops once delta drops to or below the target.</div>
+        <h3>Optimization Progress</h3>
+        <div class="hint">Convergence measures the spread of population scores; it can rise when their average approaches zero. The other plots show the best eligible training candidate found by each generation.</div>
         <div id="otDeltaChart"></div>
       </div>
 
@@ -1013,6 +1025,7 @@
           <option value="">Loading available markets…</option>
         </select>
         <div class="market-hint" id="fSymbolHint"></div>
+        <button type="button" class="btn btn-neutral btn-sm" onclick="loadMarginMarkets(true)">Refresh leverage</button>
       </div>
       <div class="form-group">
         <label>Timeframe</label>
@@ -1050,8 +1063,9 @@
           <div class="market-hint" id="fCreditHint"></div>
         </div>
         <div class="form-group">
-          <label>Leverage</label>
+          <label>Leverage (whole-number ×)</label>
           <input type="number" id="fLeverage" value="5" min="1" max="100" step="1">
+          <div class="market-hint" id="fLeverageHint"></div>
         </div>
       </div>
     </div>
@@ -1104,6 +1118,7 @@
           <option value="">Loading available markets…</option>
         </select>
         <div class="market-hint" id="eSymbolHint"></div>
+        <button type="button" class="btn btn-neutral btn-sm" onclick="loadMarginMarkets(true)">Refresh leverage</button>
       </div>
       <div class="form-group">
         <label>Timeframe</label>
@@ -1140,8 +1155,9 @@
           <input type="number" id="eCredit" min="1" step="1">
         </div>
         <div class="form-group">
-          <label>Leverage</label>
+          <label>Leverage (whole-number ×)</label>
           <input type="number" id="eLeverage" min="1" max="100" step="1">
+          <div class="market-hint" id="eLeverageHint"></div>
         </div>
       </div>
       <div class="checkbox-row">
@@ -2065,7 +2081,6 @@ async function fetchWallet() {
     }
 
     const margin     = data.margin || {};
-    const spot       = data.spot   || {};
     const now        = new Date().toLocaleTimeString();
     const usdtAvail  = data.usdt_available ?? null;
     const usdtLocked = data.usdt_locked_in ?? null;
@@ -2099,22 +2114,9 @@ async function fetchWallet() {
 </div>`;
       }).join('');
 
-    // Spot section
-    const sItems = Object.entries(spot)
-      .filter(([, w]) => parseFloat(w.balance || 0) > 0)
-      .slice(0, 5)
-      .map(([cur, w]) => {
-        const bal = parseFloat(w.balance || 0);
-        return `<span class="wallet-currency">${cur.toUpperCase()}</span><span class="wallet-amount" style="margin-right:10px">${fmtWallet(bal)}</span>`;
-      }).join('');
-
     bar.innerHTML = `
       ${usdtSection || '<div class="wallet-error" style="color:var(--muted)">No margin (تعهدی) balance</div>'}
       ${mItems}
-      <div class="wallet-section">
-        <span class="wallet-tag spot">Spot</span>
-        ${sItems || '<span class="wallet-currency" style="color:var(--muted)">Empty</span>'}
-      </div>
       <div class="wallet-meta">
         <span class="wallet-updated">Updated ${now}</span>
         <button class="btn btn-neutral btn-sm" onclick="fetchWallet()">⟳</button>
@@ -2193,7 +2195,7 @@ function estimateOptimizerEta(job) {
   if (!job || job.status !== 'running' || !job.created_at || !job.iteration) return null;
   const cached = _etaCache[job.id];
   if (cached && cached.iteration === job.iteration) return cached.eta;
-  const elapsed = (Date.now() / 1000) - job.created_at;
+  const elapsed = (Date.now() / 1000) - job.created_at - (job.paused_seconds || 0);
   if (elapsed <= 0) return null;
   const secsPerGen = elapsed / job.iteration;
   const remainingGens = Math.max(0, (job.maxiter || 0) - job.iteration);
@@ -2248,6 +2250,7 @@ function openCreateModal(kind) {
   populateSymbolSelect('f', 'zecusdt');
   document.getElementById('createModal').classList.add('open');
   refreshCreateBudget();
+  loadMarginMarkets();
 }
 
 // Margin USDT budget for a new live bot ({available, committed, remaining}), or
@@ -2317,6 +2320,7 @@ function onPriceAIStrategyChange(prefix) {
   document.getElementById(`${prefix}PriceAIHint`).textContent = priceAI
     ? 'Price-only AI prototype. 1-hour or 4-hour candles; simulation orders only. Configure fee and slippage assumptions in Settings.'
     : agenticAI ? 'Specialist models analyze completed candles. Live trading requires positive cost assumptions and at most 5× leverage. Confidence is a cost-adjusted move probability, not a profit guarantee.' : '';
+  onMarketChange(prefix);
   if (prefix === 'f') refreshCreateBudget();
 }
 
@@ -2343,7 +2347,31 @@ function onAITimeframeChange(prefix) {
   });
 }
 
+function marketLeverageError(prefix) {
+  const requested = Number(document.getElementById(`${prefix}Leverage`).value);
+  if (!Number.isInteger(requested) || requested < 1 || requested > 100)
+    return 'Choose whole-number leverage from 1× to 100×.';
+  const option = document.getElementById(`${prefix}Symbol`)?.selectedOptions?.[0];
+  const limits = option && currentMarketLimits(option.value.toUpperCase());
+  const accountMax = limits ? marketBotMax(option, limits) : null;
+  const aiMax = document.getElementById(`${prefix}Strategy`).value === 'AgenticAI' ? 5 : 100;
+  const real = document.getElementById(`${prefix}ModeReal`)?.checked;
+  if (real && !limits) return 'Check current Nobitex leverage for this market before creating a real bot.';
+  if (real && accountMax == null) return 'No delegation capacity is currently available for every enabled trade direction.';
+  const allowed = Math.min(aiMax, accountMax == null ? 100 : Math.floor(accountMax));
+  if (requested > allowed)
+    return accountMax == null
+      ? `This AI bot supports at most ${allowed}× leverage.`
+      : `Current ${option.value.toUpperCase()} delegation allows up to ${accountMax}× across enabled directions; this bot supports whole numbers up to ${allowed}×.`;
+  return '';
+}
+
 async function submitCreate() {
+  if (document.getElementById('fModeReal')?.checked &&
+      !currentMarketLimits(document.getElementById('fSymbol').value.toUpperCase()))
+    await checkMarketLeverage('f', document.getElementById('fSymbol').value.toUpperCase());
+  const leverageError = marketLeverageError('f');
+  if (leverageError) { showToast(leverageError, 'error'); return; }
   const modeEl = document.querySelector('input[name="fMode"]:checked');
   if (modeEl && modeEl.value === 'real' && !validateCreateBudget()) {
     showToast(`Credit exceeds available margin USDT (${fmtWallet(_createBudget && _createBudget.remaining)} remaining)`, 'error');
@@ -2395,10 +2423,16 @@ function openEditModal(id) {
   onPriceAIStrategyChange('e');
   if (bot.strategy === 'AgenticAI') setAITimeframes('e', bot.ai_timeframes || [bot.timeframe, '240']);
   document.getElementById('editModal').classList.add('open');
+  loadMarginMarkets();
 }
 
 async function submitEdit() {
   if (!editingBotId) return;
+  if (document.getElementById('eModeReal')?.checked &&
+      !currentMarketLimits(document.getElementById('eSymbol').value.toUpperCase()))
+    await checkMarketLeverage('e', document.getElementById('eSymbol').value.toUpperCase());
+  const leverageError = marketLeverageError('e');
+  if (leverageError) { showToast(leverageError, 'error'); return; }
   const payload = {
     name:          document.getElementById('eName').value.trim(),
     symbol:        document.getElementById('eSymbol').value.trim(),
@@ -2786,6 +2820,7 @@ async function saveCredentials() {
     ['sToken', 'sPublicKey', 'sPrivateKey'].forEach(id => document.getElementById(id).value = '');
     showToast('Credentials saved', 'success');
     fetchWallet();
+    loadMarginMarkets(true);
   } catch (e) { showToast('Network error: ' + e, 'error'); }
 }
 
@@ -2881,15 +2916,15 @@ async function restoreResearchJob(kind) {
     const response = await apiFetch(`/api/${kind}/run/${encodeURIComponent(id)}`);
     if (!response.ok) throw new Error('Could not restore this run');
     const job = await response.json();
-    const running = ['pending', 'running'].includes(job.status);
+    const running = ['pending', 'running', 'pausing', 'paused'].includes(job.status);
     if (job.train_pct != null) {
       switchOptimizerSubTab('tester');
-      stopOptimizerTesterPolling(); optimizerTesterJobId = id; _setOptimizerTesterRunning(running);
+      stopOptimizerTesterPolling(); optimizerTesterJobId = id; _setOptimizerTesterRunning(running, job.status, job.pause_supported === true);
       renderOptimizerTesterProgress(job); renderOptimizerTesterResults(job);
       if (running) pollOptimizerTester();
     } else {
       switchOptimizerSubTab('optimizer');
-      stopOptimizerPolling(); optimizerJobId = id; _setOptimizerRunning(running);
+      stopOptimizerPolling(); optimizerJobId = id; _setOptimizerRunning(running, job.status, job.pause_supported === true);
       renderOptimizerProgress(job); renderOptimizerResults(job);
       if (running) pollOptimizer();
     }
@@ -3012,19 +3047,80 @@ async function saveExecutionSettings(event) {
 
 // ── Margin Markets ────────────────────────────────────────────────────────────
 let marginMarkets = [];
+let marginMarketsSource = 'unavailable';
+let marketLeverageCache = {};
+let marketLeveragePending = {};
+let marketLeverageGeneration = 0;
+const marketLeverageTimers = {};
 
-async function loadMarginMarkets() {
+function currentMarketLimits(symbol) {
+  const entry = marketLeverageCache[symbol];
+  return entry && entry.expiresAt > Date.now() ? entry.data : null;
+}
+
+function marketBotMax(option, limits) {
+  const sides = [];
+  if (option.dataset.buy === 'true') sides.push(limits.buyMax);
+  if (option.dataset.sell === 'true') sides.push(limits.sellMax);
+  return sides.length && sides.every(value => Number.isFinite(value) && value >= 1)
+    ? Math.min(...sides) : null;
+}
+
+function marketOptionText(option) {
+  const symbol = option.value.toUpperCase();
+  const market = marginMarkets.find(item => item.symbol === symbol);
+  const dst = market?.dstCurrency?.toUpperCase() || '';
+  const buy = option.dataset.buy === 'true';
+  const sell = option.dataset.sell === 'true';
+  const dir = buy && sell ? 'Long & Short' : buy ? 'Long only' : 'Short only';
+  const limits = currentMarketLimits(symbol);
+  const checked = limits
+    ? `long ${buy ? `${limits.buyMax ?? 'unavailable'}×` : 'off'} / short ${sell ? `${limits.sellMax ?? 'unavailable'}×` : 'off'}`
+    : 'select to check leverage';
+  return `${symbol} (${dst}) · ${dir} · ${checked}`;
+}
+
+async function checkMarketLeverage(prefix, symbol) {
+  if (!marketLeveragePending[symbol]) {
+    const generation = marketLeverageGeneration;
+    marketLeveragePending[symbol] = (async () => {
+      try {
+        const res = await apiFetch(`/api/margin-markets/${encodeURIComponent(symbol)}/leverage`);
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || 'Nobitex leverage check failed');
+        if (generation === marketLeverageGeneration)
+          marketLeverageCache[symbol] = {data, expiresAt: Date.now() + 30000};
+      } catch (error) {
+        if (generation === marketLeverageGeneration)
+          marketLeverageCache[symbol] = {error: error.message, expiresAt: Date.now() + 15000};
+      } finally {
+        if (generation === marketLeverageGeneration) delete marketLeveragePending[symbol];
+      }
+    })();
+  }
+  await marketLeveragePending[symbol];
+  if (document.getElementById(`${prefix}Symbol`)?.value.toUpperCase() === symbol)
+    onMarketChange(prefix);
+}
+
+async function loadMarginMarkets(force = false) {
+  if (force) {
+    marketLeverageGeneration++;
+    marketLeverageCache = {};
+    marketLeveragePending = {};
+  }
+  const createSymbol = document.getElementById('fSymbol')?.value || 'zecusdt';
+  const editSymbol = document.getElementById('eSymbol')?.value || '';
   try {
     const res  = await apiFetch('/api/margin-markets');
     const data = await res.json();
-    if (data.ok && data.markets.length) {
-      marginMarkets = data.markets;
-      if (data.source === 'fallback')
-        showToast('Using cached symbol list — connect exchange for live data', 'info');
-    }
-  } catch (_) {}
-  // Populate create modal with default selection
-  populateSymbolSelect('f', 'zecusdt');
+    marginMarkets = data.ok ? data.markets || [] : [];
+    marginMarketsSource = data.ok ? data.source : 'unavailable';
+    if (marginMarketsSource === 'fallback')
+      showToast('Using a reference symbol list; account leverage limits are unverified', 'info');
+  } catch (_) { marginMarkets = []; marginMarketsSource = 'unavailable'; }
+  populateSymbolSelect('f', createSymbol);
+  populateSymbolSelect('e', editSymbol);
 }
 
 function populateSymbolSelect(prefix, defaultSymbol) {
@@ -3033,6 +3129,8 @@ function populateSymbolSelect(prefix, defaultSymbol) {
 
   if (!marginMarkets.length) {
     sel.innerHTML = '<option value="">No markets available — check connection</option>';
+    document.getElementById(`${prefix}SymbolHint`).textContent = 'Account leverage limits are unavailable.';
+    document.getElementById(`${prefix}LeverageHint`).textContent = 'Refresh account limits before placing a real trade.';
     return;
   }
 
@@ -3042,9 +3140,9 @@ function populateSymbolSelect(prefix, defaultSymbol) {
               : m.buyEnabled  ? 'Long only'
               : 'Short only';
     const dst = m.dstCurrency.toUpperCase();
-    const label = `${m.symbol} (${dst}) · ${dir} · max ${m.maxLeverage}×`;
+    const label = `${m.symbol} (${dst}) · ${dir} · select to check leverage`;
     const selected = m.symbol.toLowerCase() === defaultLower ? 'selected' : '';
-    return `<option value="${m.symbol.toLowerCase()}" data-max-lev="${m.maxLeverage}" data-buy="${m.buyEnabled}" data-sell="${m.sellEnabled}" data-fee="${m.feeRate}" ${selected}>${label}</option>`;
+    return `<option value="${m.symbol.toLowerCase()}" data-buy="${m.buyEnabled}" data-sell="${m.sellEnabled}" data-fee="${m.feeRate}" ${selected}>${label}</option>`;
   }).join('');
 
   // Trigger hint update for the currently selected option
@@ -3055,18 +3153,23 @@ function onMarketChange(prefix) {
   const sel    = document.getElementById(`${prefix}Symbol`);
   const hint   = document.getElementById(`${prefix}SymbolHint`);
   const levEl  = document.getElementById(`${prefix}Leverage`);
-  if (!sel || !sel.selectedOptions.length) return;
+  const levHint = document.getElementById(`${prefix}LeverageHint`);
+  if (!sel || !sel.selectedOptions || !sel.selectedOptions.length) return;
 
   const opt    = sel.selectedOptions[0];
-  const maxLev = parseInt(opt.dataset.maxLev || 5);
+  const symbol = opt.value.toUpperCase();
+  const entry = marketLeverageCache[symbol];
+  const limits = currentMarketLimits(symbol);
+  const maxLev = limits ? marketBotMax(opt, limits) : null;
   const buy    = opt.dataset.buy === 'true';
   const sell   = opt.dataset.sell === 'true';
-  const fee    = opt.dataset.fee  || '0.001';
+  const fee    = opt.dataset.fee;
 
-  // Clamp leverage to market max
+  const aiCap = document.getElementById(`${prefix}Strategy`)?.value === 'AgenticAI' ? 5 : 100;
+  const botMax = Math.min(aiCap, maxLev == null ? 100 : Math.floor(maxLev));
   if (levEl) {
-    levEl.max = maxLev;
-    if (parseInt(levEl.value) > maxLev) levEl.value = maxLev;
+    levEl.max = botMax;
+    if (Number(levEl.value) > botMax) levEl.value = botMax;
   }
 
   // Direction badge
@@ -3075,8 +3178,24 @@ function onMarketChange(prefix) {
   else if (buy)    dirHtml = `<span class="dir-long">↑ Long only</span>`;
   else             dirHtml = `<span class="dir-short">↓ Short only</span>`;
 
-  const feeStr = (parseFloat(fee) * 100).toFixed(2);
-  if (hint) hint.innerHTML = `${dirHtml} &nbsp;·&nbsp; Max leverage: <strong>${maxLev}×</strong> &nbsp;·&nbsp; <span class="fee">Fee: ${feeStr}%/day</span>`;
+  const sideText = limits
+    ? `Nobitex currently allows ${buy ? `long up to <strong>${limits.buyMax ?? 'unavailable'}×</strong>` : ''}${buy && sell ? ' / ' : ''}${sell ? `short up to <strong>${limits.sellMax ?? 'unavailable'}×</strong>` : ''}`
+    : entry?.error && entry.expiresAt > Date.now()
+      ? `Leverage check failed: ${escHtml(entry.error)}`
+      : 'Checking this market’s current Nobitex leverage…';
+  const feeText = marginMarketsSource === 'live_auth' && Number.isFinite(Number(fee))
+    ? ` &nbsp;·&nbsp; <span class="fee">Renewal fee: ${(Number(fee) * 100).toFixed(2)}%/day</span>` : '';
+  if (hint) hint.innerHTML = `${dirHtml} &nbsp;·&nbsp; ${sideText}${feeText}`;
+  if (levHint) levHint.textContent = limits
+    ? `This ${aiCap === 5 ? 'Agentic AI ' : ''}bot accepts whole-number leverage up to ${botMax}× across enabled directions. Margin wallet balance and order size can further limit a trade.`
+    : 'Select a market to check current leverage. A real bot needs a successful check.';
+  for (const item of sel.options) item.textContent = marketOptionText(item);
+  opt.textContent = marketOptionText(opt);
+  const modal = document.getElementById(prefix === 'f' ? 'createModal' : 'editModal');
+  if (modal?.classList?.contains('open') && (!entry || entry.expiresAt <= Date.now()) && !marketLeveragePending[symbol]) {
+    clearTimeout(marketLeverageTimers[prefix]);
+    marketLeverageTimers[prefix] = setTimeout(() => checkMarketLeverage(prefix, symbol), 350);
+  }
 }
 
 function switchView(view) {
@@ -3085,7 +3204,7 @@ function switchView(view) {
   document.getElementById('view' + view).classList.add('active');
   document.querySelector(`.main-tab-btn[data-view="${view}"]`).classList.add('active');
   if (view === 'Optimizer') initOptimizerTab();
-  if (view === 'Portfolio') loadPortfolio();
+  if (view === 'PortfolioManager') loadPortfolio();
 }
 
 // ═══════════════════ PORTFOLIO TAB ═══════════════════
@@ -3143,6 +3262,7 @@ async function loadPortfolio(saveSnapshot = false) {
     const response = await apiFetch('/api/portfolio');
     if (!response.ok) throw new Error('Portfolio unavailable');
     renderPortfolio(await response.json());
+    await loadPortfolioManager();
   } catch (error) { document.getElementById('portfolioStatus').textContent = String(error); }
 }
 async function savePortfolioFlow(event) {
@@ -3168,6 +3288,80 @@ async function savePortfolioTargets() {
   document.querySelectorAll('.portfolio-target').forEach(el => { targets[el.dataset.asset] = Number(el.value)/100; });
   const response = await apiFetch('/api/portfolio/targets', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({targets})});
   if (response.ok) await loadPortfolio(); else showToast((await response.json()).error || 'Invalid targets', 'error');
+}
+function selectedManagedAssets() {
+  return [...document.querySelectorAll('.manager-asset:checked')].map(input => input.value);
+}
+function renderPortfolioManager(data) {
+  const paper = data.paper;
+  document.getElementById('managerStatus').textContent = paper
+    ? (paper.running ? 'Paper trading running' : 'Paper trading stopped') + (data.paper_error ? ' · ' + data.paper_error : '')
+    : 'No managed paper portfolio yet';
+  const selected = paper?.assets || data.approved_assets || [];
+  document.getElementById('managerAssets').innerHTML = (data.approved_assets || []).map(asset =>
+    `<label style="display:inline-flex;align-items:center;gap:4px;margin:4px 9px 4px 0;font-size:12px"><input class="manager-asset" type="checkbox" value="${escHtml(asset)}" ${selected.includes(asset) ? 'checked' : ''} ${paper ? 'disabled' : ''}>${escHtml(asset)}</label>`).join('');
+  if (paper) document.getElementById('managerBudget').value = paper.budget_usdt;
+  const latest = paper?.equity?.at(-1);
+  const capital = Number(paper?.budget_usdt || 200);
+  document.getElementById('managerMetrics').innerHTML = paper ? [
+    ['Marked equity', portfolioMoney(latest?.equity_usdt ?? capital)],
+    ['Virtual cash', portfolioMoney(paper.cash_usdt)],
+    ['Net P&L', portfolioMoney((latest?.equity_usdt ?? capital) - capital - Number(paper.flow_offset_usdt || 0))],
+    ['Drawdown', portfolioPercent(latest?.drawdown_pct ?? 0)],
+    ['Estimated fills', String(paper.fills?.length || 0)]
+  ].map(([label,value]) => `<div class="portfolio-metric"><strong>${value}</strong><span>${label}</span></div>`).join('') : '';
+  document.getElementById('managerHoldings').textContent = paper
+    ? 'Holdings: ' + (Object.entries(paper.holdings || {}).filter(([, qty]) => Number(qty) > 0)
+      .map(([asset, qty]) => `${asset} ${Number(qty).toPrecision(6)}`).join(', ') || '100% USDT') : '';
+  const status = data.research_status || {};
+  const research = data.research;
+  document.getElementById('managerResearch').textContent = status.status === 'failed'
+    ? 'Research failed: ' + status.error : status.status === 'running' ? 'Research running on public spot data…'
+    : research ? `Validation ${research.validation_outcome?.passed ? 'passed stated criteria' : 'inconclusive or failed criteria'}. Selected ${research.selected}; untouched test ${portfolioPercent(research.test.return_pct)}, drawdown ${portfolioPercent(research.test.max_drawdown_pct)}; stressed return ${portfolioPercent(research.stress.return_pct)}. Cash ${portfolioPercent(research.benchmarks.usdt.return_pct)}, equal basket ${portfolioPercent(research.benchmarks.basket.return_pct)}, momentum ${portfolioPercent(research.benchmarks.momentum.return_pct)}. Historical fills use assumed costs and liquidity.`
+    : 'Run chronological validation before judging a model or starting paper decisions.';
+  const folds = research?.validation?.[research.selected] || [];
+  document.getElementById('managerResearchDetails').innerHTML = research ?
+    `<p class="portfolio-note">Validation folds: ${folds.map(f => portfolioPercent(f.return_pct)).join(', ')}. Forecast MAE by horizon: ${Object.entries(research.forecast_quality || {}).map(([h, q]) => `${escHtml(h)}h ${Number(q.return_mae_bps).toFixed(1)} bps`).join(', ')}.</p><p class="portfolio-note">Eligible venue pairs: ${Object.values(research.data_quality || {}).filter(a => a.eligible).length}. <a href="/api/portfolio-manager/research/report" target="_blank" rel="noopener">Inspect full report, source audits and fills</a> · <a href="/api/portfolio-manager/research/experiments" target="_blank" rel="noopener">Prior runs</a></p>` : '';
+  document.getElementById('managerDecisions').innerHTML = (paper?.decisions || []).slice(-8).reverse().map(decision =>
+    `<div class="portfolio-note">${escHtml(decision.at || '')} · ${escHtml(decision.reason || '')}</div>`).join('') || '<p class="portfolio-note">No paper decisions yet.</p>';
+  document.getElementById('managerFills').innerHTML = (paper?.fills || []).slice(-8).reverse().map(fill =>
+    `<div class="portfolio-note">Estimated ${escHtml(fill.side)} ${escHtml(fill.asset)} · ${portfolioMoney(fill.filled_usdt)} · fee ${portfolioMoney(fill.fee_usdt)}</div>`).join('');
+  const points = (paper?.equity || []).filter(p => p.complete && Number.isFinite(Number(p.equity_usdt))).slice(-300);
+  if (points.length > 1) {
+    const values = points.map(p => Number(p.equity_usdt));
+    const low = Math.min(...values), high = Math.max(...values), span = Math.max(high-low, 1);
+    const path = values.map((v, i) => `${i ? 'L' : 'M'}${(i*900/(values.length-1)).toFixed(1)},${(145-(v-low)/span*125).toFixed(1)}`).join(' ');
+    document.getElementById('managerEquity').innerHTML = `<svg viewBox="0 0 900 165" role="img" aria-label="Managed paper equity in USDT" style="width:100%;height:165px"><path d="${path}" fill="none" stroke="var(--accent)" stroke-width="2.5"/></svg><p class="portfolio-note">${points.length} recent marked observations; liquidation estimates include current bids and fees.</p>`;
+  } else document.getElementById('managerEquity').textContent = 'Equity history appears after two paper observations.';
+}
+async function loadPortfolioManager() {
+  try {
+    const response = await apiFetch('/api/portfolio-manager');
+    if (!response.ok) throw new Error('Portfolio manager unavailable');
+    const data = await response.json();
+    renderPortfolioManager(data);
+    if ((data.paper?.running || data.research_status?.status === 'running') && !managerRefreshTimer) {
+      managerRefreshTimer = setTimeout(() => { managerRefreshTimer = null; loadPortfolioManager(); }, 30000);
+    }
+  } catch (error) { document.getElementById('managerStatus').textContent = String(error); }
+}
+let managerRefreshTimer = null;
+async function managedAction(path, payload) {
+  const response = await apiFetch(path, {method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(payload || {})});
+  if (!response.ok) { showToast((await response.json()).error || 'Portfolio manager request failed', 'error'); return; }
+  await loadPortfolioManager();
+}
+async function startManagedPaper() {
+  const assets = selectedManagedAssets();
+  await managedAction('/api/portfolio-manager/paper/start', {
+    assets, budget_usdt:Number(document.getElementById('managerBudget').value)});
+}
+async function stopManagedPaper() { await managedAction('/api/portfolio-manager/paper/stop'); }
+async function runManagedResearch() {
+  await managedAction('/api/portfolio-manager/research', {
+    assets:selectedManagedAssets(), days:Number(document.getElementById('managerDays').value),
+    budget_usdt:Number(document.getElementById('managerBudget').value)});
 }
 // ═══════════════════ OPTIMIZER TAB ═══════════════════
 let optimizerConfig = {};
@@ -3225,9 +3419,8 @@ function populateOptimizerControls() {
   const objEl = document.querySelector(`input[name="oObjective"][value="${savedObj}"]`);
   if (objEl) objEl.checked = true;
   if (optimizerConfig.min_price_change != null) document.getElementById('oMinPriceChange').value = optimizerConfig.min_price_change;
-  if (optimizerConfig.balanced_cap     != null) document.getElementById('oBalancedCap').value     = optimizerConfig.balanced_cap;
-  if (optimizerConfig.balanced_weight  != null) document.getElementById('oBalancedWeight').value   = Math.round(optimizerConfig.balanced_weight * 100);
-  _updateBalancedWeightLabel('o');
+  if (optimizerConfig.min_win_rate != null) document.getElementById('oMinWinRate').value = optimizerConfig.min_win_rate;
+  if (optimizerConfig.min_closed_trades != null) document.getElementById('oMinClosedTrades').value = optimizerConfig.min_closed_trades;
   _onObjectiveChange();
 
   // CPU-cores select: "Auto" (0) plus 1..max_cores. Auto shows what it resolves to.
@@ -3341,7 +3534,7 @@ function updateOptimizerNote() {
   const workload = _optimizerWorkload(document.getElementById('oCandles').value,
     document.getElementById('oMaxiter').value, cores, n);
   _renderWorkload(document.getElementById('oWorkload'), workload);
-  note.textContent = `Searching ${n} inputs. One market data fetch, then CPU backtests.`;
+  note.textContent = `Next run: search ${n} inputs. One market data fetch, then CPU backtests.`;
 }
 
 function saveOptimizerPrefs() {
@@ -3360,17 +3553,6 @@ function _onObjectiveChange() {
   if (row) row.style.display = checked === 'large_move' ? 'flex' : 'none';
   const balRow = document.getElementById('oBalancedRow');
   if (balRow) balRow.style.display = checked === 'balanced' ? 'flex' : 'none';
-  const weightRow = document.getElementById('oBalancedWeightRow');
-  if (weightRow) weightRow.style.display = checked === 'balanced' ? 'flex' : 'none';
-}
-
-function _updateBalancedWeightLabel(prefix) {
-  const slider = document.getElementById(prefix + 'BalancedWeight');
-  const label = document.getElementById(prefix + 'BalancedWeightLabel');
-  if (!slider || !label) return;
-  const pnlPct = parseInt(slider.value, 10) || 50;
-  const wrPct = 100 - pnlPct;
-  label.textContent = `Win Rate ${wrPct}% \u00b7 PnL ${pnlPct}%`;
 }
 
 function _optimizerPayload() {
@@ -3385,8 +3567,8 @@ function _optimizerPayload() {
     maxiter:          parseInt(document.getElementById('oMaxiter')?.value) || 30,
     objective:        document.querySelector('input[name="oObjective"]:checked')?.value || 'profit',
     min_price_change: parseFloat(document.getElementById('oMinPriceChange')?.value) || 5,
-    balanced_cap:     parseFloat(document.getElementById('oBalancedCap')?.value) || 100,
-    balanced_weight:  (parseFloat(document.getElementById('oBalancedWeight')?.value) || 50) / 100,
+    min_win_rate:     Number(document.getElementById('oMinWinRate')?.value),
+    min_closed_trades: Number(document.getElementById('oMinClosedTrades')?.value),
     custom_bounds:    _getCustomBounds(),
   };
 }
@@ -3414,16 +3596,33 @@ async function runOptimizer() {
     optimizerJobId = data.job_id;
     _candleWarnShown = false;
     document.getElementById('oResults').innerHTML = '';
+    document.getElementById('oResults')._lastResultRevision = null;
     destroyOptCharts();
-    _setOptimizerRunning(true);
+    _setOptimizerRunning(true, 'pending', false);
     pollOptimizer();
   } catch (e) { showToast('Network error: ' + e, 'error'); }
 }
 
-function _setOptimizerRunning(running) {
+function _setOptimizerRunning(running, status='running', pauseSupported=false) {
   document.getElementById('oRunBtn').style.display    = running ? 'none' : '';
   document.getElementById('oCancelBtn').style.display = running ? '' : 'none';
+  const pauseBtn = document.getElementById('oPauseBtn');
+  pauseBtn.style.display = running && pauseSupported ? '' : 'none';
+  pauseBtn.dataset.status = status;
+  pauseBtn.textContent = ['pausing', 'paused'].includes(status) ? '▶ Resume' : 'Ⅱ Pause';
   if (running) document.getElementById('oProgressWrap').style.display = '';
+}
+
+async function toggleOptimizerPause() {
+  if (!optimizerJobId) return;
+  const paused = ['pausing', 'paused'].includes(document.getElementById('oPauseBtn').dataset.status);
+  const action = paused ? 'resume' : 'pause';
+  try {
+    const response = await apiFetch(`/api/optimizer/run/${optimizerJobId}/${action}`, {method:'POST'});
+    if (!response.ok) throw new Error((await response.json()).error || `Could not ${action} run`);
+    _setOptimizerRunning(true, paused ? 'running' : 'pausing', true);
+    showToast(paused ? 'Resuming optimization…' : 'Pausing after the current generation…', 'info');
+  } catch (error) { showToast(error.message, 'error'); }
 }
 
 // ── Delta convergence chart (shared by Optimizer + Optimizer Tester tabs) ──────
@@ -3442,68 +3641,60 @@ function fmtDelta(v) {
   return v.toExponential(1);
 }
 
-function buildDeltaChartSVG(history, tol, scale) {
-  const isLog = scale === 'log';
-  const pts = (history || []).filter(h => h.delta != null && (!isLog || h.delta > 0));
-  if (pts.length < 2) return null;
+function buildMetricChartSVG(history, key, {scale='linear', target=null, zero=false, nonnegative=false, range=null, color='var(--accent)', format=fmtDelta}={}) {
+  const all = history || [];
+  const log = scale === 'log';
+  const pts = all.filter(h => h[key] != null && Number.isFinite(Number(h[key])) && (!log || h[key] > 0));
+  if (!pts.length) return null;
 
-  const W = 600, H = 260, padL = 46, padR = 12, padT = 12, padB = 22;
+  const W = 600, H = 190, padL = 58, padR = 12, padT = 12, padB = 22;
   const plotW = W - padL - padR, plotH = H - padT - padB;
-
-  const xMin = pts[0].iteration, xMax = pts[pts.length - 1].iteration;
-  const xSpan = (xMax - xMin) || 1;
-
-  const valueOf = p => isLog ? Math.log10(p.delta) : p.delta;
-  const tolValue = isLog ? Math.log10(tol) : tol;
+  const xMin = Number(all[0]?.iteration ?? pts[0].iteration);
+  const xMax = Number(all[all.length - 1]?.iteration ?? pts[pts.length - 1].iteration);
+  const xSpan = Math.max(1, xMax - xMin);
+  const valueOf = p => log ? Math.log10(Number(p[key])) : Number(p[key]);
   const values = pts.map(valueOf);
-  let yMin = Math.min(...values, tolValue);
-  let yMax = Math.max(...values, tolValue);
-  const spanPad = (yMax - yMin) * 0.12 || (isLog ? 0.5 : tol);
-  yMin -= spanPad; yMax += spanPad;
-  const ySpan = (yMax - yMin) || 1;
-
+  const targetValue = target != null && (!log || target > 0) ? (log ? Math.log10(target) : target) : null;
+  let yMin = range ? range[0] : Math.min(...values, ...(targetValue == null ? [] : [targetValue]), ...(zero ? [0] : []));
+  let yMax = range ? range[1] : Math.max(...values, ...(targetValue == null ? [] : [targetValue]), ...(zero ? [0] : []));
+  if (!range) {
+    const pad = (yMax - yMin) * 0.1 || (log ? 0.5 : Math.max(1, Math.abs(yMax) * 0.1));
+    yMin -= pad; yMax += pad;
+    if (nonnegative && !log) yMin = Math.max(0, yMin);
+  }
+  const ySpan = Math.max(1e-12, yMax - yMin);
   const xAt = i => padL + ((i - xMin) / xSpan) * plotW;
   const yAt = v => padT + (1 - (v - yMin) / ySpan) * plotH;
-  const toAxisVal = v => isLog ? Math.pow(10, v) : v;
-
+  const fmtAxis = v => format(log ? Math.pow(10, v) : v);
   const linePts = pts.map(p => `${xAt(p.iteration).toFixed(1)},${yAt(valueOf(p)).toFixed(1)}`).join(' ');
-
   const last = pts[pts.length - 1];
-  const lastColor = deltaColorFor(last.delta, tol);
-  const tolY = yAt(tolValue);
-  const dataMax = Math.max(...values), dataMin = Math.min(...values);
-
-  // Light background grid: a handful of evenly-spaced rows/columns behind the data.
-  const GRID_ROWS = 4, GRID_COLS = 6;
-  const hGrid = Array.from({ length: GRID_ROWS + 1 }, (_, i) => {
-    const y = padT + (plotH / GRID_ROWS) * i;
-    return `<line x1="${padL.toFixed(1)}" y1="${y.toFixed(1)}" x2="${(padL + plotW).toFixed(1)}" y2="${y.toFixed(1)}" stroke="var(--border)" stroke-width="0.5" opacity="0.5" />`;
+  const grid = Array.from({length: 5}, (_, i) => {
+    const y = padT + plotH * i / 4;
+    return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${padL + plotW}" y2="${y.toFixed(1)}" stroke="var(--border)" opacity="0.6" />`;
   }).join('');
-  const vGrid = Array.from({ length: GRID_COLS + 1 }, (_, i) => {
-    const x = padL + (plotW / GRID_COLS) * i;
-    return `<line x1="${x.toFixed(1)}" y1="${padT.toFixed(1)}" x2="${x.toFixed(1)}" y2="${(padT + plotH).toFixed(1)}" stroke="var(--border)" stroke-width="0.5" opacity="0.5" />`;
-  }).join('');
-
-  return `
-    <svg class="delta-chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
-      <rect x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" fill="none" stroke="var(--border)" />
-      ${hGrid}
-      ${vGrid}
-      <line x1="${padL.toFixed(1)}" y1="${tolY.toFixed(1)}" x2="${(padL + plotW).toFixed(1)}" y2="${tolY.toFixed(1)}"
-            stroke="var(--green)" stroke-width="1" stroke-dasharray="4,3" opacity="0.7" />
-      <text x="${(padL + plotW - 2).toFixed(1)}" y="${(tolY - 4).toFixed(1)}" text-anchor="end" fill="var(--green)">target ${fmtDelta(tol)}</text>
-      <polyline points="${linePts}" fill="none" stroke="var(--accent)" stroke-width="1" stroke-linejoin="round" stroke-linecap="round" />
-      <circle cx="${xAt(last.iteration).toFixed(1)}" cy="${yAt(valueOf(last)).toFixed(1)}" r="4" fill="${lastColor}" stroke="var(--surface)" stroke-width="1.5" />
-      <text x="${(padL - 4).toFixed(1)}" y="${(yAt(dataMax) + 3).toFixed(1)}" text-anchor="end">${fmtDelta(toAxisVal(dataMax))}</text>
-      <text x="${(padL - 4).toFixed(1)}" y="${(yAt(dataMin) + 3).toFixed(1)}" text-anchor="end">${fmtDelta(toAxisVal(dataMin))}</text>
-      <text x="${padL.toFixed(1)}" y="${(H - 6).toFixed(1)}" text-anchor="start">gen ${xMin}</text>
-      <text x="${(padL + plotW).toFixed(1)}" y="${(H - 6).toFixed(1)}" text-anchor="end">gen ${xMax}</text>
-    </svg>`;
+  const targetLine = targetValue == null ? '' : `<line x1="${padL}" y1="${yAt(targetValue).toFixed(1)}" x2="${padL + plotW}" y2="${yAt(targetValue).toFixed(1)}" stroke="var(--green)" stroke-dasharray="4,3" opacity="0.8" />`;
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="${key} by generation">
+    ${grid}<rect x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" fill="none" stroke="var(--border)" />
+    ${targetLine}<polyline points="${linePts}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+    <circle cx="${xAt(last.iteration).toFixed(1)}" cy="${yAt(valueOf(last)).toFixed(1)}" r="4" fill="${color}" />
+    <text x="${padL - 5}" y="${yAt(yMax).toFixed(1)}" text-anchor="end" dominant-baseline="middle">${fmtAxis(yMax)}</text>
+    <text x="${padL - 5}" y="${yAt(yMin).toFixed(1)}" text-anchor="end" dominant-baseline="middle">${fmtAxis(yMin)}</text>
+    <text x="${padL}" y="${H - 5}">gen ${xMin}</text>
+    <text x="${padL + plotW}" y="${H - 5}" text-anchor="end">gen ${xMax}</text>
+  </svg>`;
 }
 
 function setDeltaScale(chartId, scale) {
   _deltaScale[chartId] = scale;
   renderDeltaCard(chartId.replace('Chart', 'Section'), chartId, _deltaLastJob[chartId]);
+}
+
+function setHtmlWhenChanged(element, html) {
+  // Comparing innerHTML reads the browser's normalized markup, which may differ
+  // from the string we generated. Keep the last input instead.
+  if (element._lastRenderedHtml === html) return;
+  element.innerHTML = html;
+  element._lastRenderedHtml = html;
 }
 
 function renderDeltaCard(sectionId, chartId, job) {
@@ -3515,23 +3706,89 @@ function renderDeltaCard(sectionId, chartId, job) {
   section.style.display = '';
   const tol = job.delta_tol != null ? job.delta_tol : 0.01;
   const scale = _deltaScale[chartId] || 'linear';
-  const svg = buildDeltaChartSVG(job.history, tol, scale);
-  const curColor = deltaColorFor(job.current_delta, tol);
-  chart.innerHTML = `
-    <div class="delta-card-head">
-      <div>
-        <span class="val" style="color:${curColor}">${fmtDelta(job.current_delta)}</span>
-        <span class="sub">gen ${job.iteration}/${job.maxiter} · target ≤ ${fmtDelta(tol)}</span>
-      </div>
-      <div class="delta-scale-toggle">
-        <button class="btn-scale ${scale === 'linear' ? 'active' : ''}" onclick="setDeltaScale('${chartId}','linear')">Linear</button>
-        <button class="btn-scale ${scale === 'log' ? 'active' : ''}" onclick="setDeltaScale('${chartId}','log')">Log</button>
-      </div>
-    </div>
-    ${svg || '<div class="delta-chart-empty">Waiting for enough generations to plot…</div>'}`;
+  const history = job.history || [];
+  const lastBest = [...history].reverse().find(h => h.pnl != null);
+  const metrics = [
+    {key:'delta', title:'Convergence', value:fmtDelta(job.current_delta), color:'var(--accent)',
+      options:{scale, target:tol, nonnegative:true, color:'var(--accent)'}, empty:'Waiting for the first generation'},
+    {key:'pnl', title:'Best net P&L', value:lastBest ? `$${Number(lastBest.pnl).toFixed(2)}` : '—', color:'var(--green)',
+      options:{zero:true, color:'var(--green)', format:v => '$'+v.toFixed(2)}, empty:'No eligible candidate yet'},
+    {key:'win_rate', title:'Win rate', value:lastBest ? `${Number(lastBest.win_rate).toFixed(1)}%` : '—', color:'var(--yellow)',
+      options:{range:[0,100], color:'var(--yellow)', format:v => v.toFixed(0)+'%'}, empty:'No eligible candidate yet'},
+    {key:'trade_count', title:'Closed trades', value:lastBest ? String(lastBest.trade_count) : '—', color:'var(--text)',
+      options:{zero:true, nonnegative:true, color:'var(--text)', format:v => v.toFixed(0)}, empty:'No eligible candidate yet'},
+  ];
+  setHtmlWhenChanged(chart, `<div class="optimizer-metrics">${metrics.map(metric => {
+    const svg = buildMetricChartSVG(history, metric.key, metric.options);
+    const controls = metric.key === 'delta' ? `<div class="optimizer-metric-controls">
+      <button class="btn-scale ${scale === 'linear' ? 'active' : ''}" onclick="setDeltaScale('${chartId}','linear')">Linear</button>
+      <button class="btn-scale ${scale === 'log' ? 'active' : ''}" onclick="setDeltaScale('${chartId}','log')">Log</button>
+      </div>` : '';
+    return `<div class="optimizer-metric"><div class="optimizer-metric-head"><strong>${metric.title}</strong>
+      <span style="color:${metric.color}">${metric.value}</span></div>${controls}
+      ${svg || `<div class="optimizer-metric-empty">${metric.empty}</div>`}</div>`;
+  }).join('')}</div><div class="hint" style="margin-top:8px">Generation ${job.iteration}/${job.maxiter} · convergence target ≤ ${fmtDelta(tol)}. P&L, win rate and trades are from the best eligible result so far.</div>`);
+}
+
+function renderOptimizerRunSummary(job) {
+  const target = document.getElementById('oCurrentRun');
+  if (!target) return;
+  const number = value => value == null || !Number.isFinite(Number(value)) ? '—' : Number(value).toLocaleString('en-US');
+  const fixed = (value, digits) => value == null || !Number.isFinite(Number(value)) ? '—' : Number(value).toFixed(digits);
+  const objective = {profit:'Highest profit', winrate:'Highest win rate', balanced:'Balanced', large_move:'Large price move'}[job.objective] || job.objective || '—';
+  const goal = job.objective === 'balanced' && job.min_win_rate != null
+    ? `${objective}: ${fixed(job.min_win_rate, 1)}% win rate, ${number(job.min_closed_trades)}+ closed trades`
+    : job.objective === 'large_move' && job.min_price_change != null
+      ? `${objective}: ${fixed(job.min_price_change, 1)}% minimum price change` : objective;
+  const requestedWorkers = job.requested_cores === 0 ? 'Auto' : number(job.requested_cores);
+  const actualWorkers = job.status === 'pending' || (job.status === 'running' && !job.evaluations)
+    ? 'starting' : number(job.workers);
+  const created = job.created_at ? new Date(typeof job.created_at === 'number' ? job.created_at * 1000 : job.created_at).toLocaleString() : '—';
+  const fields = [
+    ['Target', `${job.symbol || '—'} · ${job.strategy_label || job.strategy || '—'} · ${fmtTF(job.timeframe || '—')}`],
+    ['Candles', `${number(job.candles)} requested · ${job.candle_count ? number(job.candle_count) : 'loading'} received`],
+    ['Capital', `$${fixed(job.credit, 2)} credit · ${number(job.leverage)}× leverage`],
+    ['Goal', goal],
+    ['Workers', `${requestedWorkers} requested · ${actualWorkers} actual`],
+    ['Progress', `${number(job.maxiter)} planned generations · ${number(job.iteration)} complete · ${number(job.evaluations)} backtests`],
+    ['Best so far', job.best_summary ? `$${fixed(job.best_pnl ?? job.best_summary.total_pnl, 2)} P&L · ${fixed(job.best_summary.win_rate, 1)}% win rate · ${number(job.best_summary.trade_count)} trades` : 'No eligible result yet'],
+    ['Convergence', fixed(job.current_delta, 6)],
+    ['Started', created],
+  ];
+  if (job.error) fields.push(['Error', job.error]);
+  const ex = job.execution;
+  const assumptions = ex ? [
+    `Entry fee ${fixed(Number(ex.entry_fee_rate) * 100, 3)}%`,
+    `Exit fee ${fixed(Number(ex.exit_fee_rate) * 100, 3)}%`,
+    `Slippage ${number(ex.slippage_bps)} bps`,
+    `Holding ${fixed(Number(ex.holding_rate_per_day) * 100, 3)}%/day (${ex.holding_policy || '—'})`,
+    `Fill ${ex.fill_timing || '—'}`,
+    `Margin ${fixed(Number(ex.margin_fraction) * 100, 1)}%`,
+    `Positions ${ex.position_mode || '—'}`,
+    `Liquidation ratio ${fixed(ex.liquidation_ratio, 2)}`,
+    `Max hold ${number(ex.max_hold_days)} days`,
+  ].join(' · ') : 'Not recorded for this saved run';
+  const bounds = Object.entries(job.search_bounds || job.custom_bounds || {});
+  const ranges = bounds.length ? bounds.map(([name, range]) => `${name}: ${range[0]}–${range[1]}`).join(' · ')
+    : 'Not recorded for this saved run';
+  const html = `<div class="run-snapshot-head">Current run ${escHtml(job.id || '—')} · ${escHtml(job.status || '—')}</div>
+    <div class="run-snapshot-grid">${fields.map(([label, value]) => `<div><strong>${escHtml(label)}:</strong> ${escHtml(value)}</div>`).join('')}</div>
+    <details><summary>Execution assumptions and search ranges</summary><div class="run-snapshot-extra">
+      <div><strong>Execution:</strong> ${escHtml(assumptions)}</div>
+      <div><strong>Search ranges:</strong> ${escHtml(ranges)}</div>
+      <div><strong>Seed:</strong> ${escHtml(job.random_seed ?? '—')}</div>
+    </div></details>`;
+  if (target._lastRunSummaryHtml === html) return;
+  const wasOpen = target.querySelector?.('details')?.open;
+  target.className = 'run-snapshot';
+  target.style.display = '';
+  target.innerHTML = html;
+  target._lastRunSummaryHtml = html;
+  if (wasOpen) target.querySelector('details').open = true;
 }
 
 function renderOptimizerProgress(job) {
+  renderOptimizerRunSummary(job);
   const wrap = document.getElementById('oProgressWrap');
   wrap.style.display = '';
   const pct = job.maxiter ? Math.min(100, Math.round(job.iteration / job.maxiter * 100)) : 0;
@@ -3545,13 +3802,15 @@ function renderOptimizerProgress(job) {
   const etaText = job.status !== 'running' ? '' : (etaSecs != null ? ` · ~${fmtEta(etaSecs)} left` : ' · estimating time…');
   const cur = job.status === 'running' ? `Searching…${bestInfo}${etaText}`
             : job.status === 'pending' ? 'Starting…'
-            : job.status === 'done' ? '✓ Complete'
+            : job.status === 'pausing' ? 'Pausing after this generation…'
+            : job.status === 'paused' ? `Paused at generation ${job.iteration}${bestInfo}`
+            : job.status === 'done' ? (job.no_eligible_result ? 'Complete — no eligible candidate' : '✓ Complete')
             : job.status === 'interrupted' ? 'Interrupted by restart'
             : job.status === 'cancelled' ? 'Cancelled'
             : 'Error';
   document.getElementById('oProgressCurrent').textContent = cur;
   const cores = job.workers > 1 ? ` · ${job.workers} workers` : '';
-  const objLabel = {profit:'profit',winrate:'win rate',balanced:'balanced'}[job.objective] || 'profit';
+  const objLabel = {profit:'profit',winrate:'win rate',balanced:'balanced',large_move:'large move'}[job.objective] || job.objective || 'unknown';
   document.getElementById('oProgressCount').textContent = `${job.evaluations} backtests · gen ${job.iteration}/${job.maxiter}${cores} · goal: ${objLabel}`;
   renderDeltaCard('oDeltaSection', 'oDeltaChart', job);
 }
@@ -3568,12 +3827,13 @@ async function pollOptimizer() {
     const res = await apiFetch(`/api/optimizer/run/${optimizerJobId}`);
     if (!res.ok) { stopOptimizerPolling(); _setOptimizerRunning(false); return; }
     const job = await res.json();
+    _setOptimizerRunning(!['done', 'cancelled', 'error', 'interrupted'].includes(job.status), job.status, job.pause_supported === true);
     renderOptimizerProgress(job);
     renderOptimizerResults(job);
     if (['done', 'cancelled', 'error', 'interrupted'].includes(job.status)) {
       stopOptimizerPolling();
       _setOptimizerRunning(false);
-      if (job.status === 'done')           showToast('Optimization complete', 'success');
+      if (job.status === 'done')           showToast(job.no_eligible_result ? 'No candidate met the balanced floors' : 'Optimization complete', job.no_eligible_result ? 'info' : 'success');
       else if (job.status === 'cancelled') showToast('Optimization cancelled', 'info');
       else                                 showToast('Run error: ' + (job.error || 'unknown'), 'error');
     } else {
@@ -3585,7 +3845,7 @@ async function pollOptimizer() {
           `The optimizer is running with fewer data points, which may reduce result quality.`;
         document.getElementById('candleWarnModal').classList.add('open');
       }
-      optimizerPollTimer = setTimeout(pollOptimizer, 1000);
+      optimizerPollTimer = setTimeout(pollOptimizer, job.status === 'paused' ? 5000 : 1000);
     }
   } catch (e) {
     optimizerPollTimer = setTimeout(pollOptimizer, 1500);
@@ -3622,46 +3882,69 @@ async function _candleWarnCancel() {
 }
 
 
+function optimizerResultsRevision(job) {
+  // The progress counters are updated in place; the larger tables only depend
+  // on a new candidate, new backtest data, or final-state content.
+  return JSON.stringify({
+    id: job.id, phase: job.status === 'done' ? 'done' : job.status === 'error' ? 'error' : 'active',
+    error: job.error, no_eligible_result: job.no_eligible_result,
+    symbol: job.symbol, strategy: job.strategy, strategy_label: job.strategy_label,
+    timeframe: job.timeframe, candle_count: job.candle_count,
+    train_candle_count: job.train_candle_count, test_candle_count: job.test_candle_count,
+    objective: job.objective, min_win_rate: job.min_win_rate, min_closed_trades: job.min_closed_trades,
+    delta_tol: job.delta_tol, best_pnl: job.best_pnl, best_summary: job.best_summary,
+    best_params: job.best_params, params: job.params, baseline: job.baseline,
+    best_trades: job.best_trades, test_summary: job.test_summary,
+    test_baseline: job.test_baseline, test_trades: job.test_trades,
+  });
+}
+
+function updateOptimizerResultCounters(prefix, job) {
+  const evaluations = document.getElementById(prefix + 'ResultBacktests');
+  const count = String(job.evaluations ?? 0);
+  if (evaluations && evaluations.textContent !== count) evaluations.textContent = count;
+  const delta = document.getElementById(prefix + 'ResultDelta');
+  if (!delta) return;
+  const text = job.current_delta != null ? Number(job.current_delta).toFixed(4) : '—';
+  if (delta.textContent !== text) delta.textContent = text;
+  const tol = job.delta_tol != null ? job.delta_tol : 0.01;
+  const color = job.current_delta == null ? 'var(--muted)'
+    : job.current_delta <= tol ? 'var(--green)'
+    : job.current_delta <= tol * 3 ? 'var(--yellow)' : 'var(--red)';
+  if (delta.style.color !== color) delta.style.color = color;
+}
+
 function renderOptimizerResults(job) {
   const wrap = document.getElementById('oResults');
+  window._lastOptimizerJob = job.best_summary && job.params?.length ? job : null;
+  const revision = optimizerResultsRevision(job);
+  if (wrap._lastResultRevision === revision) {
+    updateOptimizerResultCounters('o', job);
+    if (job.chart_data) renderOptChart(job);
+    return;
+  }
   if (job.status === 'error') {
     wrap.innerHTML = `<div class="tester-section"><div class="err-cell" style="color:var(--yellow)">${escHtml(job.error || 'error')}</div></div>`;
+    wrap._lastResultRevision = revision;
     return;
   }
 
   let histHtml = '';
 
   if (job.best_trades && job.best_trades.length > 0) {
-    const tradeRows = job.best_trades.map(t => {
-      const pnl = parseFloat(t['P&L ($)'] || 0);
-      const pnlCls = pnl > 0 ? 'pnl-pos' : pnl < 0 ? 'pnl-neg' : '';
-      const pnlStr = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
-      const posColor = t['Position'] === 'Long' ? 'var(--green)' : 'var(--red)';
-      const liqMark = t['Liquidated'] ? ' <span style="color:var(--red);font-size:0.75em">LIQ</span>' : '';
-      return `<tr class="${t['Liquidated'] ? 'liq-row' : ''}">
-        <td style="color:var(--muted)">#${t['Trade #']}</td>
-        <td style="color:${posColor}">${escHtml(t['Position'] || '')}</td>
-        <td style="color:var(--muted);font-size:0.82em">${escHtml(String(t['Start Time'] || ''))}</td>
-        <td style="color:var(--muted);font-size:0.82em">${escHtml(String(t['End Time'] || ''))}</td>
-        <td class="${pnlCls}">${pnlStr}${liqMark}</td>
-        <td style="color:var(--muted)">${escHtml(String(t['Balance ($)'] || ''))}</td>
-      </tr>`;
-    }).join('');
     histHtml = `
       <div class="tester-section">
         <h3>Best Backtest History</h3>
-        <div class="hint">Individual trades from the best parameter set found. Liquidated trades are marked LIQ.</div>
-        <div style="overflow-x:auto;max-height:260px;overflow-y:auto">
-          <table class="opt-history-table">
-            <thead><tr><th>#</th><th>Side</th><th>Entry Time</th><th>Exit Time</th><th>P&amp;L</th><th>Balance</th></tr></thead>
-            <tbody>${tradeRows}</tbody>
-          </table>
-        </div>
+        <div class="hint">Net P&amp;L deducts entry, exit and holding fees. Cumulative fees and P&amp;L sum closed trades only. Liquidated trades are marked LIQ.</div>
+        ${_tradeTableHtml(job.best_trades)}
       </div>`;
   }
 
   if (!job.best_summary || !job.params || !job.params.length) {
-    wrap.innerHTML = histHtml;
+    wrap.innerHTML = job.no_eligible_result
+      ? `<div class="tester-section"><h3>No eligible result</h3><div class="hint">No tested parameter set reached ${Number(job.min_win_rate).toFixed(1)}% win rate with at least ${job.min_closed_trades} closed training trades. Increase the candle window or adjust the floors and run again.</div></div>`
+      : histHtml;
+    wrap._lastResultRevision = revision;
     return;
   }
 
@@ -3701,14 +3984,16 @@ function renderOptimizerResults(job) {
   wrap.innerHTML = histHtml + `
     <div class="tester-section">
       <h3>Best Inputs Found</h3>
-      <div class="hint">${escHtml(job.symbol)} · ${escHtml(job.strategy_label || job.strategy)} · ${escHtml(fmtTF(job.timeframe))} · ${job.candle_count} candles · goal: ${escHtml({profit:'highest profit',winrate:'highest win rate',balanced:'balanced'}[job.objective] || job.objective)}</div>
+      <div class="hint">${escHtml(job.symbol)} · ${escHtml(job.strategy_label || job.strategy)} · ${escHtml(fmtTF(job.timeframe))} · ${job.candle_count} candles · goal: ${escHtml(job.objective === 'balanced' && job.min_win_rate == null ? 'legacy balanced' : ({profit:'highest profit',winrate:'highest win rate',balanced:'balanced',large_move:'large move'}[job.objective] || job.objective))}${job.objective === 'balanced' && job.min_win_rate != null ? ` · floor ${Number(job.min_win_rate).toFixed(1)}% over ${job.min_closed_trades}+ closed trades` : ''}</div>
+      <div class="hint" style="margin-top:10px">This is an in-sample result. Net P&amp;L includes marked open positions; win rate counts closed trades. Check held-out performance in Optimizer Tester before trusting these inputs.</div>
       <div class="opt-summary">
         <div class="opt-stat"><div class="lbl">Optimized P&amp;L</div><div class="val ${pnlCls}">${bestPnl >= 0 ? '+' : ''}$${bestPnl.toFixed(2)}</div></div>
         <div class="opt-stat"><div class="lbl">Win Rate</div><div class="val" style="color:${wrColor}">${(s.win_rate || 0).toFixed(1)}%</div></div>
         <div class="opt-stat"><div class="lbl">Profit Share</div><div class="val">${profShareStr}</div></div>
         <div class="opt-stat"><div class="lbl">Trades</div><div class="val">${s.trade_count || 0}</div></div>
-        <div class="opt-stat"><div class="lbl">Backtests Run</div><div class="val">${job.evaluations}</div></div>
-        <div class="opt-stat"><div class="lbl">Current Delta</div><div class="val" style="color:${deltaColor}">${deltaStr}</div></div>
+        <div class="opt-stat"><div class="lbl">Max Drawdown</div><div class="val">${Number(s.max_drawdown_pct || 0).toFixed(1)}%</div></div>
+        <div class="opt-stat"><div class="lbl">Backtests Run</div><div class="val" id="oResultBacktests">${job.evaluations}</div></div>
+        <div class="opt-stat"><div class="lbl">Current Delta</div><div class="val" id="oResultDelta" style="color:${deltaColor}">${deltaStr}</div></div>
         <div class="opt-stat"><div class="lbl">% Long Trades</div><div class="val">${longPctStr}</div></div>
         <div class="opt-stat"><div class="lbl">Sum of Profits</div><div class="val" style="color:var(--green)">${sumProfitsStr}</div></div>
         <div class="opt-stat"><div class="lbl">Sum of Losses</div><div class="val" style="color:var(--red)">${sumLossesStr}</div></div>
@@ -3723,8 +4008,7 @@ function renderOptimizerResults(job) {
       ${applyBtn}
     </div>`;
 
-  // Store current job for the Apply button.
-  window._lastOptimizerJob = job;
+  wrap._lastResultRevision = revision;
 
   // A new best candidate can publish its chart while the search is still running.
   if (job.chart_data) renderOptChart(job);
@@ -3851,7 +4135,7 @@ function renderOptChart(job) {
   const container = document.getElementById('oChart');
   if (!job?.chart_data?.candles?.length) { destroyOptCharts(); return; }
   const cd  = job.chart_data;
-  const sig = `${cd.candles[0]?.time}:${cd.candles[cd.candles.length - 1]?.time}:${cd.strategy}:${cd.revision || 0}:${job.status}`;
+  const sig = `${cd.candles[0]?.time}:${cd.candles[cd.candles.length - 1]?.time}:${cd.strategy}:${cd.revision || 0}:${job.status === 'done' ? 'done' : 'live'}`;
   if (container.dataset.sig === sig) return;
   let visibleRange = null;
   try { visibleRange = _optCharts[0]?.timeScale().getVisibleLogicalRange(); } catch (_) {}
@@ -3966,6 +4250,13 @@ function populateOptimizerTesterControls() {
   if (optimizerConfig.credit   != null) document.getElementById('otCredit').value   = optimizerConfig.credit;
   if (optimizerConfig.leverage != null) document.getElementById('otLeverage').value = optimizerConfig.leverage;
   if (optimizerConfig.maxiter  != null) document.getElementById('otMaxiter').value  = optimizerConfig.maxiter;
+  const savedObj = optimizerConfig.objective || 'profit';
+  const objEl = document.querySelector(`input[name="otObjective"][value="${savedObj}"]`);
+  if (objEl) objEl.checked = true;
+  if (optimizerConfig.min_price_change != null) document.getElementById('otMinPriceChange').value = optimizerConfig.min_price_change;
+  if (optimizerConfig.min_win_rate != null) document.getElementById('otMinWinRate').value = optimizerConfig.min_win_rate;
+  if (optimizerConfig.min_closed_trades != null) document.getElementById('otMinClosedTrades').value = optimizerConfig.min_closed_trades;
+  _otObjectiveChange();
 
   const coresSel = document.getElementById('otCores');
   const maxCores  = optimizerConfig.max_cores   || 1;
@@ -4041,8 +4332,6 @@ function _otObjectiveChange() {
   if (row) row.style.display = checked === 'large_move' ? 'flex' : 'none';
   const balRow = document.getElementById('otBalancedRow');
   if (balRow) balRow.style.display = checked === 'balanced' ? 'flex' : 'none';
-  const weightRow = document.getElementById('otBalancedWeightRow');
-  if (weightRow) weightRow.style.display = checked === 'balanced' ? 'flex' : 'none';
 }
 
 function _updateTesterRunNote() {
@@ -4073,8 +4362,8 @@ function _optimizerTesterPayload() {
     maxiter:          parseInt(document.getElementById('otMaxiter')?.value) || 30,
     objective:        document.querySelector('input[name="otObjective"]:checked')?.value || 'profit',
     min_price_change: parseFloat(document.getElementById('otMinPriceChange')?.value) || 5,
-    balanced_cap:     parseFloat(document.getElementById('otBalancedCap')?.value) || 100,
-    balanced_weight:  (parseFloat(document.getElementById('otBalancedWeight')?.value) || 50) / 100,
+    min_win_rate:     Number(document.getElementById('otMinWinRate')?.value),
+    min_closed_trades: Number(document.getElementById('otMinClosedTrades')?.value),
     custom_bounds:    _getOptimizerTesterCustomBounds(),
   };
 }
@@ -4102,16 +4391,33 @@ async function runOptimizerTester() {
     optimizerTesterJobId = data.job_id;
     _candleWarnTesterShown = false;
     document.getElementById('otResults').innerHTML = '';
+    document.getElementById('otResults')._lastResultRevision = null;
     destroyOptTesterCharts();
-    _setOptimizerTesterRunning(true);
+    _setOptimizerTesterRunning(true, 'pending', false);
     pollOptimizerTester();
   } catch (e) { showToast('Network error: ' + e, 'error'); }
 }
 
-function _setOptimizerTesterRunning(running) {
+function _setOptimizerTesterRunning(running, status='running', pauseSupported=false) {
   document.getElementById('otRunBtn').style.display    = running ? 'none' : '';
   document.getElementById('otCancelBtn').style.display = running ? '' : 'none';
+  const pauseBtn = document.getElementById('otPauseBtn');
+  pauseBtn.style.display = running && pauseSupported ? '' : 'none';
+  pauseBtn.dataset.status = status;
+  pauseBtn.textContent = ['pausing', 'paused'].includes(status) ? '▶ Resume' : 'Ⅱ Pause';
   if (running) document.getElementById('otProgressWrap').style.display = '';
+}
+
+async function toggleOptimizerTesterPause() {
+  if (!optimizerTesterJobId) return;
+  const paused = ['pausing', 'paused'].includes(document.getElementById('otPauseBtn').dataset.status);
+  const action = paused ? 'resume' : 'pause';
+  try {
+    const response = await apiFetch(`/api/optimizer/tester/run/${optimizerTesterJobId}/${action}`, {method:'POST'});
+    if (!response.ok) throw new Error((await response.json()).error || `Could not ${action} run`);
+    _setOptimizerTesterRunning(true, paused ? 'running' : 'pausing', true);
+    showToast(paused ? 'Resuming optimizer test…' : 'Pausing after the current generation…', 'info');
+  } catch (error) { showToast(error.message, 'error'); }
 }
 
 function renderOptimizerTesterProgress(job) {
@@ -4130,7 +4436,9 @@ function renderOptimizerTesterProgress(job) {
   const etaText = job.status !== 'running' ? '' : (etaSecs != null ? ` · ~${fmtEta(etaSecs)} left` : ' · estimating time…');
   const cur = job.status === 'running' ? `Optimizing training window…${bestInfo}${etaText}`
             : job.status === 'pending' ? 'Starting…'
-            : job.status === 'done'    ? '✓ Complete — train & test results ready'
+            : job.status === 'pausing' ? 'Pausing after this generation…'
+            : job.status === 'paused' ? `Paused at generation ${job.iteration}${bestInfo}`
+            : job.status === 'done'    ? (job.no_eligible_result ? 'Complete — no eligible training candidate' : '✓ Complete — train & test results ready')
             : job.status === 'interrupted' ? 'Interrupted by restart'
             : job.status === 'cancelled' ? 'Cancelled'
             : 'Error';
@@ -4154,12 +4462,13 @@ async function pollOptimizerTester() {
     const res = await apiFetch(`/api/optimizer/tester/run/${optimizerTesterJobId}`);
     if (!res.ok) { stopOptimizerTesterPolling(); _setOptimizerTesterRunning(false); return; }
     const job = await res.json();
+    _setOptimizerTesterRunning(!['done', 'cancelled', 'error', 'interrupted'].includes(job.status), job.status, job.pause_supported === true);
     renderOptimizerTesterProgress(job);
     renderOptimizerTesterResults(job);
     if (['done', 'cancelled', 'error', 'interrupted'].includes(job.status)) {
       stopOptimizerTesterPolling();
       _setOptimizerTesterRunning(false);
-      if (job.status === 'done')           showToast('Optimizer Tester complete', 'success');
+      if (job.status === 'done')           showToast(job.no_eligible_result ? 'No training candidate met the balanced floors' : 'Optimizer Tester complete', job.no_eligible_result ? 'info' : 'success');
       else if (job.status === 'cancelled') showToast('Optimizer Tester cancelled', 'info');
       else                                 showToast('Run error: ' + (job.error || 'unknown'), 'error');
     } else {
@@ -4174,7 +4483,7 @@ async function pollOptimizerTester() {
           `which may reduce result quality.`;
         document.getElementById('candleWarnModal').classList.add('open');
       }
-      optimizerTesterPollTimer = setTimeout(pollOptimizerTester, 1000);
+      optimizerTesterPollTimer = setTimeout(pollOptimizerTester, job.status === 'paused' ? 5000 : 1000);
     }
   } catch (e) {
     optimizerTesterPollTimer = setTimeout(pollOptimizerTester, 1500);
@@ -4188,24 +4497,43 @@ function stopOptimizerTesterPolling() {
 
 function _tradeTableHtml(trades) {
   if (!trades || !trades.length) return '';
+  let cumulativePnl = 0;
+  let cumulativeFees = 0;
+  const fee = value => value == null || !Number.isFinite(Number(value)) ? '—' : '$' + Number(value).toFixed(4);
   const rows = trades.map(t => {
-    const pnl    = parseFloat(t['P&L ($)'] || 0);
+    const tradingFees = t['Fees ($)'] != null ? Number(t['Fees ($)'])
+      : Number(t['Entry Fee ($)'] || 0) + Number(t['Exit Fee ($)'] || 0);
+    const holdingFee = Number(t['Holding Fee ($)'] ?? t['Borrowing ($)'] ?? 0);
+    const totalFees = tradingFees + holdingFee;
+    const gross = t['Gross P&L ($)'];
+    const pnl = gross != null ? Number(gross) - totalFees : Number(t['P&L ($)'] || 0);
+    cumulativeFees += totalFees;
+    cumulativePnl += pnl;
     const pnlCls = pnl > 0 ? 'pnl-pos' : pnl < 0 ? 'pnl-neg' : '';
-    const pnlStr = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
+    const pnlStr = (pnl >= 0 ? '+' : '-') + '$' + Math.abs(pnl).toFixed(2);
+    const cumCls = cumulativePnl > 0 ? 'pnl-pos' : cumulativePnl < 0 ? 'pnl-neg' : '';
+    const cumStr = (cumulativePnl >= 0 ? '+' : '') + '$' + cumulativePnl.toFixed(2);
     const posColor = t['Position'] === 'Long' ? 'var(--green)' : 'var(--red)';
     const liqMark  = t['Liquidated'] ? ' <span style="color:var(--red);font-size:0.75em">LIQ</span>' : '';
+    const days = t['Days Open'] != null ? Number(t['Days Open'])
+      : (t._start_ts != null && t._end_ts != null ? (t._end_ts - t._start_ts) / 86400 : null);
     return `<tr class="${t['Liquidated'] ? 'liq-row' : ''}">
       <td style="color:var(--muted)">#${t['Trade #']}</td>
       <td style="color:${posColor}">${escHtml(t['Position'] || '')}</td>
       <td style="color:var(--muted);font-size:0.82em">${escHtml(String(t['Start Time'] || ''))}</td>
       <td style="color:var(--muted);font-size:0.82em">${escHtml(String(t['End Time'] || ''))}</td>
+      <td>${days != null && Number.isFinite(days) ? days.toFixed(3) : '—'}</td>
+      <td>${fee(t['Entry Fee ($)'])}</td>
+      <td>${fee(t['Exit Fee ($)'])}</td>
+      <td>${fee(t['Holding Fee ($)'] ?? t['Borrowing ($)'])}</td>
+      <td>${fee(cumulativeFees)}</td>
       <td class="${pnlCls}">${pnlStr}${liqMark}</td>
-      <td style="color:var(--muted)">${escHtml(String(t['Balance ($)'] || ''))}</td>
+      <td class="${cumCls}">${cumStr}</td>
     </tr>`;
   }).join('');
   return `<div style="overflow-x:auto;max-height:260px;overflow-y:auto">
     <table class="opt-history-table">
-      <thead><tr><th>#</th><th>Side</th><th>Entry Time</th><th>Exit Time</th><th>P&amp;L</th><th>Balance</th></tr></thead>
+      <thead><tr><th>#</th><th>Side</th><th>Entry Time</th><th>Exit Time</th><th>Days Open</th><th>Entry Fee</th><th>Exit Fee</th><th>Holding Fee</th><th>Cumulative Fees</th><th>Net P&amp;L</th><th>Cumulative P&amp;L</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   </div>`;
@@ -4214,13 +4542,26 @@ function _tradeTableHtml(trades) {
 function renderOptimizerTesterResults(job) {
   const wrap = document.getElementById('otResults');
   if (!wrap) return;
-  window._lastOptimizerTesterJob = job.status === 'done' ? job : null;
+  window._lastOptimizerTesterJob = job.status === 'done' && job.best_params ? job : null;
+  const revision = optimizerResultsRevision(job);
+  if (wrap._lastResultRevision === revision) {
+    updateOptimizerResultCounters('ot', job);
+    if (job.chart_data || job.test_chart_data) renderOptTesterCharts(job);
+    return;
+  }
 
   if (job.status === 'error') {
     wrap.innerHTML = `<div class="tester-section"><div class="err-cell" style="color:var(--yellow)">${escHtml(job.error || 'error')}</div></div>`;
+    wrap._lastResultRevision = revision;
     return;
   }
-  if (!job.best_summary) { wrap.innerHTML = ''; return; }
+  if (!job.best_summary) {
+    wrap.innerHTML = job.no_eligible_result
+      ? `<div class="tester-section"><h3>No eligible result</h3><div class="hint">No tested parameter set reached ${Number(job.min_win_rate).toFixed(1)}% win rate with at least ${job.min_closed_trades} closed training trades. Increase training candles or adjust the floors and run again.</div></div>`
+      : '';
+    wrap._lastResultRevision = revision;
+    return;
+  }
 
   // ── Train trades ──────────────────────────────────────────────────────────
   const trainTradesHtml = job.best_trades?.length
@@ -4262,14 +4603,16 @@ function renderOptimizerTesterResults(job) {
   const trainSummaryHtml = `
     <div class="tester-section">
       <h3>Best Inputs Found · Training Window</h3>
-      <div class="hint">${escHtml(job.symbol)} · ${escHtml(job.strategy_label || job.strategy)} · ${escHtml(fmtTF(job.timeframe))} · ${job.train_candle_count || job.candle_count} training candles · goal: ${escHtml({profit:'highest profit',winrate:'highest win rate',balanced:'balanced',large_move:'large move'}[job.objective] || job.objective)}</div>
+      <div class="hint">${escHtml(job.symbol)} · ${escHtml(job.strategy_label || job.strategy)} · ${escHtml(fmtTF(job.timeframe))} · ${job.train_candle_count || job.candle_count} training candles · goal: ${escHtml(job.objective === 'balanced' && job.min_win_rate == null ? 'legacy balanced' : ({profit:'highest profit',winrate:'highest win rate',balanced:'balanced',large_move:'large move'}[job.objective] || job.objective))}${job.objective === 'balanced' && job.min_win_rate != null ? ` · floor ${Number(job.min_win_rate).toFixed(1)}% over ${job.min_closed_trades}+ closed trades` : ''}</div>
+      <div class="hint" style="margin-top:10px">Net P&amp;L includes marked open positions; win rate counts closed trades.${job.objective === 'balanced' && job.min_win_rate != null ? ' The selected floors apply to the training window only.' : ''}</div>
       <div class="opt-summary">
         <div class="opt-stat"><div class="lbl">P&amp;L (train)</div><div class="val ${pnlCls}">${bestPnl >= 0 ? '+' : ''}$${bestPnl.toFixed(2)}</div></div>
         <div class="opt-stat"><div class="lbl">Win Rate (train)</div><div class="val" style="color:${wrColor}">${(s.win_rate || 0).toFixed(1)}%</div></div>
         <div class="opt-stat"><div class="lbl">Profit Share</div><div class="val">${profShareStr}</div></div>
         <div class="opt-stat"><div class="lbl">Trades (train)</div><div class="val">${s.trade_count || 0}</div></div>
-        <div class="opt-stat"><div class="lbl">Backtests Run</div><div class="val">${job.evaluations}</div></div>
-        <div class="opt-stat"><div class="lbl">Current Delta</div><div class="val" style="color:${deltaColor}">${deltaStr}</div></div>
+        <div class="opt-stat"><div class="lbl">Max Drawdown (train)</div><div class="val">${Number(s.max_drawdown_pct || 0).toFixed(1)}%</div></div>
+        <div class="opt-stat"><div class="lbl">Backtests Run</div><div class="val" id="otResultBacktests">${job.evaluations}</div></div>
+        <div class="opt-stat"><div class="lbl">Current Delta</div><div class="val" id="otResultDelta" style="color:${deltaColor}">${deltaStr}</div></div>
         <div class="opt-stat"><div class="lbl">% Long Trades</div><div class="val">${longPctStr}</div></div>
         <div class="opt-stat"><div class="lbl">Sum of Profits</div><div class="val" style="color:var(--green)">${sumProfitsStr}</div></div>
         <div class="opt-stat"><div class="lbl">Sum of Losses</div><div class="val" style="color:var(--red)">${sumLossesStr}</div></div>
@@ -4294,10 +4637,17 @@ function renderOptimizerTesterResults(job) {
     const testPnlCls  = testPnl     > 0 ? 'pnl-pos' : testPnl     < 0 ? 'pnl-neg' : '';
     const tbPnlCls    = testBasePnl > 0 ? 'pnl-pos' : testBasePnl < 0 ? 'pnl-neg' : '';
     const testWrColor = (ts.win_rate || 0) >= 60 ? 'var(--green)' : (ts.win_rate || 0) >= 45 ? 'var(--yellow)' : 'var(--red)';
+    const testFloorHtml = job.objective !== 'balanced' || job.min_win_rate == null ? ''
+      : (ts.trade_count || 0) < job.min_closed_trades
+        ? `<div class="hint" style="color:var(--yellow);margin-top:10px">Held-out sample has ${ts.trade_count || 0} closed trades, below the ${job.min_closed_trades}-trade floor. Its win rate is too thin to validate the training result.</div>`
+        : (ts.win_rate || 0) < job.min_win_rate
+          ? `<div class="hint" style="color:var(--yellow);margin-top:10px">Held-out win rate is below the selected ${Number(job.min_win_rate).toFixed(1)}% floor.</div>`
+          : `<div class="hint" style="color:var(--green);margin-top:10px">Held-out trades also meet the selected win rate and trade floors. Compare P&amp;L and drawdown before using these inputs.</div>`;
     comparisonHtml = `
       <div class="tester-section comparison-panel">
         <h3>Training vs held-out</h3>
         <div class="hint">The windows contain different candle counts. Compare each window with its own default-input result.</div>
+        ${testFloorHtml}
         <div style="overflow-x:auto">
           <table class="comparison-table">
             <thead><tr><th>Metric</th><th>Training</th><th>Held-out</th></tr></thead>
@@ -4306,6 +4656,7 @@ function renderOptimizerTesterResults(job) {
               <tr><td>Default net P&amp;L</td><td>$${basePnl.toFixed(2)}</td><td>$${testBasePnl.toFixed(2)}</td></tr>
               <tr><td>Win rate</td><td>${(s.win_rate || 0).toFixed(1)}%</td><td>${(ts.win_rate || 0).toFixed(1)}%</td></tr>
               <tr><td>Trades</td><td>${s.trade_count || 0}</td><td>${ts.trade_count || 0}</td></tr>
+              <tr><td>Max drawdown</td><td>${Number(s.max_drawdown_pct || 0).toFixed(1)}%</td><td>${Number(ts.max_drawdown_pct || 0).toFixed(1)}%</td></tr>
               <tr><td>Candles</td><td>${job.train_candle_count || 0}</td><td>${job.test_candle_count || 0}</td></tr>
             </tbody>
           </table>
@@ -4335,6 +4686,8 @@ function renderOptimizerTesterResults(job) {
           <div class="opt-stat"><div class="lbl">Win Rate · defaults</div><div class="val">${(tb.win_rate || 0).toFixed(1)}%</div></div>
           <div class="opt-stat"><div class="lbl">Trades · optimized</div><div class="val">${ts.trade_count || 0}</div></div>
           <div class="opt-stat"><div class="lbl">Trades · defaults</div><div class="val">${tb.trade_count || 0}</div></div>
+          <div class="opt-stat"><div class="lbl">Max Drawdown · optimized</div><div class="val">${Number(ts.max_drawdown_pct || 0).toFixed(1)}%</div></div>
+          <div class="opt-stat"><div class="lbl">Max Drawdown · defaults</div><div class="val">${Number(tb.max_drawdown_pct || 0).toFixed(1)}%</div></div>
         </div>
         ${cautionHtml}
         ${testTradesHtml}
@@ -4342,6 +4695,7 @@ function renderOptimizerTesterResults(job) {
   }
 
   wrap.innerHTML = comparisonHtml + trainSummaryHtml + testHtml + trainTradesHtml;
+  wrap._lastResultRevision = revision;
 
   if (job.chart_data || job.test_chart_data) renderOptTesterCharts(job);
 }
@@ -4362,7 +4716,7 @@ function renderOptTesterCharts(job) {
   const testCd  = job.test_chart_data;
   const trainSig = trainCd?.candles?.length ? `${trainCd.candles[0]?.time}:${trainCd.candles[trainCd.candles.length - 1]?.time}:train:${trainCd.revision || 0}` : '';
   const testSig  = testCd?.candles?.length  ? `${testCd.candles[0]?.time}:${testCd.candles[testCd.candles.length - 1]?.time}:test`   : '';
-  const combined = trainSig + '|' + testSig + ':' + job.status;
+  const combined = trainSig + '|' + testSig + ':' + (job.status === 'done' ? 'done' : 'live');
   if (!trainEl || !testEl || (!trainSig && !testSig)) return;
   if (trainEl.dataset.sig === combined) return;
   let visibleRange = null;

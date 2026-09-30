@@ -133,6 +133,15 @@ def test_optimizer_spawn_workers_use_same_cost_model():
                                          execution=job.execution)
 
 
+def test_optimizer_snapshot_records_effective_search_ranges():
+    from optimizer import OptimizerJob, PARAM_BOUNDS
+
+    minimum = PARAM_BOUNDS["AdvRSI"]["rsi_length"][0]
+    job = OptimizerJob("btcusdt", "AdvRSI", "60", 420, 100, 3,
+                       custom_bounds={"rsi_length": [minimum - 1, minimum + 4]})
+    assert job.to_dict()["search_bounds"]["rsi_length"] == (minimum, minimum + 4)
+
+
 @pytest.mark.parametrize("parallel", [False, True])
 def test_optimizer_publishes_best_trade_chart_during_search(monkeypatch, parallel):
     from types import SimpleNamespace

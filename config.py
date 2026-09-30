@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from position_limits import current_max_hold_days
 
 
 @dataclass
@@ -21,3 +22,4 @@ class Config:
     # Long CR  = (asset_value + collateral) / borrowed_usdt
     # Short CR = (sale_proceeds + collateral) / current_debt_value
     liquidation_ratio: float = 1.1
+    max_hold_days: int = field(default_factory=current_max_hold_days)

@@ -338,7 +338,7 @@ class ResearchPersistence:
         self._prefs = self._load_prefs()
         self._prefs.update(store.get("prefs", self.namespace, {}))
         for key, snapshot in store.list(self.namespace + "_jobs").items():
-            if snapshot["status"] in ("pending", "running"):
+            if snapshot["status"] in ("pending", "running", "pausing", "paused"):
                 snapshot.update(status="interrupted", error="Application stopped before job completion; start a new run.")
                 store.put(self.namespace + "_jobs", key, snapshot)
             self._jobs[key] = StoredResearchJob(snapshot)

@@ -52,6 +52,9 @@ class NobitexClient:
         self._base = TESTNET_URL if testnet else BASE_URL
         self._session = requests.Session()
         self._session.trust_env = False
+        https_proxy = os.getenv("NOBITEX_HTTPS_PROXY")
+        if https_proxy:
+            self._session.proxies["https"] = https_proxy
         self._session.headers["User-Agent"] = "TraderBot/NobitexBot"
 
         self._ed_key = None

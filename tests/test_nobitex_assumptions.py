@@ -36,6 +36,58 @@ def test_documented_fee_units_and_market_renewal_are_distinct():
         profile_fee({"options": {"feeUsdt": "NaN"}}, "BTCUSDT")
 
 
+def test_margin_market_limits_keep_account_values_and_mark_fallback_unverified(tmp_path):
+    class Markets(Exchange):
+        def margin_markets(self):
+            return {
+                "BTCUSDT": {"srcCurrency": "btc", "dstCurrency": "usdt", "maxLeverage": "2.5",
+                            "buyEnabled": True, "sellEnabled": True},
+                "DOGEUSDT": {"srcCurrency": "doge", "dstCurrency": "usdt", "maxLeverage": "3",
+                             "buyEnabled": True, "sellEnabled": True},
+            }
+
+    with client_for(tmp_path / "live", Markets()) as client:
+        login(client)
+        response = client.get("/api/margin-markets").json()
+        assert response["source"] == "live_auth"
+        assert {market["symbol"]: market["maxLeverage"] for market in response["markets"]} == {
+            "BTCUSDT": 2.5, "DOGEUSDT": 3.0}
+
+    class Unavailable(Exchange):
+        def margin_markets(self):
+            raise RuntimeError("exchange unavailable")
+
+    with client_for(tmp_path / "fallback", Unavailable()) as client:
+        login(client)
+        response = client.get("/api/margin-markets").json()
+        assert response["source"] == "fallback"
+        assert all(market["maxLeverage"] is None for market in response["markets"])
+
+
+def test_selected_market_uses_live_delegation_tiers_instead_of_market_listing(tmp_path):
+    class Markets(Exchange):
+        def margin_markets(self):
+            return {"ZECUSDT": {"srcCurrency": "zec", "dstCurrency": "usdt",
+                                "maxLeverage": "5", "buyEnabled": True, "sellEnabled": True}}
+
+        def delegation_limit(self, market):
+            assert market == "ZECUSDT"
+            return {"buy": [{"leverage": "5", "limit": "100"},
+                            {"leverage": "10", "limit": "25"}],
+                    "sell": [{"leverage": "5", "limit": "1"},
+                             {"leverage": "10", "limit": "0.2"},
+                             {"leverage": "12", "limit": "0"}]}
+
+    with client_for(tmp_path, Markets()) as client:
+        login(client)
+        listing = client.get("/api/margin-markets").json()
+        assert listing["markets"][0]["maxLeverage"] == 5
+        response = client.get("/api/margin-markets/ZECUSDT/leverage")
+        assert response.status_code == 200
+        assert response.json() == {"ok": True, "symbol": "ZECUSDT", "buyMax": 10,
+                                   "sellMax": 10, "source": "delegation_limit"}
+
+
 def test_research_autofill_uses_live_fields_without_exposing_profile(tmp_path):
     client = client_for(tmp_path, Exchange())
     with client:
@@ -43,6 +95,8 @@ def test_research_autofill_uses_live_fields_without_exposing_profile(tmp_path):
         response = client.get("/api/settings/execution/nobitex?symbol=btcusdt")
         assert response.status_code == 200, response.text
         result = response.json()
+        from position_limits import current_max_hold_days
+        assert result["values"].pop("max_hold_days") == current_max_hold_days()
         assert result["values"] == {
             "entry_fee_rate": 0.002, "exit_fee_rate": 0.002,
             "holding_rate_per_day": 0.001,

@@ -23,6 +23,9 @@ def test_frozen_quantity_cost_oracle_and_first_trade_retained(direction, prices)
     assert trade["Quantity"] == pytest.approx(2)
     assert trade["Gross P&L ($)"] == pytest.approx(20)
     assert trade["Fees ($)"] == pytest.approx(.42)
+    assert trade["Entry Fee ($)"] + trade["Exit Fee ($)"] == pytest.approx(trade["Fees ($)"])
+    assert trade["Holding Fee ($)"] == 0
+    assert trade["Days Open"] == 2
     assert trade["P&L ($)"] == pytest.approx(19.58)
     assert result["summary"]["trade_count"] == 1
 
@@ -56,6 +59,8 @@ def test_reservations_holding_costs_equity_and_slippage():
     assert float(trade["Start Price"]) > 100
     assert float(trade["End Price"]) < 100
     assert trade["Borrowing ($)"] == pytest.approx(.6)
+    assert trade["Holding Fee ($)"] == pytest.approx(.6)
+    assert trade["Days Open"] == 3
     assert result["summary"]["max_drawdown_pct"] > 0
 
 

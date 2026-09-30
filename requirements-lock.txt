@@ -21,6 +21,7 @@ idna==3.11
 iniconfig==2.3.0
 joblib==1.5.2
 kiwisolver==1.4.9
+lightgbm==4.6.0
 matplotlib==3.10.7
 numpy==2.1.2
 packaging==25.0

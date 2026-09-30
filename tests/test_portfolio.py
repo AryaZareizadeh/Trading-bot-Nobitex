@@ -107,3 +107,32 @@ def test_portfolio_routes_are_authenticated(tmp_path):
         view = client.get("/api/portfolio").json()
         assert view["targets"] == {"BTC": .3}
         assert view["rebalance_ideas"][0]["notional_usdt"] == 100
+
+
+def test_bots_wallet_reads_margin_without_requesting_spot(tmp_path):
+    from auth import AuthState, hash_password
+    from bot_manager import BotManager
+    from server import create_app
+
+    class Exchange:
+        calls = []
+
+        def wallets(self, kind):
+            self.calls.append(kind)
+            if kind == "spot":
+                raise OSError("spot wallet TLS connection closed")
+            return {"USDT": {"balance": "100", "blocked": "25"}}
+
+    exchange = Exchange()
+    manager = BotManager(Store(tmp_path / "wallet.db"), tmp_path)
+    app = create_app(manager=manager, exchange_client=exchange, offline=True)
+    app.state.auth = AuthState(password_hash=hash_password("test password sufficiently long"), allowed_hosts={"testserver"})
+    with TestClient(app) as client:
+        client.post("/api/auth/login", json={"password": "test password sufficiently long"})
+        wallet = client.get("/api/wallet").json()
+
+    assert wallet["ok"] is True
+    assert wallet["margin"]["USDT"]["balance"] == "100"
+    assert wallet["usdt_available"] == 75
+    assert "spot" not in wallet
+    assert exchange.calls == ["margin"]

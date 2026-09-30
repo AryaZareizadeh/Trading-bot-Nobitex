@@ -1,5 +1,6 @@
 import asyncio
 import json
+import math
 import os
 import re
 from contextlib import asynccontextmanager
@@ -22,7 +23,10 @@ from auth import install_auth
 from settings import update_environment, data_dir, load_environment
 from execution_model import ExecutionConfig, execution_config
 from nobitex_assumptions import MARGIN_DOC, profile_fee, market_renewal_rate
+from position_limits import HELP_URL, current_max_hold_days, published_limit_status
 from portfolio import PortfolioHistory, value_portfolio, validate_targets, rebalance_ideas
+from spot_data import APPROVED_ASSETS
+from spot_paper import SpotPaperService
 
 # ── REST Models ────────────────────────────────────────────────────────────────
 class CreateBotRequest(BaseModel):
@@ -86,8 +90,8 @@ class OptimizerPrefsRequest(BaseModel):
     objective: str = "profit"             # profit | winrate | balanced | large_move
     custom_bounds: Optional[dict] = None  # param_name -> [low, high]
     min_price_change: float = Field(default=5.0, gt=0, le=100)
-    balanced_cap: float = Field(default=100.0, gt=0, le=5000)
-    balanced_weight: float = Field(default=0.5, ge=0.05, le=0.95)
+    min_win_rate: float = Field(default=50.0, gt=0, le=100)
+    min_closed_trades: int = Field(default=30, ge=10, le=10000)
 
 
 class OptimizerRunRequest(BaseModel):
@@ -102,8 +106,8 @@ class OptimizerRunRequest(BaseModel):
     objective: str = "profit"             # profit | winrate | balanced | large_move
     custom_bounds: Optional[dict] = None  # param_name -> [low, high]
     min_price_change: float = Field(default=5.0, gt=0, le=100)
-    balanced_cap: float = Field(default=100.0, gt=0, le=5000)
-    balanced_weight: float = Field(default=0.5, ge=0.05, le=0.95)
+    min_win_rate: float = Field(default=50.0, gt=0, le=100)
+    min_closed_trades: int = Field(default=30, ge=10, le=10000)
     execution: Optional[ExecutionConfig] = None
     random_seed: Optional[int] = Field(default=None, ge=0, le=4294967295)
 
@@ -123,6 +127,17 @@ class PortfolioTargetsRequest(BaseModel):
     targets: dict[str, float]
 
 
+class SpotPaperStartRequest(BaseModel):
+    assets: Optional[list[str]] = None
+    budget_usdt: float = Field(default=200, gt=0, le=100000)
+
+
+class SpotResearchRequest(BaseModel):
+    assets: list[str] = Field(default_factory=lambda: list(APPROVED_ASSETS))
+    days: int = Field(default=365, ge=90, le=730)
+    budget_usdt: float = Field(default=200, gt=0, le=100000)
+
+
 def create_app(*, manager=None, exchange_client=None, offline=None, credential_store=None, security=True,
                optimizer_slots=None):
     """Create an isolated dashboard; tests inject storage/client and disable polling."""
@@ -130,6 +145,8 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
         offline = os.getenv("TRADER_OFFLINE", "false").lower() == "true"
     bot_manager = manager or BotManager(legacy_dir=data_dir() if os.getenv("TRADER_DATA_DIR") else None)
     portfolio_history = PortfolioHistory(bot_manager.store)
+    spot_paper = SpotPaperService(bot_manager.store)
+    spot_research_task = None
     tester_manager = TesterManager(store=manager.store if manager is not None else None)
     optimizer_manager = OptimizerManager(store=manager.store if manager is not None else None)
     def _client():
@@ -160,6 +177,20 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
             except Exception:
                 pass  # The Portfolio tab reports errors when explicitly opened.
             await asyncio.sleep(3600)
+
+    async def _spot_paper_loop():
+        while True:
+            try:
+                if (spot_paper.state() or {}).get("running"):
+                    tick = asyncio.create_task(asyncio.to_thread(spot_paper.tick))
+                    try:
+                        await asyncio.shield(tick)
+                    except asyncio.CancelledError:
+                        await asyncio.gather(tick, return_exceptions=True)
+                        raise
+            except Exception as exc:
+                bot_manager.store.put("spot_manager", "paper_error", str(exc)[:200])
+            await asyncio.sleep(60)
 
     if credential_store is not None:
         bot_manager.client_factory = _client
@@ -310,6 +341,7 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
             bot_manager.load()
             tester_manager.load()
             optimizer_manager.load()
+            spot_paper.pause_on_restart()
             for bot in bot_manager.get_all():
                 if exchange_client is not None:
                     bot._exchange_client = exchange_client
@@ -317,8 +349,12 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
             if not offline:
                 tasks.append(asyncio.create_task(_exchange_sync_loop()))
                 tasks.append(asyncio.create_task(_portfolio_snapshot_loop()))
+                tasks.append(asyncio.create_task(_spot_paper_loop()))
             yield
         finally:
+            if spot_research_task is not None:
+                # to_thread work cannot be cancelled safely after acquisition starts.
+                await asyncio.gather(spot_research_task, return_exceptions=True)
             for task in tasks:
                 task.cancel()
             try:
@@ -379,13 +415,20 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
     # ── Margin Markets ─────────────────────────────────────────────────────────────
     @app.get("/api/margin-markets")
     async def get_margin_markets():
+        def _max_leverage(info):
+            try:
+                value = float(info["maxLeverage"])
+            except (KeyError, TypeError, ValueError):
+                return None
+            return value if math.isfinite(value) and value >= 1 else None
+
         def _parse(markets_raw: dict) -> list[dict]:
             result = [
                 {
                     "symbol": sym,
                     "srcCurrency": info["srcCurrency"],
                     "dstCurrency": info["dstCurrency"],
-                    "maxLeverage": int(info.get("maxLeverage", 5)),
+                    "maxLeverage": _max_leverage(info),
                     "buyEnabled": bool(info.get("buyEnabled", True)),
                     "sellEnabled": bool(info.get("sellEnabled", True)),
                     "feeRate": info.get("positionFeeRate", "0.001"),
@@ -433,7 +476,36 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
             {"symbol": "HYPEUSDT",    "srcCurrency": "hype",    "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
             {"symbol": "ADAUSDT",     "srcCurrency": "ada",     "dstCurrency": "usdt", "maxLeverage": 5, "buyEnabled": True,  "sellEnabled": True,  "feeRate": "0.001"},
         ]
-        return {"ok": True, "markets": fallback, "source": "fallback"}
+        # Symbols can help with offline research, but these old limits are not
+        # evidence of what the signed-in account can trade today.
+        return {"ok": True, "markets": [{**market, "maxLeverage": None} for market in fallback],
+                "source": "fallback"}
+
+    @app.get("/api/margin-markets/{symbol}/leverage")
+    async def get_margin_market_leverage(symbol: str):
+        market = symbol.upper()
+        if not re.fullmatch(r"[A-Z0-9_]{3,30}", market) or not market.endswith(("USDT", "IRT")):
+            return JSONResponse({"error": "Choose a valid margin market"}, status_code=400)
+        try:
+            limits = await asyncio.to_thread(_client().delegation_limit, market)
+        except ValueError:
+            return JSONResponse({"error": "Connect exchange credentials to check leverage"}, status_code=503)
+        except Exception:
+            return JSONResponse({"error": "Current Nobitex leverage limits are unavailable"}, status_code=503)
+
+        def available_max(side):
+            values = []
+            for item in limits.get(side, []):
+                try:
+                    leverage, remaining = float(item["leverage"]), float(item["limit"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if math.isfinite(leverage) and math.isfinite(remaining) and 1 <= leverage <= 100 and remaining > 0:
+                    values.append(leverage)
+            return max(values, default=None)
+
+        return {"ok": True, "symbol": market, "buyMax": available_max("buy"),
+                "sellMax": available_max("sell"), "source": "delegation_limit"}
 
 
     # ── Wallet ─────────────────────────────────────────────────────────────────────
@@ -472,7 +544,6 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
     async def get_wallet():
         try:
             client = _client()
-            spot = await asyncio.to_thread(client.wallets, "spot")
             margin = await asyncio.to_thread(client.wallets, "margin")
             usdt_data = margin.get("USDT") or margin.get("usdt") or {}
             balance_raw = float(usdt_data.get("balance", 0) or 0)
@@ -486,7 +557,6 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
             }
             return {
                 "ok": True,
-                "spot": spot,
                 "margin": margin,
                 "usdt_budget": budget,
                 "usdt_available": round(available, 2),
@@ -549,6 +619,87 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
             return JSONResponse({"error": "Targets must be 0–35% each, at most 80% in total"}, status_code=400)
         bot_manager.store.put("portfolio_settings", "targets", targets)
         return {"ok": True, "targets": targets}
+
+    @app.get("/api/portfolio-manager")
+    async def get_portfolio_manager():
+        state = spot_paper.state()
+        report = bot_manager.store.get("spot_manager", "research")
+        return {"ok": True, "approved_assets": list(APPROVED_ASSETS),
+                "paper": state, "paper_error": bot_manager.store.get("spot_manager", "paper_error"),
+                "research_status": bot_manager.store.get("spot_manager", "research_status"),
+                "research": {"run_id": report.get("run_id"), "selected": report["selected"], "windows": report["windows"],
+                             "data_hash": report["data_hash"], "code_hash": report["code_hash"],
+                             "forecast_quality": report["forecast_quality"],
+                             "validation_outcome": report["validation_outcome"],
+                             "validation": report["validation"], "test": {k: v for k, v in report["test"].items()
+                             if k not in {"equity", "decisions", "fills", "orders"}},
+                             "stress": {k: v for k, v in report["stress"].items()
+                             if k not in {"equity", "decisions", "fills", "orders"}},
+                             "benchmarks": {name: {k: v for k, v in value.items()
+                             if k not in {"equity", "decisions", "fills", "orders"}}
+                             for name, value in report["benchmarks"].items()},
+                             "data_quality": report["data_quality"], "paper_model": report["paper_model"]}
+                            if report else None}
+
+    @app.get("/api/portfolio-manager/research/report")
+    async def get_spot_research_report():
+        report = bot_manager.store.get("spot_manager", "research")
+        if report is None:
+            return JSONResponse({"error": "No completed research report"}, status_code=404)
+        return report
+
+    @app.get("/api/portfolio-manager/research/experiments")
+    async def get_spot_experiments():
+        return {"runs": bot_manager.store.get("spot_manager", "experiments", [])}
+
+    @app.get("/api/portfolio-manager/research/report/{run_id}")
+    async def get_spot_experiment(run_id: str):
+        if not re.fullmatch(r"[0-9]{8}T[0-9]{6}Z-[0-9a-f]{8}", run_id):
+            return JSONResponse({"error": "Invalid run id"}, status_code=400)
+        report = bot_manager.store.get("spot_experiments", run_id)
+        if report is None:
+            return JSONResponse({"error": "Research run not found"}, status_code=404)
+        return report
+
+    @app.post("/api/portfolio-manager/paper/start")
+    async def start_spot_paper(request: SpotPaperStartRequest):
+        try:
+            return {"ok": True, "paper": spot_paper.start(request.assets, request.budget_usdt)}
+        except (ValueError, TypeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+
+    @app.post("/api/portfolio-manager/paper/stop")
+    async def stop_spot_paper():
+        return {"ok": True, "paper": spot_paper.stop()}
+
+    @app.post("/api/portfolio-manager/paper/tick")
+    async def tick_spot_paper():
+        try:
+            return await asyncio.to_thread(spot_paper.tick)
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)[:200]}, status_code=503)
+
+    @app.post("/api/portfolio-manager/research")
+    async def run_spot_research(request: SpotResearchRequest):
+        nonlocal spot_research_task
+        if spot_research_task is not None and not spot_research_task.done():
+            return JSONResponse({"error": "Research already running"}, status_code=409)
+        if len(request.assets) != len(set(request.assets)) or any(asset not in APPROVED_ASSETS for asset in request.assets):
+            return JSONResponse({"error": "Choose distinct approved assets"}, status_code=400)
+
+        async def job():
+            bot_manager.store.put("spot_manager", "research_status", {"status": "running",
+                "started_at": datetime.now(timezone.utc).isoformat()})
+            try:
+                await asyncio.to_thread(spot_paper.research, request.assets, request.days, request.budget_usdt)
+                bot_manager.store.put("spot_manager", "research_status", {"status": "complete",
+                    "completed_at": datetime.now(timezone.utc).isoformat()})
+            except Exception as exc:
+                bot_manager.store.put("spot_manager", "research_status", {"status": "failed",
+                    "error": str(exc)[:200]})
+
+        spot_research_task = asyncio.create_task(job())
+        return {"ok": True, "status": "running"}
 
     # ── Settings ───────────────────────────────────────────────────────────────────
     @app.get("/api/settings/credentials")
@@ -686,7 +837,7 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
     async def optimizer_save_prefs(req: OptimizerPrefsRequest):
         optimizer_manager.save_prefs(
             req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
-            req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change, req.balanced_cap, req.balanced_weight,
+            req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change, req.min_win_rate, req.min_closed_trades,
         )
         return {"ok": True}
 
@@ -712,11 +863,11 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
         # Persist the selection so the tab reopens where the user left off.
         optimizer_manager.save_prefs(
             req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
-            req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change, req.balanced_cap, req.balanced_weight,
+            req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change, req.min_win_rate, req.min_closed_trades,
         )
         job = _start_optimizer_job(
             req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
-            req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change, req.balanced_cap, req.balanced_weight,
+            req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change, req.min_win_rate, req.min_closed_trades,
             execution=selected_execution(req.execution), random_seed=req.random_seed,
         )
         if job is None:
@@ -740,6 +891,24 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
         job.cancel()
         return {"ok": True}
 
+    @app.post("/api/optimizer/run/{job_id}/pause")
+    async def optimizer_run_pause(job_id: str):
+        job = optimizer_manager.get_job(job_id)
+        if job is None:
+            return JSONResponse(status_code=404, content={"error": "Job not found"})
+        if job.status not in ("pending", "running") or not job.pause():
+            return JSONResponse(status_code=409, content={"error": "Job cannot be paused"})
+        return {"ok": True, "status": job.status}
+
+    @app.post("/api/optimizer/run/{job_id}/resume")
+    async def optimizer_run_resume(job_id: str):
+        job = optimizer_manager.get_job(job_id)
+        if job is None:
+            return JSONResponse(status_code=404, content={"error": "Job not found"})
+        if job.status not in ("pausing", "paused") or not job.resume():
+            return JSONResponse(status_code=409, content={"error": "Job cannot be resumed"})
+        return {"ok": True, "status": job.status}
+
 
     # ── Optimizer Tester ───────────────────────────────────────────────────────────
     @app.post("/api/optimizer/tester/run")
@@ -762,7 +931,7 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
                     return JSONResponse(status_code=400, content={"error": f"Parameter '{name}': min ({lo}) must be less than max ({hi})."})
         job = _start_optimizer_job(
             req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
-            req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change, req.balanced_cap, req.balanced_weight,
+            req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change, req.min_win_rate, req.min_closed_trades,
             train_pct=req.train_pct,
             execution=selected_execution(req.execution), random_seed=req.random_seed,
         )
@@ -787,11 +956,33 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
         job.cancel()
         return {"ok": True}
 
+    @app.post("/api/optimizer/tester/run/{job_id}/pause")
+    async def optimizer_tester_run_pause(job_id: str):
+        job = optimizer_manager.get_job(job_id)
+        if job is None:
+            return JSONResponse(status_code=404, content={"error": "Job not found"})
+        if job.train_pct is None or job.status not in ("pending", "running") or not job.pause():
+            return JSONResponse(status_code=409, content={"error": "Job cannot be paused"})
+        return {"ok": True, "status": job.status}
+
+    @app.post("/api/optimizer/tester/run/{job_id}/resume")
+    async def optimizer_tester_run_resume(job_id: str):
+        job = optimizer_manager.get_job(job_id)
+        if job is None:
+            return JSONResponse(status_code=404, content={"error": "Job not found"})
+        if job.train_pct is None or job.status not in ("pausing", "paused") or not job.resume():
+            return JSONResponse(status_code=409, content={"error": "Job cannot be resumed"})
+        return {"ok": True, "status": job.status}
+
 
     # ── Bulk bot actions (must be registered before {bot_id} routes) ───────────────
     def selected_execution(value=None):
         saved = bot_manager.store.get("prefs", "execution", {}) if value is None else value
-        return asdict(execution_config(saved))
+        assumptions = asdict(execution_config(saved))
+        # Nobitex's public market API has no lifetime field. Snapshot the
+        # refreshed published rule once when a research job/bot is created.
+        assumptions["max_hold_days"] = current_max_hold_days()
+        return assumptions
 
 
     @app.get("/api/settings/execution")
@@ -836,6 +1027,12 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
         values["liquidation_ratio"] = 1.1
         sources["liquidation_ratio"] = {"kind": "documentation", "documentation": MARGIN_DOC,
                                         "detail": "Published minimum commitment ratio; simulator approximation"}
+        values["max_hold_days"] = await asyncio.to_thread(current_max_hold_days)
+        sources["max_hold_days"] = {"kind": "documentation", "documentation": HELP_URL,
+                                    "detail": "Published margin-order lifetime; order creation starts the clock",
+                                    **published_limit_status()}
+        if not published_limit_status()["refresh_ok"]:
+            warnings.append("Published lifetime could not be refreshed; using the last known value")
         return {"ok": True, "symbol": market, "values": values, "sources": sources,
                 "warnings": warnings, "fetched_at": datetime.now(timezone.utc).isoformat()}
 

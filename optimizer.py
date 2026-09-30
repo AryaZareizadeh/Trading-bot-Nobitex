@@ -27,12 +27,14 @@ searches are retained for inspection and require a new run.
 """
 
 import asyncio
+import math
 import multiprocessing as mp
 import os
 import sys
 import time
 import uuid
 import secrets
+import threading
 from dataclasses import fields, asdict
 from zoneinfo import ZoneInfo
 
@@ -145,8 +147,14 @@ def _build_params(strategy_name: str, names: list[str], vector) -> object:
     return PARAMS_CLASS[strategy_name](**kwargs)
 
 
+def _balanced_eligible(summary: dict, min_win_rate: float, min_closed_trades: int) -> bool:
+    """Only closed trades establish the win-rate and sample-size floor."""
+    return (summary.get("trade_count", 0) >= min_closed_trades
+            and summary.get("win_rate", 0.0) >= min_win_rate)
+
+
 def _compute_score(summary: dict, objective: str, credit: float, min_price_change: float = 5.0,
-                    balanced_cap: float = 100.0, balanced_weight: float = 0.5) -> float:
+                    min_win_rate: float = 50.0, min_closed_trades: int = 30) -> float:
     """Return the value DE minimizes for the given objective (lower = better)."""
     pnl = summary.get("total_pnl", 0.0)
     wr = summary.get("win_rate", 0.0)
@@ -155,34 +163,15 @@ def _compute_score(summary: dict, objective: str, credit: float, min_price_chang
         tc = summary.get("trade_count", 0)
         return -wr if tc > 0 else 100.0
     if objective == "balanced":
-        # Maximize both, but on a common 0-1 scale instead of just adding raw
-        # units (which let a large pnl figure swamp a small win-rate%, or vice
-        # versa, depending on how the two happen to be scaled).
-        #
-        # pnl_norm: pnl as a fraction of *balanced_cap* dollars of profit,
-        # floored at 0 (a losing strategy scores 0 on this axis, not a
-        # negative number) and capped at 1 (so blowing past the cap doesn't
-        # keep inflating the score). balanced_cap is a flat dollar amount
-        # (e.g. 20 on a $10 account = "$20 profit counts as maxed out"),
-        # not a % of credit, so it means the same thing regardless of how
-        # much credit the run happens to use.
-        # wr_norm: win rate as a fraction of 100%, same floor/cap.
-        cap = balanced_cap if balanced_cap and balanced_cap > 0 else 100.0
-        pnl_norm = min(1.0, max(0.0, pnl) / cap)
-        wr_norm = min(1.0, max(0.0, wr) / 100.0)
-        # Weighted geometric mean instead of a sum: a strategy now has to do
-        # reasonably well on *both* metrics to score well — a high win rate
-        # can no longer paper over a losing (or barely-profitable) strategy,
-        # since pnl_norm = 0 zeroes the whole score regardless of weight.
-        # balanced_weight is pnl's share of the exponent (0-1); win rate gets
-        # the remainder. 0.5 (the default) reduces to the plain, evenly
-        # weighted geometric mean used before this was tunable. Clamped away
-        # from the extremes so a 0 exponent can't turn a losing pnl_norm of 0
-        # into a free pass (0 ** 0 == 1 in Python, which would defeat the
-        # "losers always score 0" rule above).
-        w = balanced_weight if balanced_weight is not None else 0.5
-        w = min(0.95, max(0.05, w))
-        return -((pnl_norm ** w) * (wr_norm ** (1 - w)))
+        # Ineligible candidates get a graded penalty so DE can move toward the
+        # feasible region. The monotone transform below preserves the exact
+        # ordering of uncapped net P&L while keeping every eligible score below
+        # every ineligible score, including when all eligible runs lose money.
+        if not _balanced_eligible(summary, min_win_rate, min_closed_trades):
+            trades_short = max(0, min_closed_trades - summary.get("trade_count", 0))
+            wr_short = max(0.0, min_win_rate - wr)
+            return 1.0 + trades_short / min_closed_trades + wr_short / 100.0
+        return -(2.0 / math.pi) * math.atan(pnl / credit)
     if objective == "large_move":
         # Maximize the % of trades where |price change| >= threshold.
         changes = summary.get("price_changes", [])
@@ -331,13 +320,13 @@ def _expand_cpu_affinity() -> None:
 
 
 def _worker_init(df, strategy_name, credit, leverage, names, objective, min_price_change,
-                  balanced_cap=100.0, balanced_weight=0.5, execution=None, start_idx=None) -> None:
+                  min_win_rate=50.0, min_closed_trades=30, execution=None, start_idx=None) -> None:
     """Pool initializer: runs once per worker process, caching the shared context."""
     _expand_cpu_affinity()
     _WORKER.update(df=df, strategy=strategy_name, credit=credit,
                    leverage=leverage, names=names, objective=objective,
-                   min_price_change=min_price_change, balanced_cap=balanced_cap,
-                   balanced_weight=balanced_weight, execution=execution, start_idx=start_idx)
+                   min_price_change=min_price_change, min_win_rate=min_win_rate,
+                   min_closed_trades=min_closed_trades, execution=execution, start_idx=start_idx)
 
 
 def _worker_objective(vector) -> float:
@@ -351,7 +340,7 @@ def _worker_objective(vector) -> float:
     summary = evaluate(_WORKER["df"], _WORKER["strategy"], params,
                        _WORKER["credit"], _WORKER["leverage"], execution=_WORKER.get("execution"), start_idx=_WORKER.get("start_idx"))
     return _compute_score(summary, _WORKER["objective"], _WORKER["credit"], _WORKER["min_price_change"],
-                          _WORKER.get("balanced_cap", 100.0), _WORKER.get("balanced_weight", 0.5))
+                          _WORKER.get("min_win_rate", 50.0), _WORKER.get("min_closed_trades", 30))
 
 
 def _resolve_workers() -> int:
@@ -395,8 +384,8 @@ class OptimizerJob:
                  custom_bounds: dict | None = None,
                  objective: str = "profit",
                  min_price_change: float = 5.0,
-                 balanced_cap: float = 100.0,
-                 balanced_weight: float = 0.5,
+                 min_win_rate: float = 50.0,
+                 min_closed_trades: int = 30,
                  train_pct: float | None = None, execution=None, random_seed=None):
         self.id = uuid.uuid4().hex[:8]
         self.symbol = symbol
@@ -413,11 +402,13 @@ class OptimizerJob:
         self.requested_cores = cores     # 0 = Auto; else the user-picked core count
         self.objective = objective
         self.min_price_change = float(min_price_change) if min_price_change else 5.0
-        self.balanced_cap = float(balanced_cap) if balanced_cap else 100.0
-        self.balanced_weight = min(0.95, max(0.05, float(balanced_weight))) if balanced_weight is not None else 0.5
+        self.min_win_rate = float(min_win_rate)
+        self.min_closed_trades = int(min_closed_trades)
+        if not 0 < self.min_win_rate <= 100 or not 10 <= self.min_closed_trades <= 10000:
+            raise ValueError("Balanced goal requires win rate in (0, 100] and at least 10 closed trades")
         self.custom_bounds = custom_bounds or {}
 
-        self.status = "pending"          # pending | running | done | cancelled | error
+        self.status = "pending"          # pending | running | pausing | paused | done | cancelled | error
         self.error: str | None = None
         self.created_at = time.time()
 
@@ -446,12 +437,52 @@ class OptimizerJob:
         self.test_chart_data: dict | None = None
 
         self._cancel = False
+        self._pause_requested = False
+        self._pause_condition = threading.Condition()
+        self._pause_started_at: float | None = None
+        self.paused_seconds = 0.0
         self._task: asyncio.Task | None = None
         self._persist = lambda: None
 
     def cancel(self) -> None:
-        self._cancel = True
-        self._persist()
+        with self._pause_condition:
+            self._cancel = True
+            if self._pause_started_at is not None:
+                self.paused_seconds += time.time() - self._pause_started_at
+                self._pause_started_at = None
+            self._pause_condition.notify_all()
+            self._persist()
+
+    def pause(self) -> bool:
+        with self._pause_condition:
+            if self.status not in ("pending", "running") or self._cancel:
+                return False
+            self._pause_requested = True
+            self.status = "pausing"
+            self._persist()
+            return True
+
+    def resume(self) -> bool:
+        with self._pause_condition:
+            if self.status not in ("pausing", "paused") or self._cancel:
+                return False
+            self._pause_requested = False
+            if self._pause_started_at is not None:
+                self.paused_seconds += time.time() - self._pause_started_at
+                self._pause_started_at = None
+            self.status = "running"
+            self._pause_condition.notify_all()
+            self._persist()
+            return True
+
+    def _wait_if_paused(self) -> None:
+        with self._pause_condition:
+            while self._pause_requested and not self._cancel:
+                if self.status != "paused":
+                    self.status = "paused"
+                    self._pause_started_at = time.time()
+                    self._persist()
+                self._pause_condition.wait()
 
     @property
     def _effective_bounds(self) -> dict[str, tuple[int, int]]:
@@ -490,6 +521,9 @@ class OptimizerJob:
 
     def _run_de(self, df: pd.DataFrame) -> None:
         """Pick a search path: parallel across cores, else single-core."""
+        self._wait_if_paused()
+        if self._cancel:
+            return
         # A specific core count picked in the UI wins; 0 means "Auto" (defer to the
         # CPU-count / OPTIMIZER_WORKERS default).
         if self.requested_cores and self.requested_cores >= 1:
@@ -513,9 +547,10 @@ class OptimizerJob:
         def objective(vector) -> float:
             params = _build_params(self.strategy, names, vector)
             summary = evaluate(df, self.strategy, params, self.credit, self.leverage, execution=self.execution, start_idx=self.evaluation_start)
-            score = _compute_score(summary, self.objective, self.credit, self.min_price_change, self.balanced_cap, self.balanced_weight)
+            score = _compute_score(summary, self.objective, self.credit, self.min_price_change, self.min_win_rate, self.min_closed_trades)
             self.evaluations += 1
-            if score < best["score"]:
+            eligible = self.objective != "balanced" or _balanced_eligible(summary, self.min_win_rate, self.min_closed_trades)
+            if eligible and score < best["score"]:
                 best["score"] = score
                 best["pnl"] = summary["total_pnl"]
                 best["params"] = {f.name: getattr(params, f.name) for f in fields(params)}
@@ -533,18 +568,16 @@ class OptimizerJob:
             self.best_params = best["params"]
             self.best_summary = best["summary"]
             self._refresh_best_chart(df)
-            if best["params"] is not None:
-                self.history.append({
-                    "iteration": self.iteration,
-                    "pnl": best["pnl"],
-                    "win_rate": best["summary"].get("win_rate", 0) if best["summary"] else 0,
-                    "trade_count": best["summary"].get("trade_count", 0) if best["summary"] else 0,
-                    "delta": self.current_delta,
-                })
-            if self._cancel:
-                return True   # signal DE to stop
+            self.history.append({
+                "iteration": self.iteration,
+                "pnl": best["pnl"] if best["params"] is not None else None,
+                "win_rate": best["summary"].get("win_rate") if best["summary"] else None,
+                "trade_count": best["summary"].get("trade_count") if best["summary"] else None,
+                "delta": self.current_delta,
+            })
             self._persist()
-            return False
+            self._wait_if_paused()
+            return self._cancel   # signal DE to stop after this generation
 
         differential_evolution(objective, **self._de_kwargs(bounds, integrality, callback))
 
@@ -577,8 +610,9 @@ class OptimizerJob:
             """Re-score one DE vector in the parent and keep it if it's the best."""
             params = _build_params(self.strategy, names, vector)
             summary = evaluate(df, self.strategy, params, self.credit, self.leverage, execution=self.execution, start_idx=self.evaluation_start)
-            score = _compute_score(summary, self.objective, self.credit, self.min_price_change, self.balanced_cap, self.balanced_weight)
-            if best["score"] is None or score < best["score"]:
+            score = _compute_score(summary, self.objective, self.credit, self.min_price_change, self.min_win_rate, self.min_closed_trades)
+            eligible = self.objective != "balanced" or _balanced_eligible(summary, self.min_win_rate, self.min_closed_trades)
+            if eligible and (best["score"] is None or score < best["score"]):
                 best["score"] = score
                 best["pnl"] = summary["total_pnl"]
                 best["params"] = {f.name: getattr(params, f.name) for f in fields(params)}
@@ -602,18 +636,16 @@ class OptimizerJob:
             self.best_params = best["params"]
             self.best_summary = best["summary"]
             self._refresh_best_chart(df)
-            if best["pnl"] is not None:
-                self.history.append({
-                    "iteration": self.iteration,
-                    "pnl": best["pnl"],
-                    "win_rate": best["summary"].get("win_rate", 0) if best["summary"] else 0,
-                    "trade_count": best["summary"].get("trade_count", 0) if best["summary"] else 0,
-                    "delta": self.current_delta,
-                })
-            if self._cancel:
-                return True   # signal DE to stop (takes effect after this generation)
+            self.history.append({
+                "iteration": self.iteration,
+                "pnl": best["pnl"],
+                "win_rate": best["summary"].get("win_rate") if best["summary"] else None,
+                "trade_count": best["summary"].get("trade_count") if best["summary"] else None,
+                "delta": self.current_delta,
+            })
             self._persist()
-            return False
+            self._wait_if_paused()
+            return self._cancel   # signal DE to stop after this generation
 
         # "spawn" is the only start method on Windows and avoids fork-safety issues
         # elsewhere; the candle data + context are handed to each worker just once.
@@ -622,7 +654,7 @@ class OptimizerJob:
             processes=workers,
             initializer=_worker_init,
             initargs=(df, self.strategy, self.credit, self.leverage, names, self.objective, self.min_price_change,
-                      self.balanced_cap, self.balanced_weight, self.execution, self.evaluation_start),
+                      self.min_win_rate, self.min_closed_trades, self.execution, self.evaluation_start),
         )
         try:
             result = differential_evolution(
@@ -645,7 +677,7 @@ class OptimizerJob:
         self._refresh_best_chart(df)
 
     async def run(self) -> None:
-        self.status = "running"
+        self.status = "pausing" if self._pause_requested else "running"
         self._persist()
         try:
             # Every candidate sees the same evaluation candles, even when its
@@ -912,9 +944,11 @@ class OptimizerJob:
             "random_seed": self.random_seed,
             "evaluation_start": self.evaluation_start,
             "custom_bounds": self.custom_bounds,
+            "search_bounds": self._effective_bounds,
             "min_price_change": self.min_price_change,
-            "balanced_cap": self.balanced_cap,
-            "balanced_weight": self.balanced_weight,
+            "min_win_rate": self.min_win_rate,
+            "min_closed_trades": self.min_closed_trades,
+            "no_eligible_result": self.objective == "balanced" and self.status == "done" and self.best_params is None,
             "requested_cores": self.requested_cores,
             "status": self.status,
             "error": self.error,
@@ -931,6 +965,8 @@ class OptimizerJob:
             "iteration": self.iteration,
             "maxiter": self.maxiter,
             "workers": self.workers,
+            "paused_seconds": self.paused_seconds,
+            "pause_supported": True,
             "evaluations": self.evaluations,
             "current_delta": self.current_delta,
             "delta_tol": _DE_TOL,
@@ -970,8 +1006,8 @@ class OptimizerManager(ResearchPersistence):
             "symbol": "", "strategy": "", "timeframe": "240",
             "candles": _DEFAULT_CANDLES, "credit": 100.0, "leverage": 5,
             "min_price_change": 5.0,
-            "balanced_cap": 100.0,
-            "balanced_weight": 0.5,
+            "min_win_rate": 50.0,
+            "min_closed_trades": 30,
             "cores": 0,       # 0 = Auto
             "maxiter": _DE_MAXITER,
             "objective": "profit",
@@ -984,8 +1020,8 @@ class OptimizerManager(ResearchPersistence):
 
     def save_prefs(self, symbol, strategy, timeframe, candles, credit, leverage,
                    cores=0, maxiter=_DE_MAXITER, objective="profit",
-                   custom_bounds=None, min_price_change=5.0, balanced_cap=100.0,
-                   balanced_weight=0.5) -> None:
+                   custom_bounds=None, min_price_change=5.0, min_win_rate=50.0,
+                   min_closed_trades=30) -> None:
         self._ensure_store()
         self._prefs = {
             "symbol": (symbol or "").lower().replace("/", "").strip(),
@@ -999,15 +1035,16 @@ class OptimizerManager(ResearchPersistence):
             "objective": objective if objective in ("profit", "winrate", "balanced", "large_move") else "profit",
             "custom_bounds": custom_bounds if isinstance(custom_bounds, dict) else None,
             "min_price_change": max(0.1, float(min_price_change)) if min_price_change else 5.0,
-            "balanced_cap": max(0.1, float(balanced_cap)) if balanced_cap else 100.0,
-            "balanced_weight": min(0.95, max(0.05, float(balanced_weight))) if balanced_weight is not None else 0.5,
+            "min_win_rate": float(min_win_rate),
+            "min_closed_trades": int(min_closed_trades),
         }
         self._save_prefs()
 
     def get_config(self) -> dict:
         self._ensure_store()
         return {
-            **self._prefs,
+            **{key: value for key, value in self._prefs.items()
+               if key not in ("balanced_cap", "balanced_weight")},
             "available_strategies": [
                 {
                     "value": k,
@@ -1031,16 +1068,16 @@ class OptimizerManager(ResearchPersistence):
     # ── Jobs ─────────────────────────────────────────────────────────────────
     def start_job(self, symbol, strategy, timeframe, candles, credit, leverage,
                   cores=0, maxiter=_DE_MAXITER, objective="profit",
-                  custom_bounds=None, min_price_change=5.0, balanced_cap=100.0,
-                  balanced_weight=0.5, train_pct=None, execution=None, random_seed=None) -> OptimizerJob:
+                  custom_bounds=None, min_price_change=5.0, min_win_rate=50.0,
+                  min_closed_trades=30, train_pct=None, execution=None, random_seed=None) -> OptimizerJob:
         self._ensure_store()
         self._prune()
         job = OptimizerJob(
             symbol.lower().replace("/", "").strip(), strategy, timeframe,
             _clamp_candles(candles), float(credit), int(leverage), _clamp_cores(cores),
             maxiter=maxiter, custom_bounds=custom_bounds, objective=objective,
-            min_price_change=min_price_change, balanced_cap=balanced_cap,
-            balanced_weight=balanced_weight, train_pct=train_pct, execution=execution, random_seed=random_seed,
+            min_price_change=min_price_change, min_win_rate=min_win_rate,
+            min_closed_trades=min_closed_trades, train_pct=train_pct, execution=execution, random_seed=random_seed,
         )
         self._attach(job)
         job._task = asyncio.create_task(job.run())

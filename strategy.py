@@ -9,12 +9,6 @@ from indicators import Indicators
 
 _TEHRAN = ZoneInfo("Asia/Tehran")
 
-# Hard time-based exit: no position (long or short, any strategy) may stay open
-# longer than this many calendar days, regardless of what the strategy's own
-# exit signal says. Measured against the position's entry timestamp so it holds
-# across every timeframe (1-minute candles through daily candles) the same way.
-MAX_HOLD_DAYS = 55
-
 
 def _fmt_time(ts: pd.Timestamp) -> str:
     if ts.tzinfo is None:
@@ -138,14 +132,9 @@ class Strategy(ABC):
         return None
 
     def _max_hold_exceeded(self, entry_ts: pd.Timestamp, current_idx: int, df: pd.DataFrame) -> bool:
-        """True once a position has been open for MAX_HOLD_DAYS calendar days or more.
-
-        Compares actual timestamps, not candle counts, so the same 30-day rule
-        applies consistently whether the timeframe is 1-minute or daily candles,
-        and whether the entry came from a candle close or a real exchange fill.
-        """
+        """True once a position reaches the configured calendar-day limit."""
         current_ts = df.index[current_idx]
-        return (current_ts - entry_ts) >= pd.Timedelta(days=MAX_HOLD_DAYS)
+        return (current_ts - entry_ts) >= pd.Timedelta(days=self.config.max_hold_days)
 
     def _make_trade_record(
         self,

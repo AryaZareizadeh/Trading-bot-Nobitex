@@ -89,6 +89,11 @@ instructions before exposing the service beyond your own computer.
    rather than secret values.
 2. Create a bot with mode **simulation**, choose its market, timeframe, strategy,
    capital and leverage, then start it explicitly.
+   Selecting a market checks the signed-in account's current Nobitex delegation
+   tiers for long and short trades. The market list alone does not establish your
+   usable leverage. The bot uses whole-number leverage up to the lower available
+   side limit; Agentic AI has a separate 5× strategy cap. Margin-wallet USDT and
+   the remaining delegation amount can further restrict an order when placed.
 3. Inspect its candles, positions and trade history. Stopped bots remain stopped
    after restarting the application.
 4. Open **Research assumptions** to load your Nobitex account fee and the
@@ -222,6 +227,25 @@ Optional desktop parameter charts use a separate dependency:
 
 That legacy chart reads the original `bots.json`; it is not a database export.
 Matplotlib is unnecessary for dashboard startup.
+
+## Portfolio Manager research and paper trading
+
+The **Portfolio Manager** tab contains a separate virtual spot portfolio. Its
+initial balance defaults to 200 USDT; it never uses exchange credentials or
+submits real orders. Select approved assets, run public-data research, then
+explicitly start paper trading. The exchange wallet valuation and existing
+cash-flow history remain in the lower part of the same tab. The manager's
+virtual cash, holdings, and P&L do not include those wallet balances.
+
+The research runner uses Binance spot signals, KuCoin HYPE and Bitfinex XAUT
+historical spot supplements, and Nobitex USDT spot prices. It reports source
+gaps, two chronological validation folds, an untouched test, cost stress,
+forecast error, and USDT / equal basket / momentum comparisons. The report is
+available through the tab's **Inspect full report** link. Historical fills are
+estimates from candle data; this is not evidence of a profitable strategy.
+
+See [the architecture, validation criteria, and phased plan](docs/spot-portfolio-manager.md)
+for assumptions, current limits, and the separate live trading gate.
 
 ## Further reading
 

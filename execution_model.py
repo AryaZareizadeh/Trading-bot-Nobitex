@@ -15,8 +15,9 @@ import pandas as pd
 from accounting import adverse_fill, gross_pnl, liquidation_price
 from config import Config
 from indicators import Indicators
+from position_limits import DEFAULT_MAX_HOLD_DAYS
 from strategy import (AdvRSICombinedStrategy, ExtremeReversalStrategy,
-                      PARAMS_CLASS, MAX_HOLD_DAYS, _fmt_time)
+                      PARAMS_CLASS, _fmt_time)
 
 MODEL_VERSION = "ohlc-net-v1"
 WARMUP_CANDLES = 300
@@ -33,6 +34,7 @@ class ExecutionConfig:
     fill_timing: str = "next_open"
     margin_fraction: float = 1.0
     liquidation_ratio: float = 1.1
+    max_hold_days: int = DEFAULT_MAX_HOLD_DAYS
 
     def __post_init__(self):
         for field in ("entry_fee_rate", "exit_fee_rate", "slippage_bps", "holding_rate_per_day"):
@@ -51,6 +53,8 @@ class ExecutionConfig:
             raise ValueError("Unknown holding policy")
         if self.holding_policy == "none" and self.holding_rate_per_day:
             raise ValueError("A nonzero holding rate requires an explicit holding policy")
+        if type(self.max_hold_days) is not int or not 1 <= self.max_hold_days <= 365:
+            raise ValueError("max_hold_days must be an integer between 1 and 365")
 
 
 def execution_config(value=None):
@@ -110,6 +114,9 @@ def simulate_signals(df, decide, credit, leverage, execution=None, start_idx=0):
             "Start Price": pos["entry_price"], "End Price": price,
             "Candle Count": i-pos["entry_idx"]+1, "Quantity": pos["quantity"],
             "Reserved Margin ($)": pos["margin"], "Gross P&L ($)": gross,
+            "Entry Fee ($)": pos["entry_fee"], "Exit Fee ($)": exit_fee,
+            "Holding Fee ($)": pos["holding_cost"],
+            "Days Open": (df.index[i]-df.index[pos["entry_idx"]]).total_seconds()/86400,
             "Fees ($)": fees, "Borrowing ($)": pos["holding_cost"], "P&L ($)": net,
             "Balance ($)": cash, "Price Change": f"{(price/pos['entry_price']-1)*100:.6f}%",
             "Liquidated": liquidated, "Commit Ratio": (price/pos["entry_price"]+1/leverage if pos["direction"] == "Long" else (leverage+1)*pos["entry_price"]/(leverage*price)),
@@ -138,6 +145,7 @@ def simulate_signals(df, decide, credit, leverage, execution=None, start_idx=0):
         fees_total += fee
         reserved += margin
         positions.append({"direction": direction, "entry_price": price, "entry_idx": i,
+                          "order_idx": i,
                           "entry_time": str(df.index[i]), "quantity": quantity, "margin": margin,
                           "entry_fee": fee, "holding_cost": 0.0, "touched_extreme": False})
 
@@ -154,6 +162,8 @@ def simulate_signals(df, decide, credit, leverage, execution=None, start_idx=0):
             gap = row.Open <= threshold if pos["direction"] == "Long" else row.Open >= threshold
             if gap:
                 close(pos, i, row.Open, True)
+            elif df.index[i] - df.index[pos["order_idx"]] >= pd.Timedelta(days=ex.max_hold_days):
+                close(pos, i, row.Open)
             elif pos["direction"] in pending_exits:
                 close(pos, i, row.Open)
         if ex.fill_timing == "next_open":
@@ -166,12 +176,10 @@ def simulate_signals(df, decide, credit, leverage, execution=None, start_idx=0):
                 close(pos, i, threshold, True)
         entry, exits = decide(i, positions)
         exits = list(exits)
-        for pos in positions:
-            if df.index[i] - df.index[pos["entry_idx"]] >= pd.Timedelta(days=MAX_HOLD_DAYS):
-                exits.append(pos["direction"])
         if ex.fill_timing == "legacy_close":
             for pos in list(positions):
-                if pos["direction"] in exits:
+                if (pos["direction"] in exits or
+                    df.index[i] - df.index[pos["order_idx"]] >= pd.Timedelta(days=ex.max_hold_days)):
                     close(pos, i, row.Close)
             enter(entry, i, row.Close)
         else:

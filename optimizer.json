@@ -55,6 +55,6 @@
     ]
   },
   "min_price_change": 3.0,
-  "balanced_cap": 300.0,
-  "balanced_weight": 0.8
+  "min_win_rate": 50.0,
+  "min_closed_trades": 30
 }

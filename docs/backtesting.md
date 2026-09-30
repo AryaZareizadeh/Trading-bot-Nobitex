@@ -34,6 +34,21 @@ scenario appropriate to the account and market before interpreting net returns.
 | `position_mode` | `net` allows one position, `multi` permits capital-constrained multiple positions |
 | `fill_timing` | `next_open` by default; `legacy_close` is an explicit comparison scenario |
 | `liquidation_ratio` | Commitment-ratio threshold used by the simplified liquidation model |
+| `max_hold_days` | Nobitex margin-order lifetime, refreshed from its [help article](https://nobitx.com/help/discover/position/how-long-can-i-extend-my-commitment-position/) when a research run starts |
+
+Nobitex currently publishes a 60-day limit from margin **order creation**, even
+if the order fills later. The public market API does not expose a lifetime field.
+The app checks the official help article when the value is needed, at most once
+every six hours, and retries after ten
+minutes if unavailable. It retains the last verified value; a fresh process
+falls back to the documented 60 days. The Nobitex assumptions response marks
+an unverified fallback. Research jobs keep a snapshot of the value used for
+that run, so results remain comparable. In the OHLC simulator, a signal fills
+at the next open, which also stands in for order creation; unfilled order wait
+time cannot be reconstructed from candles. A position reaching the limit exits
+at the next available candle open. The real bot uses each exchange position's
+`expirationDate` and tries to close an hour before it; date-only expiries are
+interpreted conservatively at the start of the date in Tehran.
 
 The daily holding scenario is a sensitivity assumption, not a claim about
 Nobitex billing. It does not reproduce asset-denominated charges, hourly billing
@@ -82,6 +97,14 @@ P&L and costs already incurred. `closed_net_pnl` counts completed trades only;
 equity. Future exit costs on positions still open at the boundary are excluded.
 Optimizer objectives use this net research summary; the chosen metric and
 held-out summary should be reviewed together.
+
+The Balanced objective requires a selected minimum win rate and a minimum number
+of closed training trades (30 by default), then maximizes uncapped net P&L among
+eligible parameter sets. The trade count is a sample-size guard, not statistical
+proof. If no tested set meets both floors, the run reports no eligible result.
+Win rate uses closed trades only, while net P&L includes marked open positions.
+The floors are applied during training; the Optimizer Tester reports held-out
+win rate, closed trades, net P&L, and max drawdown separately for review.
 
 ## Liquidation and position policy
 

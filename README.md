@@ -5,6 +5,11 @@ research, simulated trading, and Nobitex margin execution. The interface is plai
 JavaScript served by FastAPI. Binance supplies optional research candles; real
 orders go to Nobitex.
 
+All Nobitex connections bypass application proxy settings. Binance, KuCoin,
+and Bitfinex retain environment proxy support. A VPN that captures all traffic
+also needs Nobitex split-tunneling exclusions. See [Nobitex connectivity](docs/nobitex-connectivity.md)
+for public connection checks and Docker update instructions.
+
 The Docker deployment supports invitation-only accounts. Each user has a username,
 password, confirmed email address, private bots and research, and separate encrypted
 Nobitex credentials. Recovery codes are emailed. One Python process serves all users;
@@ -96,27 +101,92 @@ instructions before exposing the service beyond your own computer.
    the remaining delegation amount can further restrict an order when placed.
 3. Inspect its candles, positions and trade history. Stopped bots remain stopped
    after restarting the application.
+   Each bot's **History** shows its creation timestamp, starts, stops, failures
+   and interruptions detected after restart, with UTC timestamps to the second.
+   **Activity Log** includes durable events beyond the card's recent 200-entry
+   log; filter it to creation, live/down events and edits. **Trades** retains
+   simulation results across configuration edits and shows real order attempts,
+   fills, rejected/uncertain outcomes and exchange-confirmed settled P&L.
+   Open simulation P&L is unrealized; an open trade discarded by an edit is
+   marked **Reset by edit**. Charts keep simulation and real results separate.
+   Use **Refresh history** to fetch the latest records. Imported bots without
+   saved creation metadata show an unknown creation time. Exact times of an
+   unexpected shutdown, and records never saved by older versions, cannot be
+   reconstructed.
 4. Open **Research assumptions** to load your Nobitex account fee and the
    selected market's daily renewal rate. Set slippage and capital allocation
    yourself, then save. Costs default to zero until configured.
-5. Use **Optimizer** to search parameters. Choose **Optimizer Tester** for a
-   held-out test on later candles. Review gross P&L, costs and net results
-   before copying parameters to a bot.
+5. Use **Optimizer** to search parameters with **Differential Evolution (DE)**
+   or **Optuna TPE**. Browse saved runs by market, strategy and status, open
+   their results, or delete finished runs you no longer need. Review gross P&L,
+   costs and net results before copying parameters to a bot.
 
 Historical data and account functions need network access. The regression suite
 uses synthetic data and fake exchanges and does not need credentials.
 
 ## Strategies
 
+**Model Trainer** trains an AlexNet-inspired CNN on selected cryptocurrency
+markets and timeframes, with optional CUDA acceleration. It saves private model
+checkpoints, reports chronological validation/test errors, and lets **AI Bots**
+use compatible models in simulation. See [trainer setup and model evaluation](docs/model-trainer.md).
+
 | Name | Approach |
 | --- | --- |
 | AdvRSI | Stochastic RSI extreme zones with RSI confirmation and configurable exits |
+| AdvRSILong / AdvRSIShort | Independent long-only / short-only RSI swing strategies, with 10 parameters each |
 | TrendMomentum | EMA trend filter with MACD and Stochastic RSI momentum |
 | ExtremeReversal | Extreme-reading reversals; beta/unfinished strategy |
 | PriceAI | Price and volume model that forecasts four-candle returns and makes simulated enter, hold and exit decisions |
+| AlexNet | Saved CNN price forecasts from Model Trainer, used by simulation AI bots |
 
-These strategies use deterministic rules. Differential Evolution searches their
-numeric parameters; it does not train a machine-learning model.
+The indicator strategies use deterministic rules. Differential Evolution and
+Optuna multivariate TPE search their numeric parameters. DE uses a generation
+budget; TPE uses a trial budget and learns parameter relationships from completed
+backtests. Both use the same objective, execution assumptions and eligibility
+floors. PriceAI trains its own estimator; AlexNet uses saved
+CNN weights from Model Trainer.
+
+In the DE tab, **DE strategy** selects any of SciPy's 12 built-in variants,
+including `rand1bin`, `rand2bin`, `best1bin` and their exponential crossover
+variants. `best2bin` remains the default. The selection is saved with your
+preferences and each run, and applies to both sides of an independent RSI search.
+
+### Independent RSI optimization
+
+Choose **Advanced RSI Independent (Long + Short)** in either optimizer tab.
+Set **Long credit** and **Short credit** independently (default 100 USDT each).
+Changing either amount does not change the other. Combined credit is their sum.
+The optimizer fetches candles once, then runs two
+separate searches with their own parameter ranges, scores, positions and capital.
+Generations (DE), trials (TPE) and balanced eligibility floors apply separately to each side.
+Each side optimizes six indicator settings, its entry threshold, both exit
+thresholds and its entry waiting period. The opposite entry threshold is omitted;
+crossing out of the side's entry zone consumes the setup, including a jump
+directly into the opposite extreme zone.
+
+Select **Long** or **Short** in the results to inspect that side's settings,
+trades and charts. **Apply to New Bot** drafts the selected side;
+**Create both simulation bots** saves both bots atomically with their optimized
+settings, independent credit and execution assumptions. **Create combined
+simulation bot** saves one bot containing both optimized runners, with one
+Start/Stop control. Bots are created idle.
+Older saved runs with a held-out window remain readable in their method's saved
+run list. Each side is also available on its own in the strategy selector.
+Existing Advanced RSI Combined behavior is retained.
+
+To create a combined bot manually, select **Advanced RSI Independent · Long +
+Short** in the bot form. Long credit and Short credit default to 100 USDT each;
+their sum is the combined capital. Both runners can hold positions at the same
+time. Entries, exits, fees and balances remain separate, so closing a long does
+not close or spend the short account. The card displays each side's credit,
+P&L and open positions; the Price Chart offers separate Long and Short settings.
+Restart restores both accounts and leaves the bot idle until explicitly started.
+Simulation and real modes use the existing execution paths. Real orders may share
+a market only with the combined bot's own opposite runner, identified by its
+exchange position ID and durable ownership record. Other positions and unresolved
+orders still block new submissions. Both real credits reserve budget from the
+same exchange margin wallet; they do not create separate exchange wallets.
 
 ### PriceAI first milestone
 
@@ -205,6 +275,48 @@ and `optimizer.json` are migration inputs; keep originals as backups.
 
 Keep `.env`, runtime files, backups and exchange credentials outside Git. See
 [operations](docs/operations.md) for recovery and private-server migration.
+
+## Bot market updates
+
+Running bot cards show a candle-close countdown based on the exchange's candle
+timestamps and calendar boundaries. The browser ticks the countdown locally;
+it makes no exchange requests. A delayed candle is labeled as pending, and the
+bot backs off while waiting for publication without repeating the old signal.
+The visible Price Chart refreshes when candle or evaluated strategy state changes,
+preserving its viewport and following new bars when already viewing the latest bar.
+
+Cards show the latest public Nobitex price separately from the last candle close.
+While a dashboard with bots is connected, one shared fetcher requests all market
+stats at most once every 10 seconds (six requests per minute). Bots, users, tabs,
+and processes sharing `TRADER_DATA_DIR` reuse `market-quotes.sqlite3` and its OS
+lease. Poll reservations and rate-limit cooldowns survive restarts. HTTP 429
+responses honor `Retry-After`; other failures back off, retaining the last good
+quote with its age and a stale label. Display quotes do not change strategy inputs
+or order prices. `TRADER_OFFLINE=true` disables automatic quote fetching.
+
+## Shared candle history
+
+All candle downloads share a persistent SQLite database at
+`TRADER_DATA_DIR/candles.sqlite3` (by default `.runtime/candles.sqlite3`; `/data/candles.sqlite3`
+in Docker). Bots, backtests, the optimizer, model training, and portfolio research
+reuse the same public market history across features, users, and restarts.
+
+Each candle stores its exchange, instrument, timeframe, actual opening timestamp,
+exclusive closing boundary, Open, High, Low, Close, Volume, and source metadata.
+Timeframe aliases such as `60` and `1h` address the same series. Different exchanges,
+pairs, and timeframes remain separate.
+
+Fetchers check stored history before HTTP requests, append newly closed candles,
+repair missing periods, and extend older history only when requested. Every successful
+page is saved immediately, including extra closed candles beyond the caller's requested
+count or range. Stored closed candles retain their original values. Incomplete and
+malformed candles never become reusable history. Successfully checked empty periods
+are retried after a short 60-second delay; network errors remain retryable immediately.
+Series locks prevent concurrent threads and processes from downloading the same history.
+
+Binance's closing timestamps and calendar months determine closure. Nobitex timestamps
+retain their exchange alignment, including historical Tehran daylight-saving changes.
+Back up the runtime directory or Docker data volume to include this candle database.
 
 ## Offline verification
 

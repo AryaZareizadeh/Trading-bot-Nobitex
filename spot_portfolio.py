@@ -56,15 +56,16 @@ def new_state(budget=200, assets=APPROVED_ASSETS):
 
 def mark(state, prices, at=None, *, liquidation_prices=None):
     """A missing price for any owned asset makes the valuation incomplete."""
-    missing = [asset for asset, qty in state["holdings"].items()
+    holdings = {asset: qty for asset, qty in state["holdings"].items() if D(qty) != 0}
+    missing = [asset for asset, qty in holdings.items()
                if D(qty) > 0 and (asset not in prices or D(prices[asset]) <= 0)]
     if missing:
         return {"at": at or _now(), "complete": False, "unpriced": missing}
     cash = D(state["cash_usdt"])
-    value = cash + sum((D(qty) * D(prices[asset]) for asset, qty in state["holdings"].items()), Decimal(0))
+    value = cash + sum((D(qty) * D(prices[asset]) for asset, qty in holdings.items()), Decimal(0))
     liquidation = None
-    if liquidation_prices is not None and all(asset in liquidation_prices for asset in state["holdings"]):
-        liquidation = cash + sum((D(qty) * D(liquidation_prices[asset]) for asset, qty in state["holdings"].items()), Decimal(0))
+    if liquidation_prices is not None and all(asset in liquidation_prices for asset in holdings):
+        liquidation = cash + sum((D(qty) * D(liquidation_prices[asset]) for asset, qty in holdings.items()), Decimal(0))
     adjusted = value - D(state["flow_offset_usdt"])
     peak = max(D(state["peak_adjusted_usdt"]), adjusted)
     state["peak_adjusted_usdt"] = str(peak)
@@ -224,3 +225,88 @@ def execute_targets(state, weights, quotes, prices, *, costs=SpotCosts(), risk=S
     state["decisions"].append({"at": at, "reason": reason, "targets": {a: float(D(w)) for a, w in weights.items()},
                                "orders": len(state["orders"]), "model_version": model_version})
     return mark(state, prices, at, liquidation_prices=liquidation_prices)
+
+
+def plan_targets(state, weights, prices, equity, *, costs=SpotCosts(), risk=SpotRisk(),
+                 at=None, reason="allocation decision", model_version=None):
+    """Freeze quantities and spending limits using only the decision's marks.
+
+    Historical execution may happen on distinct venue clocks. A later opening
+    price can bound a fill, but cannot increase the decision's quantity/budget.
+    """
+    if any(a not in state["assets"] or D(w) < 0 for a, w in weights.items()) or sum((D(w) for w in weights.values()), Decimal(0)) > 1:
+        raise ValueError("Invalid target weights")
+    owned = {a for a, qty in state["holdings"].items() if D(qty) > 0}
+    requested = {a for a, w in weights.items() if D(w) > 0}
+    if not (owned | requested).issubset(prices):
+        return []
+    equity = D(equity)
+    remaining = equity * risk.max_turnover_fraction
+    changes = []
+    for asset in owned | requested:
+        price = D(prices[asset])
+        gap = equity * D(weights.get(asset, 0)) - D(state["holdings"].get(asset, 0)) * price
+        if abs(gap) >= max(costs.min_notional, equity * risk.no_trade_fraction):
+            changes.append((asset, gap))
+    changes.sort(key=lambda item: (item[1] >= 0, -abs(item[1]), item[0]))
+    planned = []
+    for asset, gap in changes:
+        notional = min(abs(gap), remaining)
+        if notional < costs.min_notional:
+            continue
+        planned.append({"asset": asset, "side": "buy" if gap > 0 else "sell",
+                        "requested_quantity": str(notional / D(prices[asset])),
+                        "planned_notional_usdt": str(notional), "decision_at": at or _now(),
+                        "reason": reason, "model_version": model_version})
+        remaining -= notional
+    return planned
+
+
+def execute_planned(state, planned, quotes, prices, *, costs=SpotCosts(), at=None,
+                    quantity_steps=None):
+    """Fill frozen quantities at their venue event without re-sizing targets."""
+    at = at or _now()
+    before = mark(state, prices, at)
+    if not before["complete"]:
+        for order in planned:
+            state["orders"].append({**order, "at": at, "status": "rejected", "reason": "missing contemporaneous valuation"})
+        return before
+    steps = quantity_steps or {}
+    for order in sorted(planned, key=lambda row: (row["side"] == "buy", row["asset"])):
+        asset, side = order["asset"], order["side"]
+        quote = quotes.get(asset)
+        if quote is None:
+            state["orders"].append({**order, "at": at, "status": "unfilled", "reason": "missing venue opening quote"})
+            continue
+        price = D(quote["ask"] if side == "buy" else quote["bid"])
+        depth = D(quote["ask_depth"] if side == "buy" else quote["bid_depth"])
+        if price <= 0 or depth <= 0 or D(quote["ask"]) < D(quote["bid"]):
+            state["orders"].append({**order, "at": at, "status": "rejected", "reason": "invalid depth"})
+            continue
+        price *= 1 + costs.slippage_rate if side == "buy" else 1 - costs.slippage_rate
+        requested = D(order["requested_quantity"])
+        quantity = min(requested, D(order["planned_notional_usdt"]) / price,
+                       depth * costs.max_book_fraction / price)
+        if side == "buy":
+            quantity = min(quantity, D(state["cash_usdt"]) / (price * (1 + costs.fee_rate)))
+        else:
+            quantity = min(quantity, D(state["holdings"].get(asset, 0)))
+        step = D(steps.get(asset, "0.00000001"))
+        if step <= 0:
+            raise ValueError("Invalid quantity step")
+        quantity = (quantity / step).to_integral_value(rounding=ROUND_DOWN) * step
+        notional = quantity * price
+        if notional < costs.min_notional:
+            state["orders"].append({**order, "at": at, "status": "unfilled", "reason": "minimum notional, cash or depth"})
+            continue
+        fee = notional * costs.fee_rate
+        direction = 1 if side == "buy" else -1
+        state["cash_usdt"] = str(D(state["cash_usdt"]) - direction * notional - fee)
+        state["holdings"][asset] = str(D(state["holdings"].get(asset, 0)) + direction * quantity)
+        fill = {**order, "at": at, "status": "filled" if quantity >= requested - step else "partial",
+                "requested_usdt": float(requested * price), "filled_usdt": float(notional),
+                "quantity": str(quantity), "price_usdt": str(price), "fee_usdt": float(fee), "estimated": True}
+        state["orders"].append(fill)
+        state["fills"].append(fill.copy())
+        state["model_version"] = order["model_version"]
+    return mark(state, prices, at)

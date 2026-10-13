@@ -95,16 +95,43 @@ short entries and exits.
 P&L and costs already incurred. `closed_net_pnl` counts completed trades only;
 `realized_pnl` includes cash costs on still-open positions. Drawdown uses marked
 equity. Future exit costs on positions still open at the boundary are excluded.
-Optimizer objectives use this net research summary; the chosen metric and
-held-out summary should be reviewed together.
+New DE and TPE runs in the Optimization tab use all selected candles in one
+continuous backtest, without training/test splits or validation folds. The
+objective, progress metrics, chart, trades and default-input baseline use the
+same window. Earlier history initializes indicators without reducing the selected
+candle count; those warmup candles are omitted from the displayed chart.
+These results are in-sample historical performance.
 
 The Balanced objective requires a selected minimum win rate and a minimum number
-of closed training trades (30 by default), then maximizes uncapped net P&L among
+of closed trades in the evaluated window (30 by default), then maximizes uncapped net P&L among
 eligible parameter sets. The trade count is a sample-size guard, not statistical
 proof. If no tested set meets both floors, the run reports no eligible result.
 Win rate uses closed trades only, while net P&L includes marked open positions.
-The floors are applied during training; the Optimizer Tester reports held-out
-win rate, closed trades, net P&L, and max drawdown separately for review.
+Explicit chronological searches and saved split runs apply these floors to the combined forward validation
+windows, each of which starts flat. Optimization Progress and the validation
+summary report that selection result. The full training chart, trade history,
+training statistics and default-input baseline use a separate continuous run
+over all training candles, so their trade counts and returns can differ from
+validation. The final held-out window remains separate from both.
+
+Saved chronological results from before this reporting separation recover
+training statistics from their saved chart candles only when the replay matches
+the saved trade log. This recovery leaves the stored result untouched. If the
+replay cannot be verified, training statistics are shown as unavailable rather
+than borrowing validation metrics or displaying zeros.
+
+The floors apply to both DE and Optuna multivariate TPE searches. TPE uses one
+backtest per trial; the independent long/short strategy uses the configured trial
+budget separately for each side. Older saved runs retain their held-out win rate,
+closed trades, net P&L and max drawdown for review in the saved-run results.
+
+The DE tab offers all 12 [SciPy DE strategies](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.differential_evolution.html):
+`best1bin`, `best1exp`, `best2bin`, `best2exp`, `rand1bin`, `rand1exp`,
+`rand2bin`, `rand2exp`, `randtobest1bin`, `randtobest1exp`,
+`currenttobest1bin` and `currenttobest1exp`. The `bin` and `exp` suffixes select
+binomial and exponential crossover. The chosen variant is recorded with the
+run and applies to both independent sides. Older runs use their original
+`best2bin` behavior when no variant was recorded.
 
 ## Liquidation and position policy
 

@@ -1,0 +1,8 @@
+# docker compose -f compose.yaml -f compose.cuda.yaml up --build -d
+services:
+  dashboard:
+    build:
+      context: .
+      args:
+        TRAINER_DEVICE: cuda
+    gpus: all

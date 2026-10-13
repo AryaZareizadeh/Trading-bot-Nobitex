@@ -1,5 +1,7 @@
 """Single-operator, restart-revoked sessions for the dashboard."""
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from collections import deque
 from dataclasses import dataclass, field
 import hashlib
@@ -19,6 +21,38 @@ from starlette.requests import HTTPConnection
 COOKIE = "dashboard_session"
 PUBLIC = {"/api/auth/login", "/api/auth/session"}
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+class AuthWorkBusy(RuntimeError):
+    pass
+
+
+class BoundedAuthWork:
+    """Bound running and queued authentication work outside the live executor."""
+
+    def __init__(self, workers=2, maximum=4):
+        self.executor = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="dashboard-auth")
+        self.maximum = maximum
+        self.pending = 0
+
+    async def run(self, function, *args):
+        if self.pending >= self.maximum:
+            raise AuthWorkBusy("Authentication service busy; try again shortly")
+        self.pending += 1
+        try:
+            future = asyncio.get_running_loop().run_in_executor(self.executor, partial(function, *args))
+        except BaseException:
+            self.pending -= 1
+            raise
+        def finished(_):
+            self.pending -= 1
+        future.add_done_callback(finished)
+        # A disconnected caller must not release the capacity of a still-running
+        # hash, otherwise repeated cancellations could fill an unbounded queue.
+        return await asyncio.shield(future)
+
+    def close(self):
+        self.executor.shutdown(wait=False, cancel_futures=True)
 
 
 def hash_password(password: str) -> str:

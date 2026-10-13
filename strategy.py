@@ -16,6 +16,25 @@ def _fmt_time(ts: pd.Timestamp) -> str:
     return ts.tz_convert(_TEHRAN).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _aligned_time(value, index):
+    ts = pd.to_datetime(value, utc=True)
+    return ts.tz_convert(index.tz) if index.tz is not None else ts.tz_localize(None)
+
+
+def _seed_ready(pos, current_ts):
+    """An exchange fill cannot react to an earlier or already evaluated bar."""
+    seed = pos.get("seed")
+    if current_ts < pos["ts"]:
+        return False
+    return not seed or not seed.get("last_evaluated_at") or current_ts > _aligned_time(
+        seed["last_evaluated_at"], pd.DatetimeIndex([current_ts]))
+
+
+def _checkpoint_seed(pos, current_ts):
+    if pos.get("seed") is not None:
+        pos["seed"]["last_evaluated_at"] = str(current_ts)
+
+
 # ── Per-strategy indicator parameters ───────────────────────────────────────────
 # Each strategy owns its indicator inputs, so two strategies can use the same
 # indicator (RSI, Stoch-RSI, EMA, MACD) with different parameters. The shared
@@ -35,6 +54,35 @@ class AdvRsiParams:
     exit_oversold: int = 22  # exit: close longs on K-cross / close shorts on D-rise
     exit_overbought: int = 78  # exit: close shorts on K-cross / close longs on D-drop
     entry_wait_candles: int = 5  # candles K must spend in extreme zone before entry arms
+
+
+@dataclass
+class _DirectionalRsiParams:
+    rsi_length: int = 40
+    stoch_length: int = 36
+    k_smooth: int = 7
+    d_smooth: int = 5
+    rsi_fast_length: int = 14
+    rsi_ma_length: int = 7
+    exit_oversold: int = 22
+    exit_overbought: int = 78
+    entry_wait_candles: int = 5
+
+
+@dataclass
+class AdvRsiLongParams(_DirectionalRsiParams):
+    oversold: int = 22
+
+
+@dataclass
+class AdvRsiShortParams(_DirectionalRsiParams):
+    overbought: int = 78
+
+
+def stoch_thresholds(params):
+    """Entry bands, falling back to exit bands for a direction without an entry."""
+    return (getattr(params, "oversold", getattr(params, "exit_oversold", 22)),
+            getattr(params, "overbought", getattr(params, "exit_overbought", 78)))
 
 
 @dataclass
@@ -77,6 +125,8 @@ class TrendMomentumParams:
 
 PARAMS_CLASS: dict[str, type] = {
     "AdvRSI": AdvRsiParams,
+    "AdvRSILong": AdvRsiLongParams,
+    "AdvRSIShort": AdvRsiShortParams,
     "ExtremeReversal": StochRsiExtremeParams,
     "TrendMomentum": TrendMomentumParams,
 }
@@ -187,6 +237,7 @@ class _StochRsiSwingStrategy(Strategy):
     """
 
     params_class = AdvRsiParams
+    allowed_direction = None
 
     def _init_entry_state(self) -> None:
         """Reset per-run entry state. Override if entry detection is stateful."""
@@ -204,7 +255,7 @@ class _StochRsiSwingStrategy(Strategy):
         k, d = srsi.k, srsi.d
         rsi, rsi_ma = indicators.rsi_with_ma(p.rsi_fast_length, p.rsi_ma_length)
         kd_diff = (k - d).fillna(0)
-        oversold, overbought = p.oversold, p.overbought
+        oversold, overbought = stoch_thresholds(p)
         exit_oversold = getattr(p, 'exit_oversold', oversold)
         exit_overbought = getattr(p, 'exit_overbought', overbought)
         open_longs: list[dict] = []
@@ -221,12 +272,13 @@ class _StochRsiSwingStrategy(Strategy):
         # only close when a genuine exit condition (or liquidation / max
         # hold) fires.
         for sp in (seed_positions or []):
-            entry_ts = pd.Timestamp(sp["entry_time"])
-            if entry_ts.tzinfo is not None:
-                entry_ts = entry_ts.tz_convert("UTC").tz_localize(None)
+            if self.allowed_direction and sp["direction"] != self.allowed_direction:
+                raise ValueError("Seed position direction does not match the strategy")
+            if sp.get("exit_requested"):
+                continue
+            entry_ts = _aligned_time(sp["entry_time"], df.index)
             idx = int(df.index.searchsorted(entry_ts))
-            idx = max(0, min(idx, max(live_start_idx - 1, 0)))
-            pos = {"idx": idx, "price": float(sp["entry_price"]), "ts": entry_ts}
+            pos = {"idx": idx, "price": float(sp["entry_price"]), "ts": entry_ts, "seed": sp}
             if sp["direction"] == "Long":
                 open_longs.append(pos)
             else:
@@ -242,6 +294,9 @@ class _StochRsiSwingStrategy(Strategy):
             if open_longs:
                 surviving_longs = []
                 for pos in open_longs:
+                    if not _seed_ready(pos, df.index[i]):
+                        surviving_longs.append(pos)
+                        continue
                     liq_p = self._check_liquidation("Long", pos["price"], i, df)
                     if liq_p is not None:
                         record, pnl = self._make_trade_record(trade_idx, "Long", df, pos["idx"], i, balance, liquidated=True, exit_price=liq_p, entry_price=pos["price"], entry_ts=pos["ts"])
@@ -262,16 +317,23 @@ class _StochRsiSwingStrategy(Strategy):
                     mid_long = ki < exit_overbought and diff < -0.08 * ki and pd.notna(ri) and 45 < ri < 55
                     k_crossed_below_oversold = prev_k >= exit_oversold and ki < exit_oversold
                     if d_dropped or mid_long or k_crossed_below_oversold:
+                        not_yet_open = []
                         for pos in open_longs:
+                            if not _seed_ready(pos, df.index[i]):
+                                not_yet_open.append(pos)
+                                continue
                             record, pnl = self._make_trade_record(trade_idx, "Long", df, pos["idx"], i, balance, entry_price=pos["price"], entry_ts=pos["ts"])
                             balance += pnl
                             log.append(record)
                             trade_idx += 1
-                        open_longs = []
+                        open_longs = not_yet_open
 
             if open_shorts:
                 surviving_shorts = []
                 for pos in open_shorts:
+                    if not _seed_ready(pos, df.index[i]):
+                        surviving_shorts.append(pos)
+                        continue
                     liq_p = self._check_liquidation("Short", pos["price"], i, df)
                     if liq_p is not None:
                         record, pnl = self._make_trade_record(trade_idx, "Short", df, pos["idx"], i, balance, liquidated=True, exit_price=liq_p, entry_price=pos["price"], entry_ts=pos["ts"])
@@ -292,12 +354,25 @@ class _StochRsiSwingStrategy(Strategy):
                     mid_short = ki > exit_oversold and diff > 0.08 * ki and pd.notna(ri) and 45 < ri < 55
                     k_crossed_above_overbought = prev_k <= exit_overbought and ki > exit_overbought
                     if d_rose or mid_short or k_crossed_above_overbought:
+                        not_yet_open = []
                         for pos in open_shorts:
+                            if not _seed_ready(pos, df.index[i]):
+                                not_yet_open.append(pos)
+                                continue
                             record, pnl = self._make_trade_record(trade_idx, "Short", df, pos["idx"], i, balance, entry_price=pos["price"], entry_ts=pos["ts"])
                             balance += pnl
                             log.append(record)
                             trade_idx += 1
-                        open_shorts = []
+                        open_shorts = not_yet_open
+
+            for pos in open_longs + open_shorts:
+                if _seed_ready(pos, df.index[i]):
+                    _checkpoint_seed(pos, df.index[i])
+
+            # Owned positions are authoritative. Historical signals must not
+            # replay their estimated entries beside the actual exchange fill.
+            if seed_positions:
+                continue
 
             signal = self._entry_signal(i, k, d, rsi, rsi_ma, kd_diff)
             if signal == "long":
@@ -315,11 +390,15 @@ class _StochRsiSwingStrategy(Strategy):
 
         last_i = len(df) - 1
         for pos in open_longs:
+            if last_i < 0 or df.index[last_i] < pos["ts"]:
+                continue
             record, pnl = self._make_trade_record(trade_idx, "Long", df, pos["idx"], last_i, balance, entry_price=pos["price"], entry_ts=pos["ts"])
             balance += pnl
             log.append(record)
             trade_idx += 1
         for pos in open_shorts:
+            if last_i < 0 or df.index[last_i] < pos["ts"]:
+                continue
             record, pnl = self._make_trade_record(trade_idx, "Short", df, pos["idx"], last_i, balance, entry_price=pos["price"], entry_ts=pos["ts"])
             balance += pnl
             log.append(record)
@@ -379,6 +458,45 @@ class AdvRSICombinedStrategy(_StochRsiSwingStrategy):
                 signal = "short"
             self._waiting_short = False
         return signal
+
+
+class _AdvRSIDirectionalStrategy(_StochRsiSwingStrategy):
+    """One-sided entry state; crossing out of its entry band consumes the setup."""
+
+    def _init_entry_state(self):
+        self._extreme_since = None
+        self._waiting = False
+
+    def _entry_signal(self, i, k, d, rsi, rsi_ma, kd_diff):
+        p = self.params
+        ki, ri, ma = k.iloc[i], rsi.iloc[i], rsi_ma.iloc[i]
+        if pd.isna(ki):
+            self._init_entry_state()
+            return None
+        long = self.allowed_direction == "Long"
+        extreme = ki < p.oversold if long else ki > p.overbought
+        if extreme:
+            if self._extreme_since is None:
+                self._extreme_since = i
+            if i - self._extreme_since >= p.entry_wait_candles:
+                self._waiting = True
+            return None
+        armed = self._waiting
+        self._init_entry_state()
+        if armed and pd.notna(ri) and pd.notna(ma):
+            if (ri > ma and ma < 50) if long else (ri < ma and ma > 50):
+                return "long" if long else "short"
+        return None
+
+
+class AdvRSILongStrategy(_AdvRSIDirectionalStrategy):
+    params_class = AdvRsiLongParams
+    allowed_direction = "Long"
+
+
+class AdvRSIShortStrategy(_AdvRSIDirectionalStrategy):
+    params_class = AdvRsiShortParams
+    allowed_direction = "Short"
 
 
 class ExtremeReversalStrategy(_StochRsiSwingStrategy):
@@ -480,16 +598,17 @@ class TrendFilteredMomentumStrategy(Strategy):
         # hold) fires.
         seed = (seed_positions or [None])[0]
         if seed:
-            ts = pd.Timestamp(seed["entry_time"])
-            if ts.tzinfo is not None:
-                ts = ts.tz_convert("UTC").tz_localize(None)
+            ts = _aligned_time(seed["entry_time"], df.index)
             idx = int(df.index.searchsorted(ts))
-            entry_idx = max(0, min(idx, max(live_start_idx - 1, 0)))
+            entry_idx = idx
             entry_price = float(seed["entry_price"])
             entry_ts = ts
-            position = 1 if seed["direction"] == "Long" else -1
+            position = (1 if seed["direction"] == "Long" else -1) if not seed.get("exit_requested") else 0
+            touched_extreme = seed.get("touched_extreme", False)
 
         for i in range(live_start_idx, len(df)):
+            if seed and (not position or not _seed_ready({"ts": entry_ts, "seed": seed}, df.index[i])):
+                continue
             ki, di = k.iloc[i], d.iloc[i]
             close_i = close.iloc[i]
             ema_i = ema.iloc[i]
@@ -554,6 +673,10 @@ class TrendFilteredMomentumStrategy(Strategy):
                         position, entry_idx, entry_price, entry_ts, touched_extreme = 0, None, None, None, False
 
             # ── Entry logic ───────────────────────────────────────────────
+            if seed:
+                seed["touched_extreme"] = touched_extreme
+                seed["last_evaluated_at"] = str(df.index[i])
+                continue
             if position == 0:
                 if ki < oversold and di < oversold:
                     waiting_long, waiting_short = True, False
@@ -579,8 +702,9 @@ class TrendFilteredMomentumStrategy(Strategy):
                 "entry_price": entry_price,
                 "entry_time": str(entry_ts),
             }]
-            record, pnl = self._make_trade_record(trade_idx, direction, df, entry_idx, len(df) - 1, balance, entry_price=entry_price, entry_ts=entry_ts)
-            balance += pnl
-            log.append(record)
+            if len(df) and df.index[-1] >= entry_ts:
+                record, pnl = self._make_trade_record(trade_idx, direction, df, entry_idx, len(df) - 1, balance, entry_price=entry_price, entry_ts=entry_ts)
+                balance += pnl
+                log.append(record)
 
         return pd.DataFrame(log)

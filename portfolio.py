@@ -135,34 +135,51 @@ class PortfolioHistory:
         return [dict(id=r[0], occurred_at=r[1], amount_usdt=r[2], note=r[3]) for r in rows]
 
     def performance(self):
-        samples = [s for s in self.snapshots() if s["valuation_complete"]]
-        flows = self.flows()
-        if not samples:
-            return {"points": [], "return_pct": None, "net_pnl_usdt": None,
-                    "max_drawdown_pct": None}
-        base = samples[0]
-        growth = peak = 1.0
-        max_dd = 0.0
-        points = [{"time": base["captured_at"], "equity_usdt": base["equity_usdt"], "growth": 1.0}]
-        for previous, current in zip(samples, samples[1:]):
-            t0, t1 = datetime.fromisoformat(previous["captured_at"]), datetime.fromisoformat(current["captured_at"])
-            between = [f for f in flows if t0 < datetime.fromisoformat(f["occurred_at"]) <= t1]
-            net = sum(f["amount_usdt"] for f in between)
-            seconds = max((t1 - t0).total_seconds(), 1)
-            weighted = sum(f["amount_usdt"] * (t1 - datetime.fromisoformat(f["occurred_at"])).total_seconds() / seconds for f in between)
-            denominator = previous["equity_usdt"] + weighted
-            if denominator > 0:
-                growth *= max(0.0, 1 + (current["equity_usdt"] - previous["equity_usdt"] - net) / denominator)
-            peak = max(peak, growth)
-            max_dd = max(max_dd, (peak - growth) / peak)
-            points.append({"time": current["captured_at"], "equity_usdt": current["equity_usdt"], "growth": growth})
-        net_flows = sum(f["amount_usdt"] for f in flows if base["captured_at"] < f["occurred_at"] <= samples[-1]["captured_at"])
-        if len(points) > 500:
-            step = math.ceil((len(points) - 1) / 499)
-            points = points[::step] + ([] if points[-1] in points[::step] else [points[-1]])
-        return {"points": points, "return_pct": round((growth - 1) * 100, 2) if len(samples) > 1 else None,
-                "net_pnl_usdt": round(samples[-1]["equity_usdt"] - base["equity_usdt"] - net_flows, 2),
-                "max_drawdown_pct": round(max_dd * 100, 2) if len(samples) > 1 else None,
+        # Use one consistent read snapshot and stream every observation. Only
+        # chart output is sampled; the baseline and accounting never roll away.
+        with self.store.connection() as conn:
+            conn.execute("BEGIN")
+            count = conn.execute("SELECT COUNT(*) FROM portfolio_snapshots WHERE valuation_complete=1").fetchone()[0]
+            if not count:
+                return {"points": [], "return_pct": None, "net_pnl_usdt": None,
+                        "max_drawdown_pct": None, "period_start": None, "period_end": None}
+            flows = [(datetime.fromisoformat(at), amount) for at, amount in conn.execute(
+                "SELECT occurred_at,amount_usdt FROM portfolio_cashflows ORDER BY occurred_at,id")]
+            stride = max(1, math.ceil((count - 1) / 499))
+            points, base, previous = [], None, None
+            growth = peak = 1.0
+            max_dd = net_flows = 0.0
+            flow_index = 0
+            for index, (raw,) in enumerate(conn.execute(
+                    "SELECT data FROM portfolio_snapshots WHERE valuation_complete=1 ORDER BY captured_at")):
+                current = json.loads(raw)
+                t1 = datetime.fromisoformat(current["captured_at"])
+                if base is None:
+                    base = current
+                    while flow_index < len(flows) and flows[flow_index][0] <= t1:
+                        flow_index += 1
+                else:
+                    t0 = datetime.fromisoformat(previous["captured_at"])
+                    net = weighted = 0.0
+                    seconds = max((t1 - t0).total_seconds(), 1)
+                    while flow_index < len(flows) and flows[flow_index][0] <= t1:
+                        at, amount = flows[flow_index]
+                        net += amount
+                        weighted += amount * (t1 - at).total_seconds() / seconds
+                        flow_index += 1
+                    net_flows += net
+                    denominator = previous["equity_usdt"] + weighted
+                    if denominator > 0:
+                        growth *= max(0.0, 1 + (current["equity_usdt"] - previous["equity_usdt"] - net) / denominator)
+                    peak = max(peak, growth)
+                    max_dd = max(max_dd, (peak - growth) / peak)
+                if index % stride == 0 or index == count - 1:
+                    points.append({"time": current["captured_at"], "equity_usdt": current["equity_usdt"], "growth": growth})
+                previous = current
+        return {"points": points, "return_pct": round((growth - 1) * 100, 2) if count > 1 else None,
+                "net_pnl_usdt": round(previous["equity_usdt"] - base["equity_usdt"] - net_flows, 2),
+                "max_drawdown_pct": round(max_dd * 100, 2) if count > 1 else None,
+                "period_start": base["captured_at"], "period_end": previous["captured_at"],
                 "note": "Returns assume every external deposit and withdrawal was recorded."}
 
 

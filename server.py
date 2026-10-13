@@ -3,10 +3,12 @@ import json
 import math
 import os
 import re
+import sqlite3
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 from dataclasses import asdict
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
@@ -18,15 +20,22 @@ from pydantic import BaseModel, Field
 from bot import Bot, BotConfig, BotStatus
 from bot_manager import BotManager
 from backtester import TesterManager
-from optimizer import OptimizerManager
+from optimizer import OptimizerManager, INDEPENDENT_STRATEGY, DEStrategy, DEFAULT_DE_STRATEGY
 from auth import install_auth
 from settings import update_environment, data_dir, load_environment
 from execution_model import ExecutionConfig, execution_config
 from nobitex_assumptions import MARGIN_DOC, profile_fee, market_renewal_rate
 from position_limits import HELP_URL, current_max_hold_days, published_limit_status
+from dual_rsi_bot import make_bot, STRATEGY_NAME as DUAL_RSI_NAME
 from portfolio import PortfolioHistory, value_portfolio, validate_targets, rebalance_ideas
 from spot_data import APPROVED_ASSETS
 from spot_paper import SpotPaperService
+from model_trainer import ModelTrainerManager
+from research_scheduler import SPOT_RESEARCH
+from runtime_lease import FileLease
+from runtime_status import status_router
+from trainer_routes import trainer_router
+from market_quotes import shared_market_quotes
 
 # ── REST Models ────────────────────────────────────────────────────────────────
 class CreateBotRequest(BaseModel):
@@ -34,12 +43,15 @@ class CreateBotRequest(BaseModel):
     symbol: str
     strategy_name: str
     timeframe: str
-    credit: float = Field(gt=0)
+    credit: float = Field(default=100, gt=0)
+    long_credit: Optional[float] = Field(default=None, gt=0, allow_inf_nan=False)
+    short_credit: Optional[float] = Field(default=None, gt=0, allow_inf_nan=False)
     leverage: int = Field(default=5, ge=1, le=100)
     mode: str = "simulation"
     custom_params: Optional[dict] = None
     execution: Optional[ExecutionConfig] = None
     ai_timeframes: Optional[list[str]] = None
+    ai_model_id: Optional[str] = Field(default=None, max_length=32)
 
 
 class PatchBotRequest(BaseModel):
@@ -48,7 +60,10 @@ class PatchBotRequest(BaseModel):
     strategy_name: Optional[str] = None
     timeframe: Optional[str] = None
     ai_timeframes: Optional[list[str]] = None
+    ai_model_id: Optional[str] = Field(default=None, max_length=32)
     credit: Optional[float] = Field(default=None, gt=0)
+    long_credit: Optional[float] = Field(default=None, gt=0, allow_inf_nan=False)
+    short_credit: Optional[float] = Field(default=None, gt=0, allow_inf_nan=False)
     leverage: Optional[int] = Field(default=None, ge=1, le=100)
     mode: Optional[str] = None
     restart: bool = False
@@ -87,11 +102,16 @@ class OptimizerPrefsRequest(BaseModel):
     leverage: int = Field(default=5, ge=1, le=100)
     cores: int = Field(default=0, ge=0)   # 0 = Auto
     maxiter: int = Field(default=30, ge=5, le=5000)
+    method: Literal["de", "tpe"] = "de"
+    n_trials: int = Field(default=1000, ge=10, le=100000)
+    de_strategy: DEStrategy = DEFAULT_DE_STRATEGY
     objective: str = "profit"             # profit | winrate | balanced | large_move
     custom_bounds: Optional[dict] = None  # param_name -> [low, high]
     min_price_change: float = Field(default=5.0, gt=0, le=100)
     min_win_rate: float = Field(default=50.0, gt=0, le=100)
     min_closed_trades: int = Field(default=30, ge=10, le=10000)
+    long_credit: float = Field(default=100.0, gt=0, allow_inf_nan=False)
+    short_credit: float = Field(default=100.0, gt=0, allow_inf_nan=False)
 
 
 class OptimizerRunRequest(BaseModel):
@@ -103,6 +123,9 @@ class OptimizerRunRequest(BaseModel):
     leverage: int = Field(default=5, ge=1, le=100)
     cores: int = Field(default=0, ge=0)   # 0 = Auto
     maxiter: int = Field(default=30, ge=5, le=5000)
+    method: Literal["de", "tpe"] = "de"
+    n_trials: int = Field(default=1000, ge=10, le=100000)
+    de_strategy: DEStrategy = DEFAULT_DE_STRATEGY
     objective: str = "profit"             # profit | winrate | balanced | large_move
     custom_bounds: Optional[dict] = None  # param_name -> [low, high]
     min_price_change: float = Field(default=5.0, gt=0, le=100)
@@ -110,10 +133,17 @@ class OptimizerRunRequest(BaseModel):
     min_closed_trades: int = Field(default=30, ge=10, le=10000)
     execution: Optional[ExecutionConfig] = None
     random_seed: Optional[int] = Field(default=None, ge=0, le=4294967295)
+    long_credit: float = Field(default=100.0, gt=0, allow_inf_nan=False)
+    short_credit: float = Field(default=100.0, gt=0, allow_inf_nan=False)
 
 
 class OptimizerTesterRunRequest(OptimizerRunRequest):
     train_pct: float = Field(default=70.0, ge=50.0, le=90.0)  # % of candles for training
+
+
+class OptimizedBotsRequest(BaseModel):
+    sides: list[str] = Field(default_factory=lambda: ["long", "short"])
+    combined: bool = False
 
 
 class PortfolioFlowRequest(BaseModel):
@@ -138,8 +168,26 @@ class SpotResearchRequest(BaseModel):
     budget_usdt: float = Field(default=200, gt=0, le=100000)
 
 
+class ModelTrainingRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+    architecture: str = 'alexnet1d-v1'
+    symbols: list[str] = Field(min_length=1, max_length=6)
+    timeframes: list[str] = Field(min_length=1, max_length=4)
+    candles: int = Field(default=2000, ge=500, le=20000, strict=True)
+    lookback: int = Field(default=96, ge=64, le=256, strict=True)
+    horizon: int = Field(default=4, ge=1, le=72, strict=True)
+    epochs: int = Field(default=10, ge=1, le=100, strict=True)
+    batch_size: int = Field(default=32, ge=8, le=256, strict=True)
+    learning_rate: float = Field(default=.001, ge=.00001, le=.01, allow_inf_nan=False)
+    device: str = "cuda"
+    specialist_timeframes: list[str] = Field(default_factory=lambda: ['60', '240'], min_length=2, max_length=3)
+    fee_bps: float = Field(default=10, gt=0, lt=10000, allow_inf_nan=False)
+    exit_fee_bps: float = Field(default=10, gt=0, lt=10000, allow_inf_nan=False)
+    slippage_bps: float = Field(default=5, gt=0, lt=10000, allow_inf_nan=False)
+
+
 def create_app(*, manager=None, exchange_client=None, offline=None, credential_store=None, security=True,
-               optimizer_slots=None):
+               optimizer_slots=None, credential_verifier=None, market_quotes=None):
     """Create an isolated dashboard; tests inject storage/client and disable polling."""
     if offline is None:
         offline = os.getenv("TRADER_OFFLINE", "false").lower() == "true"
@@ -149,6 +197,35 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
     spot_research_task = None
     tester_manager = TesterManager(store=manager.store if manager is not None else None)
     optimizer_manager = OptimizerManager(store=manager.store if manager is not None else None)
+    model_trainer = ModelTrainerManager(bot_manager.store)
+    display_quotes = market_quotes if market_quotes is not None else shared_market_quotes()
+
+    def _quote_snapshot():
+        try:
+            return display_quotes.snapshot()
+        except (OSError, sqlite3.DatabaseError, ValueError):
+            return {'quotes': {}, 'next_poll': 0, 'failures': 1}
+
+    def _display_state(state, snapshot=None):
+        snapshot = _quote_snapshot() if snapshot is None else snapshot
+        state.update(display_quotes.quote(state['symbol'], snapshot=snapshot))
+        for child in state.get('sides', {}).values():
+            _display_state(child, snapshot)
+        return state
+
+    def _bot_states():
+        snapshot = _quote_snapshot()
+        return [_display_state(state, snapshot) for state in bot_manager.get_all_states()]
+
+    async def _market_quote_loop():
+        while True:
+            if _clients and bot_manager.get_all():
+                try:
+                    await asyncio.to_thread(display_quotes.refresh_due)
+                except Exception:
+                    pass  # Existing quotes age into stale; keep the dashboard connected.
+            await asyncio.sleep(1)
+
     def _client():
         if exchange_client is not None:
             return exchange_client
@@ -178,18 +255,35 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
                 pass  # The Portfolio tab reports errors when explicitly opened.
             await asyncio.sleep(3600)
 
+    def _save_spot_paper_error(generation, error):
+        with spot_paper.lock:
+            if generation == spot_paper.generation:
+                bot_manager.store.put("spot_manager", "paper_error", error)
+
+    async def _run_spot_paper_tick():
+        with spot_paper.lock:
+            generation = spot_paper.generation
+        try:
+            result = await asyncio.to_thread(spot_paper.tick)
+        except Exception as exc:
+            _save_spot_paper_error(generation, str(exc)[:200])
+            raise
+        _save_spot_paper_error(generation,
+            None if result.get("ok") else str(result.get("reason") or "Paper update failed")[:200])
+        return result
+
     async def _spot_paper_loop():
         while True:
             try:
                 if (spot_paper.state() or {}).get("running"):
-                    tick = asyncio.create_task(asyncio.to_thread(spot_paper.tick))
+                    tick = asyncio.create_task(_run_spot_paper_tick())
                     try:
                         await asyncio.shield(tick)
                     except asyncio.CancelledError:
                         await asyncio.gather(tick, return_exceptions=True)
                         raise
-            except Exception as exc:
-                bot_manager.store.put("spot_manager", "paper_error", str(exc)[:200])
+            except Exception:
+                pass  # _run_spot_paper_tick saved the failure for its session.
             await asyncio.sleep(60)
 
     if credential_store is not None:
@@ -267,9 +361,10 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
     def _attribute_orders(orders: list[dict]) -> None:
         claimed: dict[int, tuple[str, str]] = {}
         for bot in bot_manager.get_all():
-            po = bot._pending_order
-            if po is not None and po.get("order_id") is not None:
-                claimed[po["order_id"]] = (bot.id, bot.cfg.name or bot.id)
+            for runner in bot.execution_bots():
+                po = runner._pending_order
+                if po is not None and po.get("order_id") is not None:
+                    claimed[po["order_id"]] = (bot.id, bot.cfg.name or bot.id)
         for order in orders:
             oid = order.get("order_id")
             if oid in claimed:
@@ -279,8 +374,9 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
     def _attribute_positions(positions: list[dict]) -> None:
         claimed: dict[int, tuple[str, str]] = {}
         for bot in bot_manager.get_all():
-            if bot.cfg.mode == "real" and bot._exchange_position_id is not None:
-                claimed[bot._exchange_position_id] = (bot.id, bot.cfg.name or bot.id)
+            for runner in bot.execution_bots():
+                if runner.cfg.mode == "real" and runner._exchange_position_id is not None:
+                    claimed[runner._exchange_position_id] = (bot.id, bot.cfg.name or bot.id)
         for pos in positions:
             exc_id = pos.get("exchange_id")
             if exc_id in claimed:
@@ -318,7 +414,8 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
         while True:
             if _clients:
                 payload = json.dumps({
-                    "bots": bot_manager.get_all_states(),
+                    "bots": _bot_states(),
+                    "server_time": time.time(),
                     "exchange": _exchange_state,
                 })
                 dead: list[WebSocket] = []
@@ -335,18 +432,24 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         store = bot_manager.store
-        store.acquire_runtime()
+        dashboard_lease = FileLease(store.path.parent / ".dashboard.lock")
+        dashboard_lease.acquire()
         tasks = []
         try:
+            store.acquire_runtime()
             bot_manager.load()
             tester_manager.load()
             optimizer_manager.load()
+            model_trainer.load()
             spot_paper.pause_on_restart()
             for bot in bot_manager.get_all():
                 if exchange_client is not None:
                     bot._exchange_client = exchange_client
+                    for runner in bot.execution_bots():
+                        runner._exchange_client = exchange_client
             tasks.append(asyncio.create_task(_broadcast_loop()))
             if not offline:
+                tasks.append(asyncio.create_task(_market_quote_loop()))
                 tasks.append(asyncio.create_task(_exchange_sync_loop()))
                 tasks.append(asyncio.create_task(_portfolio_snapshot_loop()))
                 tasks.append(asyncio.create_task(_spot_paper_loop()))
@@ -362,8 +465,10 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
                 await asyncio.gather(*(bot.stop() for bot in bot_manager.get_all()))
                 await tester_manager.shutdown()
                 await optimizer_manager.shutdown()
+                await model_trainer.shutdown()
             finally:
                 store.release_runtime()
+                dashboard_lease.release()
 
 
     # ── App ────────────────────────────────────────────────────────────────────────
@@ -382,6 +487,9 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
     _static_dir.mkdir(exist_ok=True)
     app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
 
+    app.include_router(trainer_router(model_trainer, ModelTrainingRequest))
+    app.include_router(status_router(bot_manager, _exchange_state, model_trainer))
+
 
     # ── WebSocket ──────────────────────────────────────────────────────────────────
     @app.websocket("/ws")
@@ -390,7 +498,8 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
         _clients.append(websocket)
         try:
             await websocket.send_text(json.dumps({
-                "bots": bot_manager.get_all_states(),
+                "bots": _bot_states(),
+                "server_time": time.time(),
                 "exchange": _exchange_state,
             }))
         except Exception:
@@ -620,13 +729,24 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
         bot_manager.store.put("portfolio_settings", "targets", targets)
         return {"ok": True, "targets": targets}
 
+    def _spot_research_status():
+        status = bot_manager.store.get("spot_manager", "research_status")
+        if (status and status.get("status") == "running"
+                and (spot_research_task is None or spot_research_task.done())):
+            status = {**status, "status": "failed",
+                      "error": "Research was interrupted by an application restart. Run research again.",
+                      "completed_at": datetime.now(timezone.utc).isoformat()}
+            bot_manager.store.put("spot_manager", "research_status", status)
+        return status
+
     @app.get("/api/portfolio-manager")
     async def get_portfolio_manager():
         state = spot_paper.state()
         report = bot_manager.store.get("spot_manager", "research")
         return {"ok": True, "approved_assets": list(APPROVED_ASSETS),
+                "model_status": await asyncio.to_thread(spot_paper.model_status),
                 "paper": state, "paper_error": bot_manager.store.get("spot_manager", "paper_error"),
-                "research_status": bot_manager.store.get("spot_manager", "research_status"),
+                "research_status": _spot_research_status(),
                 "research": {"run_id": report.get("run_id"), "selected": report["selected"], "windows": report["windows"],
                              "data_hash": report["data_hash"], "code_hash": report["code_hash"],
                              "forecast_quality": report["forecast_quality"],
@@ -672,10 +792,18 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
     async def stop_spot_paper():
         return {"ok": True, "paper": spot_paper.stop()}
 
+    @app.post("/api/portfolio-manager/paper/reset")
+    async def reset_spot_paper():
+        try:
+            result = await asyncio.to_thread(spot_paper.reset)
+            return {**result, "research_status": _spot_research_status()}
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)[:200]}, status_code=503)
+
     @app.post("/api/portfolio-manager/paper/tick")
     async def tick_spot_paper():
         try:
-            return await asyncio.to_thread(spot_paper.tick)
+            return await _run_spot_paper_tick()
         except Exception as exc:
             return JSONResponse({"error": str(exc)[:200]}, status_code=503)
 
@@ -688,10 +816,14 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
             return JSONResponse({"error": "Choose distinct approved assets"}, status_code=400)
 
         async def job():
-            bot_manager.store.put("spot_manager", "research_status", {"status": "running",
+            bot_manager.store.put("spot_manager", "research_status", {"status": "queued",
                 "started_at": datetime.now(timezone.utc).isoformat()})
             try:
-                await asyncio.to_thread(spot_paper.research, request.assets, request.days, request.budget_usdt)
+                def work():
+                    bot_manager.store.put("spot_manager", "research_status", {"status": "running",
+                        "started_at": datetime.now(timezone.utc).isoformat()})
+                    return spot_paper.research(request.assets, request.days, request.budget_usdt)
+                await SPOT_RESEARCH.run(str(bot_manager.store.path.resolve()), work)
                 bot_manager.store.put("spot_manager", "research_status", {"status": "complete",
                     "completed_at": datetime.now(timezone.utc).isoformat()})
             except Exception as exc:
@@ -724,7 +856,7 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
     async def set_credentials(req: CredentialsRequest):
         for bot in bot_manager.get_all():
             if bot.cfg.mode == "real" and (bot.status == BotStatus.RUNNING
-                    or bot._exchange_position_id is not None or bot.unresolved_intents()):
+                    or bot.has_owned_position() or bot.unresolved_intents()):
                 return JSONResponse({"error": "Stop real bots and reconcile or close their positions and pending orders before changing credentials"}, status_code=409)
         values = (req.token, req.public_key, req.private_key)
         # Validate the complete replacement before touching either disk or process state.
@@ -742,10 +874,31 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
                 Ed25519PrivateKey.from_private_bytes(raw)
             except (ValueError, TypeError):
                 return JSONResponse({"error": "Invalid credential format"}, status_code=400)
+        replacement = {"token": req.token, "public_key": req.public_key,
+                       "private_key": req.private_key, "testnet": req.testnet}
+        verified_identity = None
+        if credential_verifier is not None or not offline:
+            def verify_candidate():
+                if credential_verifier is not None:
+                    return credential_verifier(replacement)
+                from nobitex_client import NobitexClient
+                candidate = NobitexClient(**replacement, allow_environment=False)
+                try:
+                    return candidate.profile()
+                finally:
+                    candidate._session.close()
+            try:
+                profile = await asyncio.to_thread(verify_candidate)
+                if credential_store is not None:
+                    verified_identity = credential_store.profile_identity(profile)
+            except Exception:
+                return JSONResponse({"error": "Could not verify exchange account; previous settings retained"}, status_code=503)
         try:
             if credential_store is not None:
-                credential_store.set({"token": req.token, "public_key": req.public_key,
-                                      "private_key": req.private_key, "testnet": req.testnet})
+                if verified_identity is None:
+                    credential_store.set(replacement)
+                else:
+                    credential_store.set(replacement, verified_exchange_id=verified_identity)
             else:
                 update_environment({
                     "NOBITEX_TOKEN": req.token or None,
@@ -755,8 +908,14 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
                 })
             for bot in bot_manager.get_all():
                 bot._exchange_client = None
+                for runner in bot.execution_bots():
+                    runner._exchange_client = None
+                    runner._account = None
                 bot._account = None
-        except (OSError, ValueError):
+        except (OSError, ValueError) as exc:
+            from accounts import ExchangeIdentityConflict
+            if isinstance(exc, ExchangeIdentityConflict):
+                return JSONResponse({"error": "Exchange account already assigned; previous settings retained"}, status_code=409)
             return JSONResponse({"error": "Could not save credentials; previous settings retained"}, status_code=500)
         return {"ok": True, **await get_credentials()}
 
@@ -838,6 +997,8 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
         optimizer_manager.save_prefs(
             req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
             req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change, req.min_win_rate, req.min_closed_trades,
+            long_credit=req.long_credit, short_credit=req.short_credit,
+            method=req.method, n_trials=req.n_trials, de_strategy=req.de_strategy,
         )
         return {"ok": True}
 
@@ -846,7 +1007,7 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
     async def optimizer_run(req: OptimizerRunRequest):
         from bot import STRATEGY_MAP
         from optimizer import PARAM_BOUNDS
-        if req.strategy not in STRATEGY_MAP or req.strategy not in PARAM_BOUNDS:
+        if req.strategy != INDEPENDENT_STRATEGY and (req.strategy not in STRATEGY_MAP or req.strategy not in PARAM_BOUNDS):
             return JSONResponse(status_code=400, content={"error": "Unknown strategy."})
         if not req.symbol.strip():
             return JSONResponse(status_code=400, content={"error": "Select a symbol."})
@@ -864,11 +1025,15 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
         optimizer_manager.save_prefs(
             req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
             req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change, req.min_win_rate, req.min_closed_trades,
+            long_credit=req.long_credit, short_credit=req.short_credit,
+            method=req.method, n_trials=req.n_trials, de_strategy=req.de_strategy,
         )
         job = _start_optimizer_job(
             req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
             req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change, req.min_win_rate, req.min_closed_trades,
             execution=selected_execution(req.execution), random_seed=req.random_seed,
+            long_credit=req.long_credit, short_credit=req.short_credit,
+            method=req.method, n_trials=req.n_trials, de_strategy=req.de_strategy,
         )
         if job is None:
             return JSONResponse({"error": "Optimizer capacity is busy; try again later"}, status_code=429)
@@ -915,7 +1080,7 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
     async def optimizer_tester_run(req: OptimizerTesterRunRequest):
         from bot import STRATEGY_MAP
         from optimizer import PARAM_BOUNDS
-        if req.strategy not in STRATEGY_MAP or req.strategy not in PARAM_BOUNDS:
+        if req.strategy != INDEPENDENT_STRATEGY and (req.strategy not in STRATEGY_MAP or req.strategy not in PARAM_BOUNDS):
             return JSONResponse(status_code=400, content={"error": "Unknown strategy."})
         if not req.symbol.strip():
             return JSONResponse(status_code=400, content={"error": "Select a symbol."})
@@ -933,7 +1098,10 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
             req.symbol, req.strategy, req.timeframe, req.candles, req.credit, req.leverage,
             req.cores, req.maxiter, req.objective, req.custom_bounds, req.min_price_change, req.min_win_rate, req.min_closed_trades,
             train_pct=req.train_pct,
+            evaluation_mode="chronological",
             execution=selected_execution(req.execution), random_seed=req.random_seed,
+            long_credit=req.long_credit, short_credit=req.short_credit,
+            method=req.method, n_trials=req.n_trials, de_strategy=req.de_strategy,
         )
         if job is None:
             return JSONResponse({"error": "Optimizer capacity is busy; try again later"}, status_code=429)
@@ -973,6 +1141,42 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
         if job.train_pct is None or job.status not in ("pausing", "paused") or not job.resume():
             return JSONResponse(status_code=409, content={"error": "Job cannot be resumed"})
         return {"ok": True, "status": job.status}
+
+
+    @app.post("/api/optimizer/run/{job_id}/bots", status_code=201)
+    async def create_independent_bots(job_id: str, req: OptimizedBotsRequest):
+        job = optimizer_manager.get_job(job_id)
+        if job is None:
+            return JSONResponse(status_code=404, content={"error": "Job not found"})
+        result = job.to_dict()
+        if not result.get("paired") or result["status"] != "done":
+            return JSONResponse(status_code=409, content={"error": "Complete an independent optimization first"})
+        if not req.sides or len(set(req.sides)) != len(req.sides) or any(side not in ("long", "short") for side in req.sides):
+            return JSONResponse(status_code=400, content={"error": "Select long, short, or both once"})
+        if req.combined and set(req.sides) != {"long", "short"}:
+            return JSONResponse(status_code=400, content={"error": "A combined bot requires both long and short results"})
+        configs = []
+        for side in req.sides:
+            child = result["sides"][side]
+            if child["status"] != "done" or not child.get("best_params"):
+                return JSONResponse(status_code=409, content={"error": f"{side.title()} has no completed eligible result"})
+            configs.append(BotConfig(
+                symbol=child["symbol"].lower(), strategy_name=child["strategy"], timeframe=child["timeframe"],
+                credit=child["credit"], leverage=child["leverage"], mode="simulation",
+                name=f"{child['symbol']} Independent RSI {side.title()} (Optimized)",
+                custom_params=dict(child["best_params"]), execution=dict(child["execution"]),
+            ))
+        if req.combined:
+            by_side = {side: cfg for side, cfg in zip(req.sides, configs)}
+            long, short = by_side["long"], by_side["short"]
+            configs = [BotConfig(
+                symbol=long.symbol, strategy_name=DUAL_RSI_NAME, timeframe=long.timeframe,
+                credit=long.credit + short.credit, long_credit=long.credit, short_credit=short.credit,
+                leverage=long.leverage, mode="simulation", name=f"{long.symbol.upper()} Independent RSI Long + Short (Optimized)",
+                custom_params={"long": long.custom_params, "short": short.custom_params}, execution=long.execution,
+            )]
+        bots = bot_manager.create_bots(configs)
+        return {"bots": [bot.to_state_dict() for bot in bots]}
 
 
     # ── Bulk bot actions (must be registered before {bot_id} routes) ───────────────
@@ -1054,7 +1258,34 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
 
     @app.get("/api/optimizer/jobs")
     async def optimizer_jobs():
-        return optimizer_manager.list_jobs()
+        # Saved-run navigation needs metadata; large result payloads stay on detail routes.
+        payload_fields = {
+            "execution", "custom_bounds", "search_bounds", "best_params", "params",
+            "baseline", "test_baseline", "history", "trials", "best_trades", "test_trades",
+            "chart", "chart_data", "test_chart_data", "sides",
+        }
+        scalar_types = (str, int, float, bool, type(None))
+        summaries = []
+        for job in optimizer_manager.list_jobs():
+            summary = {key: value for key, value in job.items()
+                       if key not in payload_fields and isinstance(value, scalar_types)}
+            for field in ("best_summary", "test_summary"):
+                if isinstance(job.get(field), dict):
+                    summary[field] = {key: value for key, value in job[field].items()
+                                      if isinstance(value, scalar_types)}
+            summaries.append(summary)
+        return summaries
+
+
+    @app.delete("/api/optimizer/jobs/{job_id}")
+    async def optimizer_delete_job(job_id: str):
+        try:
+            optimizer_manager.delete_job(job_id)
+        except KeyError:
+            return JSONResponse(status_code=404, content={"error": "Job not found"})
+        except ValueError as exc:
+            return JSONResponse(status_code=409, content={"error": str(exc)})
+        return {"ok": True}
 
 
     @app.post("/api/bots/{bot_id}/reconcile")
@@ -1065,9 +1296,11 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
             return JSONResponse(status_code=404, content={"error": "Bot not found"})
         if bot.status == BotStatus.RUNNING or bot.cfg.mode != "real":
             return JSONResponse(status_code=409, content={"error": "Stop the real bot before manual reconciliation"})
-        if not bot._ensure_exchange_client():
-            return JSONResponse(status_code=400, content={"error": "Exchange credentials unavailable"})
-        await OrderExecutor(bot, bot._exchange_client).reconcile()
+        for runner in bot.execution_bots():
+            if not runner._ensure_exchange_client():
+                return JSONResponse(status_code=400, content={"error": "Exchange credentials unavailable"})
+            await OrderExecutor(runner, runner._exchange_client).reconcile()
+            runner.error = "Unresolved exchange order; verify its ID on the exchange" if runner.unresolved_intents() else None
         bot.error = "Unresolved exchange order; verify its ID on the exchange" if bot.unresolved_intents() else None
         bot._persist()
         return bot.to_detail_dict()
@@ -1078,7 +1311,7 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
         bot = bot_manager.get_bot(bot_id)
         if bot is None:
             return JSONResponse(status_code=404, content={"error": "Bot not found"})
-        if bot.cfg.mode != "real" or bot.status == BotStatus.RUNNING or bot._exchange_position_id is not None or bot.unresolved_intents():
+        if bot.cfg.mode != "real" or bot.status == BotStatus.RUNNING or bot.unresolved_intents():
             return JSONResponse(status_code=409, content={"error": "Only a stopped real bot without exposure can adopt a position"})
         position_id = request.get("position_id")
         if not isinstance(position_id, int) or isinstance(position_id, bool) or position_id <= 0:
@@ -1086,17 +1319,28 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
         if not bot._ensure_exchange_client():
             return JSONResponse(status_code=400, content={"error": "Exchange credentials unavailable"})
         position = await asyncio.to_thread(bot._exchange_client.position, position_id)
+        parent = bot
+        if bot.cfg.strategy_name == DUAL_RSI_NAME:
+            bot = bot.sides["long" if position.get("side") == "buy" else "short"]
+        if bot._exchange_position_id is not None:
+            return JSONResponse(status_code=409, content={"error": "The selected direction already owns a position"})
         src, dst = bot._parse_symbol()
         if position.get("id") != position_id or position.get("status") != "Open" or position.get("srcCurrency") != src or position.get("dstCurrency") != dst:
             return JSONResponse(status_code=400, content={"error": "Position must be open and match the bot market"})
+        from bot import STRATEGY_MAP
+        allowed_direction = getattr(STRATEGY_MAP.get(bot.cfg.strategy_name), "allowed_direction", None)
+        direction = "Long" if position.get("side") == "buy" else "Short"
+        if allowed_direction and direction != allowed_direction:
+            return JSONResponse(status_code=400, content={"error": "Position direction must match the bot strategy"})
         bot_manager.store.claim_position(bot._account_key(), position_id, bot.id)
         bot._exchange_position_id = position_id
+        bot._real_positions = bot._normalize_positions([position])
         bot._real_state = "long" if position.get("side") == "buy" else "short"
         bot._seed_position = {"direction": "Long" if position.get("side") == "buy" else "Short",
                               "entry_price": float(position["entryPrice"]), "entry_time": position["openedAt"]}
         bot._log_event("reconnected", f"Operator assigned exchange position {position_id}")
         bot._persist()
-        return bot.to_detail_dict()
+        return parent.to_detail_dict()
 
 
     @app.post("/api/bots/{bot_id}/resolve-order")
@@ -1110,22 +1354,28 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
         client_order_id, order_id = request.get("client_order_id"), request.get("order_id")
         if not isinstance(client_order_id, str) or len(client_order_id) > 64:
             return JSONResponse(status_code=400, content={"error": "A valid local order intent ID is required"})
+        parent = bot
+        if bot.cfg.strategy_name == DUAL_RSI_NAME:
+            bot = next((runner for runner in bot.execution_bots() if any(
+                intent["client_order_id"] == client_order_id for intent in runner.unresolved_intents())), None)
+            if bot is None:
+                return JSONResponse(status_code=400, content={"error": "Order intent does not belong to this bot"})
         if not bot._ensure_exchange_client():
             return JSONResponse(status_code=400, content={"error": "Exchange credentials unavailable"})
         try:
             await OrderExecutor(bot, bot._exchange_client).bind_order(client_order_id, order_id)
         except (TypeError, ValueError) as exc:
             return JSONResponse(status_code=400, content={"error": str(exc)})
-        return bot.to_detail_dict()
+        return parent.to_detail_dict()
 
 
     @app.post("/api/bots/actions/start-all")
     async def start_all_bots():
         # Simulation bots start in parallel (no budget constraint).
-        sims = [b for b in bot_manager.get_all() if b.cfg.mode != "real" and b.cfg.strategy_name not in ("AgenticAI", "PriceAI")]
+        sims = [b for b in bot_manager.get_all() if b.cfg.mode != "real" and b.cfg.strategy_name not in ("AgenticAI", "PriceAI", "AlexNet")]
         await asyncio.gather(*[b.start() for b in sims])
 
-        reals = [b for b in bot_manager.get_all() if b.cfg.mode == "real" and b.cfg.strategy_name not in ("AgenticAI", "PriceAI") and b.status != BotStatus.RUNNING]
+        reals = [b for b in bot_manager.get_all() if b.cfg.mode == "real" and b.cfg.strategy_name not in ("AgenticAI", "PriceAI", "AlexNet") and b.status != BotStatus.RUNNING]
         for b in reals:
             await b.start()
         return {"ok": True, "blocked": []}
@@ -1140,7 +1390,7 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
     # ── REST Endpoints ─────────────────────────────────────────────────────────────
     @app.get("/api/bots")
     async def list_bots():
-        return bot_manager.get_all_states()
+        return _bot_states()
 
 
     @app.post("/api/bots", status_code=201)
@@ -1154,12 +1404,15 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
             strategy_name=req.strategy_name,
             timeframe=req.timeframe,
             credit=req.credit,
+            long_credit=req.long_credit,
+            short_credit=req.short_credit,
             leverage=req.leverage,
             mode=req.mode,
             name=req.name,
             custom_params=req.custom_params or None,
             execution=selected_execution(req.execution),
             ai_timeframes=req.ai_timeframes,
+            ai_model_id=req.ai_model_id,
         )
         try:
             bot = bot_manager.create_bot(cfg)
@@ -1167,6 +1420,8 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
             return JSONResponse(status_code=400, content={"error": str(exc)})
         if exchange_client is not None:
             bot._exchange_client = exchange_client
+            for runner in bot.execution_bots():
+                runner._exchange_client = exchange_client
         return bot.to_state_dict()
 
 
@@ -1175,7 +1430,7 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
         bot = bot_manager.get_bot(bot_id)
         if bot is None:
             return JSONResponse(status_code=404, content={"error": "Bot not found"})
-        return bot.to_detail_dict()
+        return _display_state(bot.to_detail_dict())
 
 
     @app.patch("/api/bots/{bot_id}")
@@ -1193,27 +1448,36 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
             strategy_name=new_strategy,
             timeframe=req.timeframe or bot.cfg.timeframe,
             credit=req.credit if req.credit is not None else bot.cfg.credit,
+            long_credit=req.long_credit if req.long_credit is not None else bot.cfg.long_credit,
+            short_credit=req.short_credit if req.short_credit is not None else bot.cfg.short_credit,
             leverage=req.leverage if req.leverage is not None else bot.cfg.leverage,
             mode=new_mode,
             name=req.name if req.name is not None else bot.cfg.name,
-            custom_params=bot.cfg.custom_params,  # preserve existing optimized inputs
+            custom_params=bot.cfg.custom_params if new_strategy == bot.cfg.strategy_name else None,
             execution=bot.cfg.execution,
             ai_timeframes=req.ai_timeframes if req.ai_timeframes is not None else bot.cfg.ai_timeframes,
+            ai_model_id=(req.ai_model_id if req.ai_model_id is not None else bot.cfg.ai_model_id)
+                        if new_strategy == "AlexNet" else None,
         )
         try:
-            Bot(new_cfg)
+            make_bot(new_cfg)
         except ValueError as exc:
             return JSONResponse(status_code=400, content={"error": str(exc)})
         was_running = bot.status.value == "running"
         if was_running:
             await bot.stop()
         try:
-            bot_manager.update_bot(bot, new_cfg)
+            bot = bot_manager.update_bot(bot, new_cfg)
         except ValueError as exc:
             return JSONResponse(status_code=400, content={"error": str(exc)})
 
         if req.restart or was_running:
-            await bot.start()
+            try:
+                await bot.start()
+            except ValueError as exc:
+                return JSONResponse(status_code=400, content={"error": f"Bot updated but could not start: {exc}"})
+            except (RuntimeError, ImportError) as exc:
+                return JSONResponse(status_code=503, content={"error": f"Bot updated but could not start: {exc}"})
 
         return bot.to_state_dict()
 
@@ -1228,23 +1492,33 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
             strategy_name=src.cfg.strategy_name,
             timeframe=src.cfg.timeframe,
             credit=src.cfg.credit,
+            long_credit=src.cfg.long_credit,
+            short_credit=src.cfg.short_credit,
             leverage=src.cfg.leverage,
             mode=src.cfg.mode,
             name=f"{src.cfg.name or src.id} (copy)",
             custom_params=src.cfg.custom_params,
             execution=src.cfg.execution,
             ai_timeframes=src.cfg.ai_timeframes,
+            ai_model_id=src.cfg.ai_model_id,
         )
-        bot = bot_manager.create_bot(cfg)
+        try:
+            bot = bot_manager.create_bot(cfg)
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"error": str(exc)})
         return bot.to_state_dict()
 
 
     @app.get("/api/bots/{bot_id}/chart")
-    async def bot_chart(bot_id: str):
+    async def bot_chart(bot_id: str, side: str = "long"):
         bot = bot_manager.get_bot(bot_id)
         if bot is None:
             return JSONResponse(status_code=404, content={"error": "Bot not found"})
         try:
+            if bot.cfg.strategy_name == DUAL_RSI_NAME:
+                if side not in ("long", "short"):
+                    return JSONResponse(status_code=400, content={"ok": False, "error": "Choose long or short"})
+                return bot.get_chart_data(side)
             return bot.get_chart_data()
         except Exception as exc:
             return JSONResponse(status_code=500, content={"ok": False, "error": str(exc)})
@@ -1267,7 +1541,12 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
         bot = bot_manager.get_bot(bot_id)
         if bot is None:
             return JSONResponse(status_code=404, content={"error": "Bot not found"})
-        await bot.start()
+        try:
+            await bot.start()
+        except ValueError as exc:
+            return JSONResponse(status_code=400, content={"error": str(exc)})
+        except (RuntimeError, ImportError) as exc:
+            return JSONResponse(status_code=503, content={"error": str(exc)})
         return bot.to_state_dict()
 
 
@@ -1291,6 +1570,7 @@ def create_app(*, manager=None, exchange_client=None, offline=None, credential_s
     app.state.bot_manager = bot_manager
     app.state.tester_manager = tester_manager
     app.state.optimizer_manager = optimizer_manager
+    app.state.model_trainer = model_trainer
     return app
 
 

@@ -99,9 +99,10 @@ def test_completed_tester_persists_costed_results(monkeypatch, tmp_path):
 def test_optimizer_split_excludes_warmup_and_uses_fixed_training_window(monkeypatch):
     import asyncio
     import optimizer
-    df = research_candles(1300)
-    monkeypatch.setattr(optimizer, "_fetch_df", lambda *args: df)
     job = optimizer.OptimizerJob("btcusdt", "AdvRSI", "60", 1000, 100, 3, train_pct=70, random_seed=42)
+    warmup = optimizer.required_warmup({name: high for name, (_, high) in job._effective_bounds.items()})
+    df = research_candles(warmup + job.candles)
+    monkeypatch.setattr(optimizer, "_fetch_df", lambda *args: df)
     observed = []
     def fake_search(train_df):
         observed.append(train_df.copy())
@@ -111,12 +112,12 @@ def test_optimizer_split_excludes_warmup_and_uses_fixed_training_window(monkeypa
     monkeypatch.setattr(job, "_run_de", fake_search)
     asyncio.run(job.run())
     assert job.status == "done", job.error
-    assert job.evaluation_start == 300
+    assert job.evaluation_start == warmup
     assert job.train_candle_count == 700
     assert job.test_candle_count == 300
-    assert len(observed[0]) == 1000
+    assert len(observed[0]) == warmup + 700
     assert job.baseline["candle_count"] == job.best_summary["candle_count"] == 700
-    assert job.test_summary["metadata"]["start_idx"] == 1000
+    assert job.test_summary["metadata"]["start_idx"] == warmup + 700
     assert job.to_dict()["random_seed"] == 42
 
 
@@ -221,7 +222,9 @@ def test_seeded_optimizer_selection_ignores_changed_heldout_prices(monkeypatch):
             **settings(*args), "maxiter": 1, "popsize": 1, "init": "random"}
         asyncio.run(job.run())
         assert job.status == "done", job.error
-        assert job.best_summary["metadata"]["data_source"] == "synthetic"
+        assert job.training_summary["metadata"]["data_source"] == "synthetic"
+        assert all(fold["metadata"]["data_source"] == "synthetic"
+                   for fold in job.best_summary["fold_summaries"])
         assert job.test_summary["metadata"]["data_source"] == "synthetic"
         selected.append((job.best_params, job.best_summary, job.history))
     assert selected[0] == selected[1]

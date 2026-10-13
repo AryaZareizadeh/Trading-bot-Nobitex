@@ -20,9 +20,10 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.requests import HTTPConnection
 
-from accounts import Accounts
-from auth import COOKIE, SAFE_METHODS
+from accounts import Accounts, canonical_email
+from auth import COOKIE, SAFE_METHODS, BoundedAuthWork, AuthWorkBusy
 from settings import ROOT, data_dir, load_environment
+from runtime_lease import FileLease
 
 
 def _send_code(email: str, code: str, purpose: str):
@@ -110,11 +111,11 @@ class AccountCredentials:
     def get(self):
         return self.accounts.credentials(self.user_id)
 
-    def set(self, values):
-        previous = self.get()
-        if "account_id" in previous:
-            values = {**values, "account_id": previous["account_id"]}
-        self.accounts.set_credentials(self.user_id, values)
+    def profile_identity(self, profile):
+        return self.accounts.profile_identity(profile)
+
+    def set(self, values, verified_exchange_id=None):
+        self.accounts.set_credentials(self.user_id, values, verified_exchange_id=verified_exchange_id)
 
 
 class OptimizerSlots:
@@ -307,20 +308,36 @@ def create_multiuser_app(*, data_root=None, offline=None, allowed_hosts=None, se
     hosts = allowed_hosts or {h.strip().lower() for h in
                               os.getenv("DASHBOARD_ALLOWED_HOSTS", "localhost,127.0.0.1,::1").split(",") if h.strip()}
     sender = send_code or _send_code
+    auth_work = BoundedAuthWork()
+    volume_lease = FileLease(root / ".dashboard.lock")
 
     @asynccontextmanager
     async def lifespan(app):
+        volume_lease.acquire()
         try:
             yield
         finally:
-            await tenants.shutdown()
+            try:
+                await tenants.shutdown()
+            finally:
+                auth_work.close()
+                volume_lease.release()
 
     app = FastAPI(title="Trading Bot Dashboard", lifespan=lifespan)
     app.add_middleware(MultiAuthMiddleware, sessions=sessions, allowed_hosts=hosts, secure_cookie=secure_cookie)
     app.state.accounts = accounts
     app.state.sessions = sessions
     app.state.tenants = tenants
+    app.state.auth_work = auth_work
+
+    @app.exception_handler(AuthWorkBusy)
+    async def auth_busy(request, exc):
+        return JSONResponse({"error": str(exc)}, status_code=503, headers={"Retry-After": "1"})
     app.mount("/static", StaticFiles(directory=str(ROOT / "static")), name="static")
+
+    @app.get("/healthz")
+    async def health():
+        return {"ok": True}
 
     @app.get("/", response_class=HTMLResponse)
     async def root_page():
@@ -344,16 +361,16 @@ def create_multiuser_app(*, data_root=None, offline=None, allowed_hosts=None, se
                 or sessions.limited("registration-name:" + str(username).lower(), 5, 3600)):
             return JSONResponse({"error": "Too many requests; try again later"}, status_code=429)
         try:
-            user = await asyncio.to_thread(accounts.register, payload.get("username", ""),
+            user = await auth_work.run(accounts.register, payload.get("username", ""),
                                            payload.get("email", ""), payload.get("password", ""),
                                            payload.get("invitation_code", ""), os.getenv("TRADER_INVITE_CODE", ""))
         except PermissionError:
             return JSONResponse({"error": "Invalid invitation code"}, status_code=403)
         except (ValueError, TypeError) as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
-        code = accounts.issue_verification(user["id"])
+        code = await auth_work.run(accounts.issue_verification, user["id"])
         try:
-            await asyncio.to_thread(sender, user["email"], code, "registration")
+            await auth_work.run(sender, user["email"], code, "registration")
         except Exception:
             with accounts.connect() as conn:
                 conn.execute("DELETE FROM users WHERE id=? AND verified=0", (user["id"],))
@@ -363,7 +380,7 @@ def create_multiuser_app(*, data_root=None, offline=None, allowed_hosts=None, se
     @app.post("/api/auth/register/verify")
     async def verify_registration(request: Request):
         payload = await _payload(request)
-        if not payload or not accounts.verify_email(payload.get("email", ""), payload.get("code", "")):
+        if not payload or not await auth_work.run(accounts.verify_email, canonical_email(payload.get("email", "")), payload.get("code", "")):
             return JSONResponse({"error": "Invalid or expired confirmation code"}, status_code=400)
         return {"ok": True}
 
@@ -374,7 +391,7 @@ def create_multiuser_app(*, data_root=None, offline=None, allowed_hosts=None, se
         key = "login:" + str(request.client.host) + ":" + str(username).lower()
         if sessions.limited(key):
             return JSONResponse({"error": "Too many login attempts; try again shortly"}, status_code=429)
-        user = await asyncio.to_thread(accounts.login, username, payload.get("password", "") if payload else "")
+        user = await auth_work.run(accounts.login, username, payload.get("password", "") if payload else "")
         if not user:
             return JSONResponse({"error": "Authentication failed"}, status_code=401)
         old = sessions.sessions.pop(request.cookies.get(COOKIE), None)
@@ -399,19 +416,18 @@ def create_multiuser_app(*, data_root=None, offline=None, allowed_hosts=None, se
     @app.post("/api/auth/recovery/request")
     async def request_recovery(request: Request):
         payload = await _payload(request)
-        email = payload.get("email", "") if payload else ""
-        if not isinstance(email, str):
-            email = ""
-        key = "recovery:" + str(request.client.host) + ":" + email.lower()
-        if sessions.limited(key, 3, 3600):
+        email = canonical_email(payload.get("email", "") if payload else "")
+        ip_limited = sessions.limited("recovery-ip:" + str(request.client.host), 20, 3600)
+        account_limited = sessions.limited("recovery-email:" + email, 3, 3600)
+        if ip_limited or account_limited:
             return JSONResponse({"error": "Too many requests; try again later"}, status_code=429)
         if send_code is None and (not os.getenv("SMTP_HOST") or not os.getenv("SMTP_FROM")):
             return JSONResponse({"error": "Recovery email service unavailable"}, status_code=503)
-        user = accounts.by_email(email) if email else None
+        user = await auth_work.run(accounts.by_email, email) if email else None
         if user and user["verified"]:
-            code = accounts.issue_recovery(user["id"])
+            code = await auth_work.run(accounts.issue_recovery, user["id"])
             try:
-                await asyncio.to_thread(sender, user["email"], code, "password recovery")
+                await auth_work.run(sender, user["email"], code, "password recovery")
             except Exception:
                 pass
         return {"ok": True, "message": "If the address is registered, a code has been sent"}
@@ -421,10 +437,14 @@ def create_multiuser_app(*, data_root=None, offline=None, allowed_hosts=None, se
         payload = await _payload(request)
         if not payload:
             return JSONResponse({"error": "Invalid or expired recovery code"}, status_code=400)
+        email = canonical_email(payload.get("email", ""))
+        ip_limited = sessions.limited("reset-ip:" + str(request.client.host), 20, 60)
+        account_limited = sessions.limited("reset-email:" + email, 5, 60)
+        if ip_limited or account_limited:
+            return JSONResponse({"error": "Too many requests; try again later"}, status_code=429)
         try:
-            user = accounts.by_email(payload.get("email", ""))
-            success = accounts.reset_password(payload.get("email", ""), payload.get("code", ""),
-                                              payload.get("password", ""))
+            user = await auth_work.run(accounts.by_email, email)
+            success = await auth_work.run(accounts.reset_password, email, payload.get("code", ""), payload.get("password", ""))
         except (ValueError, TypeError):
             success = False
             user = None

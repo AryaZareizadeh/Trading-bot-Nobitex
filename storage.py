@@ -58,6 +58,17 @@ class Store:
         with self.connection() as conn:
             conn.execute("DELETE FROM records WHERE namespace=? AND key=?", (namespace, str(key)))
 
+    def list_for_bots(self, namespace, bot_ids):
+        """Read only the selected bot's records, including its independent runners."""
+        if not bot_ids:
+            return {}
+        placeholders = ','.join('?' for _ in bot_ids)
+        with self.connection() as conn:
+            rows = conn.execute(
+                f"SELECT key,value FROM records WHERE namespace=? AND json_extract(value,'$.bot_id') IN ({placeholders}) ORDER BY key",
+                (namespace, *bot_ids)).fetchall()
+        return {key: json.loads(value) for key, value in rows}
+
     def owner(self, account, position_id):
         with self.connection() as conn:
             row = conn.execute("SELECT bot_id FROM position_owners WHERE account=? AND position_id=?", (account, str(position_id))).fetchone()

@@ -17,3 +17,11 @@ optimizer.json
 tester.json
 tests
 docs
+tmp
+output
+playwright-report
+test-results
+.browser-smoke
+*.bundle.zip
+*.log
+.dashboard.lock

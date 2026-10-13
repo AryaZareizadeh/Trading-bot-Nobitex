@@ -15,6 +15,7 @@ def test_published_rule_parser_accepts_changed_day_count_and_rejects_unrelated_n
 
 
 def test_refresh_uses_changed_rule_then_last_good_value(monkeypatch):
+    monkeypatch.setenv("TRADER_OFFLINE", "false")
     from config import Config
 
     monkeypatch.setattr(limits, "_days", limits.DEFAULT_MAX_HOLD_DAYS)
@@ -40,6 +41,15 @@ def test_refresh_uses_changed_rule_then_last_good_value(monkeypatch):
     monkeypatch.setattr(limits, "_next_refresh", 0)
     assert limits.current_max_hold_days() == 45
     assert not limits.published_limit_status()["refresh_ok"]
+
+
+def test_offline_rule_lookup_never_opens_a_network_connection(monkeypatch):
+    monkeypatch.setattr(limits, "_next_refresh", 0)
+    monkeypatch.setattr(limits, "_days", 45)
+    def forbidden(*args, **kwargs):
+        pytest.fail("Offline rule lookup attempted network access")
+    monkeypatch.setattr(limits, "urlopen", forbidden)
+    assert limits.current_max_hold_days() == 45
 
 
 def test_simulator_closes_at_open_when_order_reaches_exchange_limit():

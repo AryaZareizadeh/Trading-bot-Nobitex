@@ -7,8 +7,25 @@ per-user `Store` namespace `spot_manager`. It starts at 200 USDT by default and
 has no call to the authenticated Nobitex order API. The existing bots, margin
 research engine, wallet valuation, portfolio snapshots, cash-flow history, and
 manual exchange rebalance settings remain intact. The dashboard navigation now
-opens one **Portfolio Manager** tab; the lower panels show that earlier exchange
-history separately. No saved portfolio rows were migrated or deleted.
+opens one **Portfolio Manager** tab; the expandable **Exchange portfolio
+history** section shows that earlier history separately. Paper and exchange
+data load independently. **Refresh** reads both sections; **Save exchange
+snapshot** explicitly captures an exchange observation. No saved portfolio
+rows were migrated or deleted.
+
+The tab guides users through setup, historical validation and paper monitoring.
+It locks a saved portfolio's budget and universe, requires a usable model before
+starting from the UI, and explains missing model coverage. Research comparisons,
+acceptance checks, update failures and observation timestamps are visible.
+**Reset paper portfolio**, beside **Refresh**, backs up the current virtual
+portfolio and clears its active balance, holdings and history so a new budget
+and asset list can be chosen. Models, research reports and exchange data are
+kept. Active research continues; research interrupted by an application restart
+is reported as failed and can be run again. Portfolio requests time out after
+20 seconds to restore controls; after a timeout, refresh to check whether the
+server completed the request.
+See [the usability review](portfolio-manager-usability.md) for the fixes,
+verification and remaining gaps.
 
 `spot_data.py` handles public source normalization, provenance, UTC completion
 times, hashes, and quality audits. `spot_portfolio.py` owns the spot ledger,

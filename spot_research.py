@@ -16,17 +16,17 @@ import numpy as np
 import pandas as pd
 
 from spot_data import APPROVED_ASSETS, SECONDS
-from spot_portfolio import D, SpotCosts, SpotRisk, execute_targets, mark, new_state, target_weights
+from spot_portfolio import D, SpotCosts, SpotRisk, execute_planned, plan_targets, mark, new_state, target_weights
 
 
-RESEARCH_VERSION = "spot-research-v1"
+RESEARCH_VERSION = "spot-research-v2-events"
 HORIZONS = (4, 24, 72)  # hourly bars; selected at each decision from current forecasts
 FEATURES = ("return_1", "return_4", "return_24", "return_72", "volatility_24",
             "volatility_72", "range", "volume_ratio", "btc_return_24")
 SEED = 42
 
 
-def feature_frame(candles, btc_context=None):
+def feature_frame(candles, btc_context=None, *, is_btc=None):
     if not candles:
         return pd.DataFrame()
     bars = sorted(candles, key=lambda c: c["available_at"])
@@ -45,7 +45,10 @@ def feature_frame(candles, btc_context=None):
     frame["range"] = (frame["high"].astype(float) - frame["low"].astype(float)) / close
     frame["volume_ratio"] = volume / volume.rolling(24, min_periods=24).median().shift(1).replace(0, np.nan)
     if btc_context is None:
-        frame["btc_return_24"] = frame["return_24"]
+        # Schema-less legacy BTC fixtures remain supported; an identified
+        # non-BTC asset must never proxy the market-context feature.
+        btc_asset = all(bar.get("asset", "BTC") == "BTC" for bar in candles) if is_btc is None else is_btc
+        frame["btc_return_24"] = frame["return_24"] if btc_asset else np.nan
     else:
         context = btc_context["return_24"].reindex(frame.index, method="ffill", tolerance=pd.Timedelta(hours=1))
         frame["btc_return_24"] = context
@@ -57,9 +60,9 @@ def feature_frame(candles, btc_context=None):
     return frame.replace([np.inf, -np.inf], np.nan)
 
 
-def frames_for(signal_candles):
-    btc = feature_frame(signal_candles.get("BTC", []))
-    return {asset: feature_frame(bars, btc if asset != "BTC" and not btc.empty else None)
+def frames_for(signal_candles, btc_candles=None):
+    btc = feature_frame(signal_candles.get("BTC", []) if btc_candles is None else btc_candles, is_btc=True)
+    return {asset: feature_frame(bars, btc if asset != "BTC" and not btc.empty else None, is_btc=asset == "BTC")
             for asset, bars in signal_candles.items() if bars}
 
 
@@ -190,75 +193,119 @@ def _report(state, capital):
 
 def replay(signal, venue, predictions, start, end, *, method, capital=200,
            costs=SpotCosts(), risk=SpotRisk()):
-    """At completion t, use known venue marks; fill at its next open.
+    """Process observed venue prices, decisions and actual fill events in order.
 
-    Nobitex hourly candles currently open at :30 UTC. A Binance close at :00
-    therefore cannot be matched by timestamp equality. The first following
-    Nobitex open is eligible, while marks and volume come from bars complete
-    by the signal time.
+    A decision freezes quantity and turnover from contemporaneous marks. Only
+    its next venue opening reveals the fill price; holdings are then marked at
+    that opening, never at the earlier decision's price. Distinct venue clocks
+    share cash while retaining each asset's actual execution timestamp.
     """
     state = new_state(capital, tuple(signal))
+    start_at, end_at = pd.Timestamp(start).to_pydatetime(), pd.Timestamp(end).to_pydatetime()
+    if start_at.tzinfo is None:
+        start_at = start_at.replace(tzinfo=timezone.utc)
+    if end_at.tzinfo is None:
+        end_at = end_at.replace(tzinfo=timezone.utc)
+    if end_at <= start_at:
+        raise ValueError("Research end must follow its start")
     venue_index = {}
+    events = defaultdict(list)
+    observed_prices = {}
     for asset, bars in venue.items():
         ordered = sorted(bars, key=lambda bar: bar["open_time"])
         venue_index[asset] = (
             [datetime.fromisoformat(bar["open_time"]) for bar in ordered],
             [datetime.fromisoformat(bar["available_at"]) for bar in ordered], ordered)
-    times = sorted({bar["available_at"] for bars in signal.values() for bar in bars
-                    if str(start) <= bar["available_at"] < str(end)})
+        for bar in ordered:
+            for field, price_field in (("available_at", "close"), ("open_time", "open")):
+                when = datetime.fromisoformat(bar[field])
+                if when <= start_at:
+                    previous = observed_prices.get(asset)
+                    # At a boundary the new open supersedes the prior close.
+                    priority = int(field == "open_time")
+                    if previous is None or (when, priority) >= (previous[0], previous[2]):
+                        observed_prices[asset] = (when, bar[price_field], priority)
+                if start_at <= when <= end_at:
+                    events[when].append((asset, field, bar))
+    decision_times = {datetime.fromisoformat(bar["available_at"]) for bars in signal.values() for bar in bars
+                      if start_at <= datetime.fromisoformat(bar["available_at"]) < end_at}
+    # Missing next opens cancel at a fixed deadline without reallocating their
+    # budget to assets whose future candles happen to exist in the dataset.
+    deadlines = {min(when + pd.Timedelta(hours=1), end_at) for when in decision_times}
+    times = sorted(set(events) | decision_times | deadlines | {start_at, end_at})
+    pending = defaultdict(list)
     fixed = None
-    for timestamp in times:
-        decision_at = datetime.fromisoformat(timestamp)
-        current, previous = {}, {}
+    final_mark = None
+    for when in times:
+        timestamp = when.isoformat()
+        opening_bars = {}
+        for asset, field, bar in sorted(events.get(when, []), key=lambda row: row[1] == "open_time"):
+            observed_prices[asset] = (when, bar["open"] if field == "open_time" else bar["close"], int(field == "open_time"))
+            if field == "open_time":
+                opening_bars[asset] = bar
+        prices = {a: value for a, (at, value, _) in observed_prices.items() if (when - at).total_seconds() <= 3600}
+
+        def fill_due():
+            orders = pending.pop(when, [])
+            if not orders:
+                return
+            quotes = {}
+            for order in orders:
+                asset = order["asset"]
+                bar = opening_bars.get(asset)
+                if bar is None or when >= datetime.fromisoformat(order["valid_until"]):
+                    continue
+                opening, spread = D(bar["open"]), D("0.001")
+                depth = D(order["depth_base"]) * opening
+                quotes[asset] = {"ask": opening * (1 + spread / 2), "bid": opening * (1 - spread / 2),
+                                 "ask_depth": depth, "bid_depth": depth}
+            execute_planned(state, orders, quotes, prices, costs=costs, at=timestamp)
+
+        fill_due()
+        final_mark = mark(state, prices, timestamp)
+        if when not in decision_times or when.timestamp() // 3600 % 4 or timestamp not in predictions:
+            continue
+        if not final_mark["complete"]:
+            state["decisions"].append({"at": timestamp, "reason": "missing contemporaneous Nobitex mark; paused"})
+            continue
+        eligible_opens, completed = {}, {}
         for asset, (opens, closes, bars) in venue_index.items():
-            next_idx = bisect_left(opens, decision_at)
-            if next_idx < len(opens) and (opens[next_idx] - decision_at).total_seconds() < 3600:
-                current[asset] = bars[next_idx]
-            prior_idx = bisect_right(closes, decision_at) - 1
-            if prior_idx >= 0 and (decision_at - closes[prior_idx]).total_seconds() <= 3600:
-                previous[asset] = bars[prior_idx]
-        prices = {asset: bar["close"] for asset, bar in previous.items()}
-        owned = {a for a, qty in state["holdings"].items() if D(qty) > 0}
-        if not owned.issubset(prices):
-            state["decisions"].append({"at": timestamp, "reason": "missing Nobitex mark; paused"})
-            continue
-        if not prices:
-            continue
-        if int(datetime.fromisoformat(timestamp).timestamp() // 3600) % 4 or timestamp not in predictions:
-            mark(state, prices, timestamp)
-            continue
-        quotes = {}
-        for asset, bar in current.items():
-            completed = previous.get(asset)
-            if completed is None:
-                continue
-            opening = D(bar["open"])
-            spread = D("0.001")
-            # Only volume complete at the signal time may bound liquidity.
-            depth = D(completed["volume_base"]) * opening * D("0.10")
-            quotes[asset] = {"ask": opening * (1 + spread / 2),
-                             "bid": opening * (1 - spread / 2),
-                             "ask_depth": depth, "bid_depth": depth}
-        observed = mark(state, prices, timestamp)
-        if not observed["complete"]:
-            continue
+            next_idx, prior_idx = bisect_left(opens, when), bisect_right(closes, when) - 1
+            if prior_idx >= 0 and (when - closes[prior_idx]).total_seconds() <= 3600 and asset in prices:
+                completed[asset] = bars[prior_idx]
+            if next_idx < len(opens) and opens[next_idx] <= end_at and (opens[next_idx] - when).total_seconds() < 3600:
+                eligible_opens[asset] = opens[next_idx]
         if method == "basket":
-            if fixed is None:
-                eligible = sorted(a for a in predictions[timestamp] if a in quotes)
-                fixed = {a: .99 / len(eligible) for a in eligible} if eligible else {}
-            targets, reason = fixed, "equal-weight entry basket, held without rebalancing"
             if state["fills"]:
-                targets = {a: D(state["holdings"].get(a, 0)) * D(prices[a]) / D(observed["equity_usdt"])
-                           for a in state["holdings"] if a in prices}
+                continue  # The comparison basket holds its actual filled lots.
+            if fixed is None:
+                eligible = sorted(set(predictions[timestamp]) & set(completed))
+                fixed = {a: D("0.99") / len(eligible) for a in eligible} if eligible else {}
+            targets, reason = fixed, "equal-weight entry basket, held without rebalancing"
         else:
-            forecast = _best_forecasts(predictions[timestamp])
-            targets, reason = target_weights(forecast, state, observed["equity_usdt"], risk, costs,
-                                             now=datetime.fromisoformat(timestamp).timestamp())
-        # Historical depth and spread are assumptions, never reconstructed fills.
+            targets, reason = target_weights(_best_forecasts(predictions[timestamp]), state, final_mark["equity_usdt"],
+                                             risk, costs, now=when.timestamp())
         execution_risk = SpotRisk(max_turnover_fraction=D(1), no_trade_fraction=D(0)) if method == "basket" else risk
-        execute_targets(state, targets, quotes, prices, costs=costs, risk=execution_risk, at=timestamp,
-                        reason=reason, model_version=method + ":" + RESEARCH_VERSION)
-    return _report(state, capital)
+        planned = plan_targets(state, targets, prices, final_mark["equity_usdt"], costs=costs, risk=execution_risk,
+                               at=timestamp, reason=reason, model_version=method + ":" + RESEARCH_VERSION)
+        state["decisions"].append({"at": timestamp, "reason": reason, "targets": {a: float(w) for a, w in targets.items()},
+                                   "planned_orders": len(planned), "model_version": method + ":" + RESEARCH_VERSION})
+        for order in planned:
+            prior = completed.get(order["asset"])
+            order["depth_base"] = str(D(prior["volume_base"]) * D("0.10")) if prior else "0"
+            order["valid_until"] = (when + pd.Timedelta(hours=1)).isoformat()
+            execution_at = eligible_opens.get(order["asset"], min(when + pd.Timedelta(hours=1), end_at))
+            pending[execution_at].append(order)
+        fill_due()  # A venue opening exactly at the decision time is eligible.
+    # Missing boundary prices must never silently reuse an older valuation.
+    final_prices = {a: value for a, (at, value, _) in observed_prices.items() if (end_at - at).total_seconds() <= 3600}
+    final_mark = mark(state, final_prices, end_at.isoformat())
+    if not final_mark["complete"]:
+        raise ValueError("Research final boundary has unpriced holdings: " + ", ".join(final_mark["unpriced"]))
+    result = _report(state, capital)
+    result.update(window_start=start_at.isoformat(), window_end=end_at.isoformat(), valuation_complete=True,
+                  execution_version=RESEARCH_VERSION)
+    return result
 
 
 def forecast_quality(frames, start, end, method, models):
@@ -284,9 +331,9 @@ def forecast_quality(frames, start, end, method, models):
     return result
 
 
-def run_experiment(signal, venue, *, capital=200, costs=SpotCosts(), risk=SpotRisk()):
+def run_experiment(signal, venue, *, capital=200, costs=SpotCosts(), risk=SpotRisk(), btc_context=None):
     """Two forward validation folds, then one untouched final test."""
-    frames = frames_for(signal)
+    frames = frames_for(signal, btc_context)
     times = sorted({t for frame in frames.values() for t in frame.index if not frame.empty})
     if len(times) < 1200:
         raise ValueError("Need at least 1,200 hourly timestamps for chronological evaluation")
@@ -331,7 +378,8 @@ def run_experiment(signal, venue, *, capital=200, costs=SpotCosts(), risk=SpotRi
     benchmark["basket"] = replay(signal, venue, predicted, cuts[3], cuts[4],
                                   method="basket", capital=capital, costs=costs, risk=risk)
     benchmark["usdt"] = {"return_pct": 0, "net_pnl_usdt": 0, "max_drawdown_pct": 0}
-    digest = hashlib.sha256(json.dumps({a: [b["data_hash"] for b in bars] for a, bars in signal.items()},
+    digest = hashlib.sha256(json.dumps({"signals": {a: [b["data_hash"] for b in bars] for a, bars in signal.items()},
+                                      "btc_context": [b["data_hash"] for b in (btc_context or signal.get("BTC", []))]},
                                     sort_keys=True).encode()).hexdigest()
     venue_digest = hashlib.sha256(json.dumps({a: [b["data_hash"] for b in bars] for a, bars in venue.items()},
                                           sort_keys=True).encode()).hexdigest()
@@ -357,6 +405,6 @@ def run_experiment(signal, venue, *, capital=200, costs=SpotCosts(), risk=SpotRi
             "forecast_quality": quality_test,
             "test": test, "stress": stress, "benchmarks": benchmark,
             "validation_outcome": {"passed": all(criteria.values()), "checks": criteria},
-            "execution_note": "Historical Nobitex fills use OHLC open plus assumed spread, slippage and previous-bar volume. Depth, queue position and limit fills are unavailable.",
+            "execution_note": "Decisions freeze quantities from observed prices; venue events fill at each actual next open and value holdings with prices observed by that timestamp. Spread, slippage and previous completed volume are assumptions. Depth, queue position and limit fills are unavailable. Earlier reports must be rerun; saved historical reports are unchanged.",
             "acceptance": {"minimum_history_days": 365, "test_edge_over_cash_and_basket_pp": 2,
                            "target_drawdown_pct": 10, "stress_costs_required": True}}

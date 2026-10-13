@@ -16,7 +16,7 @@ from execution_model import execution_config, simulate_signals
 
 
 STRATEGY_NAME = "PriceAI"
-MODEL_VERSION = "price-ai-hgbr-v1"
+MODEL_VERSION = "price-ai-hgbr-v2-continuous"
 HORIZON_CANDLES = 4
 MIN_TRAIN_ROWS = 400
 FEATURE_WARMUP = 30
@@ -35,8 +35,36 @@ class TrainedPriceModel:
     metadata: dict
 
 
-def _features(df: pd.DataFrame) -> pd.DataFrame:
+def _interval_seconds(df, timeframe=None):
+    if not isinstance(df.index, pd.DatetimeIndex) or not df.index.is_monotonic_increasing or df.index.has_duplicates or df.index.hasnans:
+        raise ValueError("PriceAI requires unique increasing candle timestamps")
+    if timeframe is not None:
+        if isinstance(timeframe, pd.Timedelta):
+            seconds = timeframe.total_seconds()
+        else:
+            seconds = {"60": 3600, "240": 14400, "1h": 3600, "4h": 14400}.get(str(timeframe))
+            if seconds is None:
+                raise ValueError("PriceAI requires a 1-hour or 4-hour timeframe")
+    else:
+        differences = df.index.to_series().diff().dt.total_seconds().dropna()
+        if differences.empty:
+            raise ValueError("PriceAI needs at least two candle timestamps")
+        # The modal interval tolerates isolated missing bars without redefining
+        # their duration. In a tie, the shortest recurring interval is safest.
+        counts = differences.value_counts()
+        seconds = min(counts[counts == counts.max()].index)
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise ValueError("Invalid PriceAI candle interval")
+    return float(seconds)
+
+
+def _continuous(df, seconds):
+    return df.index.to_series().diff().dt.total_seconds().eq(seconds)
+
+
+def _features(df: pd.DataFrame, timeframe=None) -> pd.DataFrame:
     """Every row depends only on that row and earlier completed candles."""
+    seconds = _interval_seconds(df, timeframe)
     close = df["Close"].astype(float)
     previous = close.shift(1)
     log_return = np.log(close / previous)
@@ -50,7 +78,8 @@ def _features(df: pd.DataFrame) -> pd.DataFrame:
     result["volume_ratio"] = volume / average_volume.replace(0, np.nan)
     result["volatility_12"] = log_return.rolling(12, min_periods=12).std()
     result["volatility_24"] = log_return.rolling(24, min_periods=24).std()
-    return result.replace([np.inf, -np.inf], np.nan)
+    valid_window = _continuous(df, seconds).rolling(24, min_periods=24).sum().eq(24)
+    return result.where(valid_window, np.nan, axis=0).replace([np.inf, -np.inf], np.nan)
 
 
 def _cost_bps(execution) -> float:
@@ -66,15 +95,18 @@ def validate_price_ai_execution(execution) -> None:
         raise ValueError("PriceAI requires positive entry fee, exit fee and slippage assumptions in Research settings")
 
 
-def train_price_model(df: pd.DataFrame, train_end: int) -> TrainedPriceModel:
+def train_price_model(df: pd.DataFrame, train_end: int, timeframe=None) -> TrainedPriceModel:
     """Fit a deterministic model; labels never touch the evaluation window."""
     from sklearn.ensemble import HistGradientBoostingRegressor
     from sklearn.metrics import mean_absolute_error
 
     if not FEATURE_WARMUP < train_end <= len(df):
         raise ValueError("Invalid PriceAI training boundary")
-    features = _features(df)
+    seconds = _interval_seconds(df.iloc[:train_end], timeframe)
+    features = _features(df, pd.Timedelta(seconds=seconds))
     target = 10_000 * np.log(df["Close"].shift(-HORIZON_CANDLES) / df["Close"])
+    label_continuity = _continuous(df, seconds).rolling(HORIZON_CANDLES).sum().shift(-HORIZON_CANDLES).eq(HORIZON_CANDLES)
+    target = target.where(label_continuity)
     # A training label must end before the first evaluation candle.
     eligible = np.arange(len(df)) + HORIZON_CANDLES < train_end
     valid = eligible & features.notna().all(axis=1).to_numpy() & np.isfinite(target.to_numpy())
@@ -110,6 +142,8 @@ def train_price_model(df: pd.DataFrame, train_end: int) -> TrainedPriceModel:
         "model_version": MODEL_VERSION,
         "feature_names": list(FEATURES),
         "horizon_candles": HORIZON_CANDLES,
+        "candle_interval_seconds": seconds,
+        "continuity_policy": "Feature and label windows crossing missing intervals are excluded",
         "training_rows": len(x),
         "training_window_start": str(training.index[0]),
         "training_window_end": str(training.index[-1]),
@@ -124,12 +158,14 @@ def train_price_model(df: pd.DataFrame, train_end: int) -> TrainedPriceModel:
 
 
 def evaluate_price_model(df: pd.DataFrame, model: TrainedPriceModel, credit: float,
-                         leverage: int, execution, start_idx: int) -> dict:
+                         leverage: int, execution, start_idx: int, timeframe=None) -> dict:
     """Replay model decisions through the same fill and accounting engine as Tester."""
     validate_price_ai_execution(execution)
     if not 0 <= start_idx <= len(df):
         raise ValueError("Invalid PriceAI evaluation boundary")
-    features = _features(df)
+    saved_seconds = model.metadata.get("candle_interval_seconds")
+    interval = timeframe if timeframe is not None else pd.Timedelta(seconds=saved_seconds) if saved_seconds else None
+    features = _features(df, interval)
     ready = features.notna().all(axis=1).to_numpy()
     estimates = np.full(len(df), np.nan)
     if ready.any():
@@ -182,12 +218,12 @@ def evaluate_price_model(df: pd.DataFrame, model: TrainedPriceModel, credit: flo
 
 
 def train_and_evaluate(df: pd.DataFrame, credit: float, leverage: int, execution,
-                       train_pct: float = 70.0) -> dict:
+                       train_pct: float = 70.0, timeframe=None) -> dict:
     """One chronological held-out experiment, useful before starting a simulation bot."""
     if not 50 <= train_pct <= 90:
         raise ValueError("train_pct must be between 50 and 90")
     train_end = int(len(df) * train_pct / 100)
     if len(df) - train_end < 50:
         raise ValueError("PriceAI needs at least 50 held-out candles")
-    model = train_price_model(df, train_end)
-    return evaluate_price_model(df, model, credit, leverage, execution, train_end)
+    model = train_price_model(df, train_end, timeframe)
+    return evaluate_price_model(df, model, credit, leverage, execution, train_end, timeframe)

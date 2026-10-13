@@ -193,11 +193,11 @@ def test_credential_write_failure_keeps_prior_environment(monkeypatch):
 def test_credentials_cannot_change_with_live_exposure(condition, monkeypatch):
     import asyncio
     import server
-    from types import SimpleNamespace
-    bot = SimpleNamespace(cfg=SimpleNamespace(mode="real"),
-        status=server.BotStatus.RUNNING if condition == "running" else server.BotStatus.IDLE,
-        _exchange_position_id=123 if condition == "position" else None,
-        unresolved_intents=lambda: [{"state": "submitted"}] if condition == "intent" else [])
+    from bot import Bot, BotConfig
+    bot = Bot(BotConfig("btcusdt", "AdvRSI", "60", 100, mode="real"))
+    bot.status = server.BotStatus.RUNNING if condition == "running" else server.BotStatus.IDLE
+    bot._exchange_position_id = 123 if condition == "position" else None
+    monkeypatch.setattr(bot, "unresolved_intents", lambda: [{"state": "submitted"}] if condition == "intent" else [])
     monkeypatch.setattr(server.bot_manager, "get_all", lambda: [bot])
     def unexpected_save(*args, **kwargs):
         pytest.fail("Credentials changed despite exposure")

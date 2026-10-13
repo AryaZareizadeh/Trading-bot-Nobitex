@@ -7,14 +7,17 @@ authority for live trading. Network failures retain the last known rule.
 
 from datetime import datetime, timedelta, timezone
 from html.parser import HTMLParser
+import os
 import re
 import threading
 import time
-from urllib.request import Request, urlopen
+from urllib.request import Request, ProxyHandler, build_opener
 from zoneinfo import ZoneInfo
 
 
 HELP_URL = "https://nobitx.com/help/discover/position/how-long-can-i-extend-my-commitment-position/"
+# This Nobitex help request follows the same direct-only policy as its API.
+urlopen = build_opener(ProxyHandler({})).open
 DEFAULT_MAX_HOLD_DAYS = 60  # Published 1405/03/16; used only if refresh fails.
 _REFRESH_SECONDS = 6 * 60 * 60
 _RETRY_SECONDS = 10 * 60
@@ -63,6 +66,8 @@ def parse_published_limit(html: str) -> int:
 def current_max_hold_days() -> int:
     """Refresh at most every six hours, retaining a safe last-known value."""
     global _days, _next_refresh, _verified_at, _last_refresh_ok
+    if os.getenv("TRADER_OFFLINE", "false").lower() == "true":
+        return _days
     if time.monotonic() < _next_refresh:
         return _days
     with _lock:

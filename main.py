@@ -11,13 +11,40 @@ def main(argv=None):
 
     load_environment()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", nargs="?", choices=("serve", "setup-password", "backup", "import-legacy"), default="serve")
-    parser.add_argument("--output", type=Path, help="New SQLite backup file (backup command only)")
+    parser.add_argument("command", nargs="?", choices=("serve", "setup-password", "backup", "backup-bundle", "verify-bundle", "restore-bundle", "import-legacy"), default="serve")
+    parser.add_argument("--output", type=Path, help="New database or bundle backup file")
     parser.add_argument("--username", help="Verified destination account for import-legacy")
-    parser.add_argument("--source", type=Path, help="Legacy SQLite database for import-legacy")
+    parser.add_argument("--source", type=Path, help="Backup bundle or legacy SQLite database")
+    parser.add_argument("--destination", type=Path, help="Empty directory for restore-bundle")
     parser.add_argument("--host", default=os.getenv("TRADER_HOST", "127.0.0.1"))
     parser.add_argument("--port", type=int, default=int(os.getenv("TRADER_PORT", "8011")))
     args = parser.parse_args(argv)
+    if args.command in ("backup-bundle", "verify-bundle", "restore-bundle"):
+        from backup import backup_bundle, restore_bundle, verify_bundle
+        from settings import data_dir
+        if args.username:
+            parser.error("--username is only valid with import-legacy")
+        try:
+            if args.command == "backup-bundle":
+                if args.output is None or args.source is not None or args.destination is not None:
+                    parser.error("backup-bundle requires --output PATH and uses TRADER_DATA_DIR")
+                manifest = backup_bundle(data_dir(), args.output)
+                print(f"Verified bundle saved to {args.output.resolve()} ({len(manifest['files'])} files)")
+            elif args.command == "verify-bundle":
+                if args.source is None or args.output is not None or args.destination is not None:
+                    parser.error("verify-bundle requires --source PATH")
+                manifest = verify_bundle(args.source)
+                print(f"Bundle integrity verified ({len(manifest['files'])} files)")
+            else:
+                if args.source is None or args.destination is None or args.output is not None:
+                    parser.error("restore-bundle requires --source PATH --destination EMPTY_DIRECTORY")
+                restore_bundle(args.source, args.destination)
+                print(f"Bundle restored to {args.destination.resolve()}; bots load stopped. Supply the original master key separately.")
+        except (OSError, ValueError, RuntimeError) as exc:
+            parser.error(str(exc))
+        return
+    if args.destination is not None:
+        parser.error("--destination is only valid with restore-bundle")
     if args.command == "import-legacy":
         from accounts import Accounts
         from settings import data_dir

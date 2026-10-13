@@ -17,7 +17,11 @@ from config import Config
 from indicators import Indicators
 from position_limits import DEFAULT_MAX_HOLD_DAYS
 from strategy import (AdvRSICombinedStrategy, ExtremeReversalStrategy,
+                      AdvRSILongStrategy, AdvRSIShortStrategy, stoch_thresholds,
                       PARAMS_CLASS, _fmt_time)
+
+_SWING_STRATEGIES = {"AdvRSI": AdvRSICombinedStrategy, "ExtremeReversal": ExtremeReversalStrategy,
+                     "AdvRSILong": AdvRSILongStrategy, "AdvRSIShort": AdvRSIShortStrategy}
 
 MODEL_VERSION = "ohlc-net-v1"
 WARMUP_CANDLES = 300
@@ -231,7 +235,7 @@ class _Decisions:
             self.ema = ind.ema(params.ema_trend_length)
             self.hist = ind.macd(params.macd_fast, params.macd_slow, params.macd_signal).hist
         else:
-            cls = AdvRSICombinedStrategy if name == "AdvRSI" else ExtremeReversalStrategy
+            cls = _SWING_STRATEGIES[name]
             self.strategy = cls(Config(), params)
             self.strategy._init_entry_state()
             self.rsi, self.ma = ind.rsi_with_ma(params.rsi_fast_length, params.rsi_ma_length)
@@ -243,12 +247,15 @@ class _Decisions:
         pk, pd_ = self.k.iloc[max(0,i-1)], self.d.iloc[max(0,i-1)]
         if self.name != "TrendMomentum":
             r, diff = self.rsi.iloc[i], self.diff.iloc[i]
-            lo, hi = getattr(p, "exit_oversold", p.oversold), getattr(p, "exit_overbought", p.overbought)
+            oversold, overbought = stoch_thresholds(p)
+            lo, hi = getattr(p, "exit_oversold", oversold), getattr(p, "exit_overbought", overbought)
             exits = []
             if (pd_ >= hi and d < hi) or (k < hi and diff < -.08*k and 45 < r < 55) or (pk >= lo and k < lo):
                 exits.append("Long")
             if (pd_ <= lo and d > lo) or (k > lo and diff > .08*k and 45 < r < 55) or (pk <= hi and k > hi):
                 exits.append("Short")
+            if self.strategy.allowed_direction:
+                exits = [direction for direction in exits if direction == self.strategy.allowed_direction]
             signal = self.strategy._entry_signal(i, self.k, self.d, self.rsi, self.ma, self.diff)
             return signal.title() if signal else None, exits
         ema, hist, prev_hist = self.ema.iloc[i], self.hist.iloc[i], self.hist.iloc[max(0,i-1)]

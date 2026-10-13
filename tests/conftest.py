@@ -41,3 +41,9 @@ def isolated_runtime(tmp_path, monkeypatch):
     def blocked(*args, **kwargs):
         raise AssertionError("Network access forbidden in tests")
     monkeypatch.setattr(requests.Session, "request", blocked)
+    import urllib.request
+    monkeypatch.setattr(urllib.request, "urlopen", blocked)
+    # This module keeps a direct imported alias. Block it too; individual rule
+    # parser/refresh tests inject their own response rather than reaching HTTP.
+    import position_limits
+    monkeypatch.setattr(position_limits, "urlopen", blocked)

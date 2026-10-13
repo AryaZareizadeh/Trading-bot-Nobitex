@@ -21,4 +21,13 @@ data/
 *.sqlite3-shm
 *.sqlite3.lock
 backups/
+tmp/
+output/
+playwright-report/
+test-results/
+.browser-smoke/
+*.sqlite3.lock
+.dashboard.lock
+*.bundle.zip
 bot_params_comparison.png
+.gstack/

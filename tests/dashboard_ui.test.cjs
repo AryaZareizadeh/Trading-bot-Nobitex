@@ -29,9 +29,199 @@ function dashboard() {
     clearInterval: () => {},
     Date,
   });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'static', 'session.js'), 'utf8'), context);
   vm.runInContext(script, context);
   return {context, element, run: code => vm.runInContext(code, context)};
 }
+
+test('bot history labels open results and keeps archived markets and order failures visible', () => {
+  const page = dashboard();
+  page.run(`var detailedHistory = {mode:'real', trade_history:[
+    {status:'open',symbol:'BTCUSDT',strategy:'AdvRSI',trade:{'Position':'Long','P&L ($)':12,'Start Time':'2026-10-10T01:00:00+00:00'}},
+    {status:'closed',symbol:'ETHUSDT',strategy:'AdvRSI',trade:{'Position':'Short','P&L ($)':-4}}
+  ],order_ledger:[{created_at:'2026-10-10T01:00:00Z',kind:'open',state:'rejected',side:'buy',
+    src:'btc',dst:'usdt',payload:{amount:'1'},last_error:'<script>bad</script>'}],
+    closed_exchange_positions:[{id:42,status:'Liquidated',PNL:'-3',dstCurrency:'usdt'}]};`);
+  const output = page.run('renderBotHistoryTrades(detailedHistory)');
+  assert.match(output, /BTCUSDT/);
+  assert.match(output, /ETHUSDT/);
+  assert.match(output, /Unrealized/);
+  assert.match(output, /rejected/);
+  assert.match(output, /Liquidated/);
+  assert.match(output, /&lt;script&gt;bad&lt;\/script&gt;/);
+  assert.doesNotMatch(output, /<script>/);
+});
+
+test('bot history dates handle offsets and display a timezone and seconds', () => {
+  const page = dashboard();
+  const first = page.run(`fmtHistoryDate('2026-10-10T01:02:03+00:00')`);
+  const second = page.run(`fmtHistoryDate('2026-10-10 01:02:03')`);
+  assert.equal(first, second);
+  assert.match(first, /2026/);
+  assert.match(first, /01:02:03/);
+  assert.match(first, /UTC/);
+  assert.equal(page.run('fmtHistoryDate(null)'), '—');
+});
+
+test('optimizer reports validation and training chart metrics in separate scopes', () => {
+  const page = dashboard();
+  page.run(`var scopedJob = {
+    id:'scoped', status:'done', symbol:'ZECUSDT', strategy:'AdvRSILong', timeframe:'240',
+    train_pct:70, train_candle_count:1566, candle_count:2238, evaluations:82200,
+    best_pnl:98.02, best_summary:{evaluation:'forward_validation',total_pnl:98.02,win_rate:71.4,trade_count:14},
+    validation_summary:{total_pnl:98.02,win_rate:71.4,trade_count:14},
+    training_summary:{total_pnl:115.51,win_rate:54.8,trade_count:31,long_pct:100,
+      sum_profits:165.87,sum_losses:-50.36,max_drawdown_pct:64.6},
+    baseline:{total_pnl:1,win_rate:40,trade_count:20},
+    params:[{name:'rsi_length',value:7,default:40,low:2,high:100}],
+    history:[{iteration:410,pnl:98.02,win_rate:71.4,trade_count:14}]
+  };
+  renderOptimizerResults(scopedJob);
+  renderOptimizerTesterResults(scopedJob);
+  renderDeltaCard('oDeltaSection','oDeltaChart',scopedJob);`);
+  for (const id of ['oResults', 'otResults']) {
+    const html = page.element(id).innerHTML;
+    const training = html.match(/data-result-scope="training"[\s\S]*?<\/div>\s*<div style="overflow-x:auto">/)?.[0];
+    assert.ok(training, 'training summary must identify the chart scope');
+    assert.match(training, /115\.51/);
+    assert.match(training, /54\.8%/);
+    assert.match(training, />31</);
+    assert.match(training, /64\.6%/);
+    assert.doesNotMatch(training, /98\.02|71\.4%/);
+    const validation = html.match(/data-result-scope="validation"[\s\S]*?<\/section>/)?.[0];
+    assert.ok(validation, 'selection metrics must have a separate validation summary');
+    assert.match(validation, /98\.02/);
+    assert.match(validation, />14</);
+  }
+  assert.match(page.element('oDeltaChart').innerHTML, /Validation closed trades/);
+  page.run(`scopedJob.training_summary = null;
+    scopedJob.reporting_error = 'Saved training metrics could not be recovered';
+    scopedJob.test_summary = {total_pnl:-7.43,win_rate:33.3,trade_count:9};
+    renderOptimizerResults(scopedJob);
+    renderOptimizerTesterResults(scopedJob);`);
+  for (const id of ['oResults', 'otResults']) {
+    const html = page.element(id).innerHTML;
+    assert.match(html, /Saved training metrics could not be recovered/);
+    const training = html.match(/data-result-scope="training"[\s\S]*?<\/div>\s*<div style="overflow-x:auto">/)?.[0];
+    assert.doesNotMatch(training, /98\.02|71\.4%|>14</);
+    assert.match(training, /—/);
+  }
+});
+
+test('running bot cards show candle countdown and a distinct live quote', () => {
+  const page = dashboard();
+  page.run(`bots = [{id:'timer',name:'Timer',symbol:'BTCUSDT',strategy:'AdvRSI',timeframe:'60',
+    mode:'simulation',status:'running',total_pnl:0,credit:100,leverage:1,current_price:90,
+    next_candle_close:Date.now()/1000+65,live_price:101.5,live_price_updated_at:Date.now()/1000,
+    live_price_stale:false}]; renderBotsBox()`);
+  const card = page.element('boxBotsBody').innerHTML;
+  assert.match(card, /Candle closes in/);
+  assert.match(card, /01:0[45]/);
+  assert.match(card, /101\.5/);
+  assert.match(card, /Last candle close/);
+});
+
+test('countdown uses synchronized server time and cannot become negative', () => {
+  const page = dashboard();
+  page.run('marketClockOffsetMs=120000');
+  assert.equal(page.run('candleCountdown(Date.now()/1000+185)'), '01:05');
+  assert.equal(page.run('candleCountdown(Date.now()/1000-1)'), 'Closing…');
+});
+
+test('independent optimizer bounds and credits stay separate in both forms', () => {
+  const page = dashboard();
+  page.run(`optimizerConfig = {long_credit:300, short_credit:700, default_cores: 2, available_strategies: [{
+    value:'AdvRSIIndependent', paired:true, params:[
+      {name:'long_oversold', label:'Long · oversold', low:1, high:35, default:22},
+      {name:'short_overbought', label:'Short · overbought', low:65, high:99, default:78},
+      {name:'long_entry_wait_candles', label:'Long · entry_wait_candles', low:0, high:10, default:5},
+      {name:'short_entry_wait_candles', label:'Short · entry_wait_candles', low:0, high:10, default:5}
+    ]}]}; saveOptimizerPrefs = () => {};`);
+  for (const prefix of ['o', 'ot']) {
+    page.element(prefix + 'Strategy').value = 'AdvRSIIndependent';
+    page.element(prefix + 'Credit').value = '999';
+    page.element(prefix + 'LongCredit').value = '300';
+    page.element(prefix + 'ShortCredit').value = '700';
+    page.element(prefix + 'Candles').value = '1000';
+    page.element(prefix + 'Maxiter').value = '30';
+  }
+  page.run('onOptimizerStrategyChange(); onOptimizerTesterStrategyChange()');
+  assert.match(page.element('oParamSpace').innerHTML, /Long · oversold/);
+  assert.match(page.element('otParamSpace').innerHTML, /Short · overbought/);
+  assert.match(page.element('oParamSpace').innerHTML, /id="op-lo-long_entry_wait_candles" value="0" min="0"/);
+  assert.match(page.element('otParamSpace').innerHTML, /id="otp-lo-short_entry_wait_candles" value="0" min="0"/);
+  assert.match(page.element('oCreditHint').textContent, /300.*700.*1000/);
+  assert.match(page.element('otCreditHint').textContent, /300.*700.*1000/);
+  for (const prefix of ['o', 'ot']) {
+    page.element(prefix + 'LongCredit').value = '500';
+    page.run(`updateIndependentCredits('${prefix}')`);
+    assert.equal(page.element(prefix + 'ShortCredit').value, '700');
+    assert.match(page.element(prefix + 'CreditHint').textContent, /500.*700.*1200/);
+    assert.equal(page.element(prefix + 'SingleCredit').style.display, 'none');
+  }
+});
+
+test('combined bot forms submit independent credit and keep the other side unchanged', () => {
+  const page = dashboard();
+  for (const prefix of ['f', 'e']) {
+    page.element(prefix + 'Strategy').value = 'AdvRSIIndependent';
+    page.element(prefix + 'LongCredit').value = '120';
+    page.element(prefix + 'ShortCredit').value = '300';
+    page.run(`updateDualBotCredits('${prefix}')`);
+    const payload = page.run(`botCreditPayload('${prefix}')`);
+    assert.equal(payload.credit, 420);
+    assert.equal(payload.long_credit, 120);
+    assert.equal(payload.short_credit, 300);
+    page.element(prefix + 'ShortCredit').value = '700';
+    page.run(`updateDualBotCredits('${prefix}')`);
+    assert.equal(page.element(prefix + 'LongCredit').value, '120');
+    assert.equal(page.run(`botCreditPayload('${prefix}').credit`), 820);
+    assert.equal(page.element(prefix + 'SingleCredit').style.display, 'none');
+  }
+});
+
+test('combined position P&L uses the filled quantity or its own directional credit', () => {
+  const page = dashboard();
+  page.run(`var combinedBot = {id:'combined', paired:true, name:'Combined', mode:'simulation', strategy:'AdvRSIIndependent',
+    credit:420, long_credit:120, short_credit:300, leverage:2, current_price:110,
+    open_positions:[{direction:'Long', side:'long', entry_price:100, quantity:1.5}]}; bots = [combinedBot];`);
+  assert.equal(page.run("calcUnrealized(combinedBot, combinedBot.open_positions[0])"), 15);
+  assert.equal(page.run("calcUnrealized(combinedBot, {direction:'Short', side:'short', entry_price:100})"), -60);
+  page.run('renderPositionsBox()');
+  assert.match(page.element('boxPositionsBody').innerHTML, /\+\$15\.00/);
+});
+
+test('paired optimizer creates one combined bot when that action is selected', async () => {
+  const page = dashboard();
+  page.run(`_independentJobs.o = {id:'pair-7', paired:true, status:'done', credit:420,
+    sides:{long:{status:'done', credit:120, best_params:{rsi_length:14}},
+           short:{status:'done', credit:300, best_params:{rsi_length:38}}}};
+    renderGrid = () => {}; renderIndependentResults = () => {}; showToast = () => {};
+    var creationRequest = null;
+    apiFetch = async (url, options) => {
+      creationRequest = {url, body:JSON.parse(options.body)};
+      return {ok:true, json:async () => ({bots:[{id:'dual', paired:true}]})};
+    };`);
+  await page.run("createIndependentBots('o', true)");
+  assert.equal(page.run('creationRequest.body.combined'), true);
+  assert.equal(page.run('bots.length'), 1);
+  assert.equal(page.run('bots[0].id'), 'dual');
+});
+
+test('independent results select separate child settings and disable creating both without two eligible results', () => {
+  const page = dashboard();
+  page.run(`var pair = {id:'pair', paired:true, status:'done', credit:1000, sides:{
+    long:{id:'long', strategy:'AdvRSILong', status:'done', credit:300, best_params:{rsi_length:14}, best_pnl:12,
+          best_summary:{total_pnl:12,win_rate:60,trade_count:30}, params:[{name:'rsi_length',value:14}], baseline:{}},
+    short:{id:'short', strategy:'AdvRSIShort', status:'done', credit:700, best_params:null, best_summary:null, no_eligible_result:true}
+  }}; renderOptimizerResults(pair);`);
+  assert.match(page.element('oPairResults').innerHTML, /300\.00/);
+  assert.match(page.element('oPairResults').innerHTML, /disabled>\s*Create both simulation bots/);
+  assert.equal(page.context.window._lastOptimizerJob.strategy, 'AdvRSILong');
+  page.run(`selectIndependentSide('o', 'short')`);
+  assert.equal(page.context.window._lastOptimizerJob, null);
+  assert.match(page.element('oResults').innerHTML, /No eligible result/);
+});
 
 test('bot search and status filter narrow cards while showing a visible count', () => {
   const page = dashboard();
@@ -68,7 +258,7 @@ test('bots wallet ribbon displays margin balances without a spot section', async
 test('optimizer workload previews evaluation budget and held-out split', () => {
   const page = dashboard();
   const workload = page.run('_optimizerWorkload(1000, 30, 2, 4, 70)');
-  assert.equal(workload.evaluations, 2480);
+  assert.equal(workload.evaluations, 3968);
   assert.equal(workload.trainCandles, 700);
   assert.equal(workload.testCandles, 300);
   assert.equal(workload.cores, 2);
@@ -88,7 +278,7 @@ test('optimizer forms show the workload for their selected strategy and worker s
   }
   page.element('otTrainPct').value = '70';
   page.run('updateOptimizerNote(); _updateTesterRunNote()');
-  assert.match(page.element('oWorkload').innerHTML, /1,240/);
+  assert.match(page.element('oWorkload').innerHTML, /1,984/);
   assert.match(page.element('oWorkload').innerHTML, /2<\/strong> workers/);
   assert.match(page.element('oRunNote').textContent, /Next run:/);
   assert.match(page.element('otWorkload').innerHTML, /700<\/strong> train/);

@@ -43,6 +43,8 @@ _MAX_JOBS_KEPT = 20
 # Display labels for the strategies registered in bot.STRATEGY_MAP.
 STRATEGY_LABELS: dict[str, str] = {
     "AdvRSI": "Advanced RSI Combined",
+    "AdvRSILong": "Advanced RSI Independent · Long",
+    "AdvRSIShort": "Advanced RSI Independent · Short",
     "TrendMomentum": "Trend-Filtered Momentum",
     "ExtremeReversal": "Extreme Reversal",
 }
@@ -338,6 +340,11 @@ class ResearchPersistence:
         self._prefs = self._load_prefs()
         self._prefs.update(store.get("prefs", self.namespace, {}))
         for key, snapshot in store.list(self.namespace + "_jobs").items():
+            if self.namespace == "optimizer":
+                for result in [snapshot, *snapshot.get("sides", {}).values()]:
+                    result.setdefault("method", "de")
+                    result.setdefault("n_trials", 1000)
+                    result.setdefault("de_strategy", "best2bin")
             if snapshot["status"] in ("pending", "running", "pausing", "paused"):
                 snapshot.update(status="interrupted", error="Application stopped before job completion; start a new run.")
                 store.put(self.namespace + "_jobs", key, snapshot)
@@ -351,6 +358,18 @@ class ResearchPersistence:
     def list_jobs(self):
         self._ensure_store()
         return [job.to_dict() for job in sorted(self._jobs.values(), key=lambda j: j.created_at, reverse=True)]
+
+    def delete_job(self, job_id):
+        """Remove a finished result only after its worker has stopped writing."""
+        store = self._ensure_store()
+        job = self._jobs.get(job_id)
+        if job is None:
+            raise KeyError(job_id)
+        task = job._task
+        if job.status not in ("done", "cancelled", "error", "interrupted") or (task is not None and not task.done()):
+            raise ValueError("Job is still active; wait for it to finish before deleting.")
+        store.delete(self.namespace + "_jobs", job_id)
+        self._jobs.pop(job_id)
 
     def _attach(self, job):
         store = self._ensure_store()

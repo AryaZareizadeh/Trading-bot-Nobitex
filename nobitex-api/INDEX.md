@@ -5,7 +5,7 @@ This directory holds the Nobitex API reference, split into 10 topic files so an 
 **Base REST host:** `https://apiv2.nobitex.ir` (a few legacy endpoints use `https://api.nobitex.ir`)
 **WebSocket host:** `wss://ws.nobitex.ir/connection/websocket`
 
-## How to use this index (for Claude Code / any agent)
+## How to use this index
 
 1. **Grep this file first** for the endpoint path, error code, or keyword you're looking for (e.g. `grep -i "stop" INDEX.md`, `grep "margin/orders" INDEX.md`, `grep -i "DuplicateOrder" INDEX.md`).
 2. That tells you which single file (≤671 lines) contains the answer. Read **only that file** — never the whole reference unless you're doing a full audit.

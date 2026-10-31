@@ -130,7 +130,7 @@ The lock-file name above is the proposed artifact to generate during implementat
 
 ## Stage 5 — Documentation, regression suite and release verification
 
-**Files:** Create README.md, docs/architecture.md, docs/backtesting.md, docs/operations.md and tests/test_dashboard_flow.py; update .env.example, main.py and .github/workflows/tests.yml. Update the local CLAUDE.md guidance to match tracked documentation.
+**Files:** Create README.md, docs/architecture.md, docs/backtesting.md, docs/operations.md and tests/test_dashboard_flow.py; update .env.example, main.py and .github/workflows/tests.yml. Update the local agent guidance to match tracked documentation.
 
 - [ ] Document the actual Python/FastAPI/plain-JavaScript architecture and Nobitex execution versus Binance research data. Explain each strategy and retain the ExtremeReversal beta label.
 - [ ] Document clean installation, password setup, dashboard startup, credential configuration, simulation, optimization, train/test evaluation, database backup and restart reconciliation. List supported Python/platform versions established by Stage 1 verification.
